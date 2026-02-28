@@ -1,23 +1,25 @@
 import 'package:flutter/material.dart';
 import '../components/logo.dart';
-import '../components/primary_button.dart';
-import '../components/primary_textfield.dart';
-import 'register_page.dart';
+import '../components/secondary_button.dart';
+import '../components/secondary_textfield.dart';
+import 'login_page.dart';
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _RegisterPageState extends State<RegisterPage> {
+  final TextEditingController _fullnameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
   void dispose() {
+    _fullnameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -29,20 +31,20 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  void _onLogin() {
+  void _onRegister() {
+    final fullname = _fullnameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     // TODO: Hubungkan ke AuthService
-    debugPrint('Email: $email, Password: $password');
+    debugPrint('Fullname: $fullname, Email: $email, Password: $password');
   }
 
-  void _onSignUp() {
-    // TODO: Navigate ke Register page
+  void _onLogin() {
     Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => const RegisterPage()),
-  );
+      context,
+      MaterialPageRoute(builder: (context) => const LoginPage()),
+    );
   }
 
   @override
@@ -64,7 +66,7 @@ class _LoginPageState extends State<LoginPage> {
 
               // Subtitle
               const Text(
-                'Sign in to continue your productivity\njourney with Wudi.',
+                'Sign up to continue your productivity\njourney with Wudi.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -75,26 +77,46 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 36),
 
+              // Fullname Field
+              DarkTextField(
+                controller: _fullnameController,
+                hintText: 'Enter Your Fullname',
+                prefixIcon: const Icon(
+                  Icons.person_outline,
+                  color: Color(0xFFAAAAAA),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
               // Email Field
-              CustomTextField(
+              DarkTextField(
                 controller: _emailController,
                 hintText: 'Enter Your Email',
                 keyboardType: TextInputType.emailAddress,
+                prefixIcon: const Icon(
+                  Icons.mail_outline,
+                  color: Color(0xFFAAAAAA),
+                ),
               ),
 
               const SizedBox(height: 14),
 
               // Password Field
-              CustomTextField(
+              DarkTextField(
                 controller: _passwordController,
-                hintText: 'Enter Your Password',
+                hintText: 'Create Your Password',
                 obscureText: _obscurePassword,
+                prefixIcon: const Icon(
+                  Icons.lock_outline,
+                  color: Color(0xFFAAAAAA),
+                ),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscurePassword
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined,
-                    color: const Color(0xFF888888),
+                    color: const Color(0xFFAAAAAA),
                   ),
                   onPressed: _togglePasswordVisibility,
                 ),
@@ -102,21 +124,22 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 32),
 
+              // Register Button
               // Login Button
-              PrimaryButton(label: 'Login', onPressed: _onLogin),
+              SecondaryButton(label: 'Register', onPressed: _onRegister),
 
               const SizedBox(height: 20),
 
-              // Sign Up Link
+              // Login Link
               GestureDetector(
-                onTap: _onSignUp,
+                onTap: _onLogin,
                 child: RichText(
                   text: const TextSpan(
-                    text: "Don't Have An Account? ",
+                    text: 'Already Have An Account? ',
                     style: TextStyle(fontSize: 13, color: Color(0xFF555555)),
                     children: [
                       TextSpan(
-                        text: 'Sign-Up',
+                        text: 'Login',
                         style: TextStyle(
                           fontStyle: FontStyle.italic,
                           fontWeight: FontWeight.w600,
