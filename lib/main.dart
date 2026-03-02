@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import 'pages/welcome_page.dart';
+import 'core/theme/app_theme.dart';
+import 'features/auth/pages/welcome_page.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(const MyApp());
 }
 
@@ -13,10 +16,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Wudi',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        fontFamily: 'Sans',
-        scaffoldBackgroundColor: const Color(0xFFF0EDE8),
-      ),
+      theme: AppTheme.lightTheme,
       home: const WelcomePage(),
     );
   }

@@ -1,18 +1,21 @@
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 
-class CustomTextField extends StatelessWidget {
+class DarkTextField extends StatelessWidget {
   final TextEditingController controller;
   final String hintText;
   final bool obscureText;
   final TextInputType keyboardType;
+  final Widget? prefixIcon;
   final Widget? suffixIcon;
 
-  const CustomTextField({
+  const DarkTextField({
     super.key,
     required this.controller,
     required this.hintText,
     this.obscureText = false,
     this.keyboardType = TextInputType.text,
+    this.prefixIcon,
     this.suffixIcon,
   });
 
@@ -22,37 +25,29 @@ class CustomTextField extends StatelessWidget {
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
-      style: const TextStyle(
-        fontSize: 14,
-        color: Color(0xFF1A1A1A),
-      ),
+      style: const TextStyle(fontSize: 14, color: Colors.white),
       decoration: InputDecoration(
         hintText: hintText,
-        hintStyle: const TextStyle(
-          fontSize: 14,
-          color: Color(0xFF999999),
-        ),
+        hintStyle: TextStyle(color: AppColors.iconAccent),
+        prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: const Color(0xFFE8DDD0),
+        fillColor: AppColors.inputDarkBg.withValues(alpha: 0.9),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 20,
           vertical: 16,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFF3D1C3B),
-            width: 1.5,
-          ),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
     );

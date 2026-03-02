@@ -1,0 +1,153 @@
+import 'package:flutter/material.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/primary_button.dart';
+import '../../../../core/theme/secondary_button.dart';
+import '../../../../core/theme/logo.dart';
+import '../services/auth_service.dart';
+import 'login_page.dart';
+import 'register_page.dart';
+import '../../shell/pages/main_navigation.dart';
+
+class WelcomePage extends StatefulWidget {
+  const WelcomePage({super.key});
+
+  @override
+  State<WelcomePage> createState() => _WelcomePageState();
+}
+
+class _WelcomePageState extends State<WelcomePage> {
+  bool _checkingSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingSession();
+  }
+
+  Future<void> _checkExistingSession() async {
+    final authService = AuthService();
+    final isLoggedIn = await authService.isLoggedIn();
+    
+    if (isLoggedIn && mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MainNavigation(authService: authService),
+        ),
+      );
+      return;
+    }
+    if (mounted) setState(() => _checkingSession = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_checkingSession) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = screenWidth > 600 ? screenWidth * 0.15 : 32.0;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: IntrinsicHeight(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Spacer(flex: 2),
+
+                        // Logo
+                        const WudiLogo(),
+
+                        const Spacer(flex: 2),
+
+                        // Tagline
+                        const Text(
+                          'Master your time,\nachieve more.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                            height: 1.3,
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        // Subtitle
+                        const Text(
+                          'Solusi manajemen waktu untuk mahasiswa.\nBantu kamu mengatur aktivitas dengan\nlebih efektif.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textTertiary,
+                            fontStyle: FontStyle.italic,
+                            height: 1.6,
+                          ),
+                        ),
+
+                        const Spacer(flex: 3),
+
+                        // Buttons row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: PrimaryButton(
+                                label: 'Login',
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const LoginPage(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: SecondaryButton(
+                                label: 'Register',
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const RegisterPage(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 40),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
