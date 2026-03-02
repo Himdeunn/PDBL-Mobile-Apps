@@ -1,9 +1,4 @@
-# Wudi - Productivity & Task Management Mobile App
-
-Wudi is a comprehensive productivity and task management mobile application built with Flutter. It provides users with an intuitive interface to manage daily tasks, track focus time, and organize their schedules efficiently.
-
-This repository contains the frontend source code developed using a modern, scalable Flutter architecture.
-
+# Wudi
 ## Architecture
 
 The application implements a strict **Feature-First Clean Architecture**. This approach ensures separation of concerns, high maintainability, and scalability for enterprise-level development.
