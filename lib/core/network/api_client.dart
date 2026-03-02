@@ -1,8 +1,9 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:dio/dio.dart';
 import '../storage/secure_storage.dart';
 
 class ApiClient {
-  static const String baseUrl = 'https://flexible-selected-fish.ngrok-free.app/api';
+  static String get baseUrl => dotenv.env['API_URL'] ?? 'http://localhost/api';
   late final Dio dio;
 
   ApiClient() {
