@@ -62,7 +62,7 @@ class _RegisterPageState extends State<RegisterPage> {
               // Logo
               const WudiLogo(),
 
-              const SizedBox(height: 80),
+              const SizedBox(height: 35),
 
               // Subtitle
               const Text(

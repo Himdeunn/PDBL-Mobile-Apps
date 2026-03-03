@@ -3,6 +3,7 @@ import '../components/primary_button.dart';
 import '../components/secondary_button.dart';
 import '../components/logo.dart';
 import 'login_page.dart';
+import 'register_page.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
@@ -74,6 +75,12 @@ class WelcomePage extends StatelessWidget {
                       label: 'Register',
                       onPressed: () {
                         // Navigate to Register page
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RegisterPage(),
+                          ),
+                        );
                       },
                     ),
                   ),
