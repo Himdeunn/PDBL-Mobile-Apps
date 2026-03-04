@@ -21,7 +21,7 @@ class FocusCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Fokus Hari Ini',
+          'Today\'s Focus',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,

@@ -42,7 +42,7 @@ class HomeHeader extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Mari kita manfaatkan hari ini dengan produktif.',
+                'Let\'s make today a productive day.',
                 style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
