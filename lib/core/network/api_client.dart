@@ -65,16 +65,61 @@ class ApiException implements Exception {
   ApiException(this.message, [this.statusCode]);
 
   factory ApiException.fromDioError(DioException error) {
+    String message = 'An unexpected error occurred. Please try again.';
+    int? statusCode = error.response?.statusCode;
+
+    // 1. Try to get message from server response first
     if (error.response?.data is Map<String, dynamic>) {
       final msg = error.response?.data['message'];
-      if (msg != null) {
-        return ApiException(msg.toString(), error.response?.statusCode);
-      }
+      if (msg != null) return ApiException(msg.toString(), statusCode);
     }
-    return ApiException(
-      error.message ?? 'Unknown error occurred',
-      error.response?.statusCode,
-    );
+
+    // 2. Map DioException types to user-friendly messages
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        message =
+            'Connection timed out. Please check your internet and try again.';
+        break;
+      case DioExceptionType.badResponse:
+        if (statusCode != null) {
+          if (statusCode >= 500) {
+            message =
+                'The server is currently unavailable. Please try again later.';
+          } else if (statusCode == 404) {
+            message = 'The requested resource was not found.';
+          } else if (statusCode == 403) {
+            message = 'You do not have permission to perform this action.';
+          } else if (statusCode == 401) {
+            message = 'Your session has expired. Please log in again.';
+          } else {
+            message =
+                'Something went wrong with your request. Please try again.';
+          }
+        }
+        break;
+      case DioExceptionType.cancel:
+        message = 'The request was cancelled.';
+        break;
+      case DioExceptionType.connectionError:
+        message =
+            'Cannot connect to the server. Please check your internet connection.';
+        break;
+      case DioExceptionType.badCertificate:
+        message = 'An insecure connection was detected. Please try again.';
+        break;
+      default:
+        // Handle specific technical messages like "Failed host lookup" even in 'unknown' type
+        final technicalMsg = error.message?.toLowerCase() ?? '';
+        if (technicalMsg.contains('failed host lookup') ||
+            technicalMsg.contains('socketexception')) {
+          message =
+              'Cannot connect to the server. Please check your internet connection.';
+        }
+    }
+
+    return ApiException(message, statusCode);
   }
 
   @override

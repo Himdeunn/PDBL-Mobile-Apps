@@ -4,6 +4,7 @@ import '../../task/pages/create_task_page.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/services/auth_service.dart';
 import '../../task/models/task_local.dart';
+import 'dart:async';
 
 class CalendarPage extends StatefulWidget {
   final AuthService? authService;
@@ -25,6 +26,7 @@ class _CalendarPageState extends State<CalendarPage> {
   List<TaskLocal> _allTasks = [];
   List<TaskLocal> _selectedDayTasks = [];
   bool _isLoading = true;
+  StreamSubscription<List<TaskLocal>>? _tasksSubscription;
 
   static const _monthNames = [
     'January',
@@ -44,22 +46,38 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void initState() {
     super.initState();
-    _loadTasks();
+    _initTaskSubscription();
   }
 
-  Future<void> _loadTasks() async {
-    setState(() => _isLoading = true);
+  Future<void> _initTaskSubscription() async {
     final user = await widget.authService?.getCurrentUser();
     final userEmail = user?.email ?? 'guest';
 
-    final tasks = await _taskRepository.getAllTasks(userEmail);
-    if (mounted) {
-      setState(() {
-        _allTasks = tasks;
-        _filterSelectedDayTasks();
-        _isLoading = false;
-      });
-    }
+    _tasksSubscription?.cancel();
+    _tasksSubscription = _taskRepository.watchAllTasks(userEmail).listen((
+      tasks,
+    ) {
+      if (mounted) {
+        setState(() {
+          _allTasks = tasks;
+          _filterSelectedDayTasks();
+          _isLoading = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tasksSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadTasks() async {
+    // This is still useful for manual refresh/pull-to-refresh
+    final user = await widget.authService?.getCurrentUser();
+    final userEmail = user?.email ?? 'guest';
+    await _taskRepository.fetchTasksFromServer(userEmail);
   }
 
   void _filterSelectedDayTasks() {
