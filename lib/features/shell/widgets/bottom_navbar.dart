@@ -31,8 +31,11 @@ class _WudiBottomBarState extends State<WudiBottomBar>
   final LayerLink _layerLink = LayerLink();
 
   static const _plusSubItems = [
-    _NavItemData(icon: Icons.person_add_outlined, label: 'Buat To Do Pribadi'),
-    _NavItemData(icon: Icons.group_add_outlined, label: 'Buat To Do Group'),
+    _NavItemData(
+      icon: Icons.person_add_outlined,
+      label: 'Create Personal To-Do',
+    ),
+    _NavItemData(icon: Icons.group_add_outlined, label: 'Create Group To-Do'),
   ];
 
   @override

@@ -27,7 +27,7 @@ class _WelcomePageState extends State<WelcomePage> {
   Future<void> _checkExistingSession() async {
     final authService = AuthService();
     final isLoggedIn = await authService.isLoggedIn();
-    
+
     if (isLoggedIn && mounted) {
       Navigator.pushReplacement(
         context,
@@ -92,7 +92,7 @@ class _WelcomePageState extends State<WelcomePage> {
 
                         // Subtitle
                         const Text(
-                          'Solusi manajemen waktu untuk mahasiswa.\nBantu kamu mengatur aktivitas dengan\nlebih efektif.',
+                          'A time management solution for students.\nHelping you organize your activities more\neffectively.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,

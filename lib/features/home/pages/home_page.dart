@@ -175,7 +175,7 @@ class _HomePageState extends State<HomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Fokus Hari Ini',
+                        'Today\'s Focus',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -205,7 +205,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                           child: const Center(
                             child: Text(
-                              'Belum ada fokus hari ini.',
+                              'No focus for today yet.',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontSize: 14,
