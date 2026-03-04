@@ -138,6 +138,31 @@ class _WelcomePageState extends State<WelcomePage> {
                           ],
                         ),
 
+                        const SizedBox(height: 16),
+                        // Guest button
+                        TextButton(
+                          onPressed: () async {
+                            final authService = AuthService();
+                            await authService.enterGuestMode();
+                            if (mounted) {
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      MainNavigation(authService: authService),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text(
+                            'Continue as Guest',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+
                         const SizedBox(height: 40),
                       ],
                     ),

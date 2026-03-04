@@ -5,7 +5,7 @@ import '../widgets/bottom_navbar.dart';
 import '../../home/pages/home_page.dart';
 import '../../task/pages/task_page.dart';
 import '../../calendar/pages/calendar_page.dart';
-import '../../profile/pages/profile_page.dart';
+import '../../group/pages/group_page.dart';
 
 class MainNavigation extends StatefulWidget {
   final AuthService authService;
@@ -25,9 +25,9 @@ class _MainNavigationState extends State<MainNavigation> {
     super.initState();
     _pages = [
       HomePage(authService: widget.authService),
-      const TaskPage(),
-      const CalendarPage(),
-      ProfilePage(authService: widget.authService),
+      TaskPage(authService: widget.authService),
+      CalendarPage(authService: widget.authService),
+      const GroupPage(),
     ];
   }
 
@@ -39,6 +39,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // Let the background continue under the curved navbar
       backgroundColor: AppColors.background,
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
@@ -55,6 +56,7 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: WudiBottomBar(
         currentIndex: _currentIndex,
         onTap: _onNavTap,
+        authService: widget.authService,
       ),
     );
   }

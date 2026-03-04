@@ -17,12 +17,17 @@ class AuthService {
     required String passwordConfirmation,
   }) async {
     try {
-      final response = await _api.post('/register', data: {
-        'name': name,
-        'email': email,
-        'password': password,
-        'password_confirmation': passwordConfirmation,
-      });
+      final deviceId = await SecureStorage.getDeviceId();
+      final response = await _api.post(
+        '/register',
+        data: {
+          'name': name,
+          'email': email,
+          'password': password,
+          'password_confirmation': passwordConfirmation,
+          'device_id': deviceId,
+        },
+      );
 
       return _handleAuthSuccess(response.data);
     } on DioException catch (e) {
@@ -32,10 +37,11 @@ class AuthService {
 
   Future<User> login({required String email, required String password}) async {
     try {
-      final response = await _api.post('/login', data: {
-        'email': email,
-        'password': password,
-      });
+      final deviceId = await SecureStorage.getDeviceId();
+      final response = await _api.post(
+        '/login',
+        data: {'email': email, 'password': password, 'device_id': deviceId},
+      );
 
       return _handleAuthSuccess(response.data);
     } on DioException catch (e) {
@@ -79,7 +85,7 @@ class AuthService {
     } catch (_) {
       // Ignore network errors on logout
     } finally {
-      await SecureStorage.clearAll();
+      await SecureStorage.logout();
     }
   }
 

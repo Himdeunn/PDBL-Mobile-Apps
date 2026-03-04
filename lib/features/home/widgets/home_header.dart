@@ -4,13 +4,21 @@ import 'package:flutter/material.dart';
 class HomeHeader extends StatelessWidget {
   final String displayName;
   final bool isLoading;
+  final bool isGuest;
   final VoidCallback? onAvatarTap;
+  final VoidCallback? onLogoutTap;
+  final VoidCallback? onLoginTap;
+  final VoidCallback? onRegisterTap;
 
   const HomeHeader({
     super.key,
     required this.displayName,
     this.isLoading = false,
+    this.isGuest = false,
     this.onAvatarTap,
+    this.onLogoutTap,
+    this.onLoginTap,
+    this.onRegisterTap,
   });
 
   @override
@@ -57,36 +65,90 @@ class HomeHeader extends StatelessWidget {
                 onAvatarTap?.call();
               } else if (value == 'notifications') {
                 // TODO: Navigate to notifications
+              } else if (value == 'logout') {
+                onLogoutTap?.call();
+              } else if (value == 'login') {
+                onLoginTap?.call();
+              } else if (value == 'register') {
+                onRegisterTap?.call();
               }
             },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'profile',
-                child: ListTile(
-                  leading: Icon(Icons.person_outline, color: AppColors.textPrimary),
-                  title: Text(
-                    'Edit Profile',
-                    style: TextStyle(color: AppColors.textPrimary),
+            itemBuilder: (BuildContext context) {
+              if (isGuest) {
+                return <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'login',
+                    child: ListTile(
+                      leading: Icon(Icons.login, color: AppColors.primary),
+                      title: Text(
+                        'Login',
+                        style: TextStyle(color: AppColors.textPrimary),
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                  contentPadding: EdgeInsets.zero,
+                  const PopupMenuDivider(),
+                  const PopupMenuItem<String>(
+                    value: 'register',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.person_add_outlined,
+                        color: AppColors.textPrimary,
+                      ),
+                      title: Text(
+                        'Register',
+                        style: TextStyle(color: AppColors.textPrimary),
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ];
+              }
+
+              return <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'profile',
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.person_outline,
+                      color: AppColors.textPrimary,
+                    ),
+                    title: Text(
+                      'Edit Profile',
+                      style: TextStyle(color: AppColors.textPrimary),
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                  ),
                 ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
-                value: 'notifications',
-                child: ListTile(
-                  leading: Icon(
-                    Icons.notifications_none,
-                    color: AppColors.textPrimary,
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: 'notifications',
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.notifications_none,
+                      color: AppColors.textPrimary,
+                    ),
+                    title: Text(
+                      'Notifications',
+                      style: TextStyle(color: AppColors.textPrimary),
+                    ),
+                    contentPadding: EdgeInsets.zero,
                   ),
-                  title: Text(
-                    'Notifications',
-                    style: TextStyle(color: AppColors.textPrimary),
-                  ),
-                  contentPadding: EdgeInsets.zero,
                 ),
-              ),
-            ],
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: ListTile(
+                    leading: Icon(Icons.logout, color: AppColors.errorText),
+                    title: Text(
+                      'Logout',
+                      style: TextStyle(color: AppColors.errorText),
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ];
+            },
             child: Container(
               width: 44,
               height: 44,

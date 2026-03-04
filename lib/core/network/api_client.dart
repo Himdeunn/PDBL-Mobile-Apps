@@ -7,27 +7,38 @@ class ApiClient {
   late final Dio dio;
 
   ApiClient() {
-    dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    ));
+    dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 60),
+        receiveTimeout: const Duration(seconds: 60),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ),
+    );
 
     dio.interceptors.add(_AuthInterceptor());
   }
 
   Future<Response> get(String path) => dio.get(path);
-  
-  Future<Response> post(String path, {dynamic data}) => dio.post(path, data: data);
+
+  Future<Response> post(String path, {dynamic data}) =>
+      dio.post(path, data: data);
 }
 
 class _AuthInterceptor extends Interceptor {
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  void onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    // 1. Always attach device ID
+    final deviceId = await SecureStorage.getDeviceId();
+    options.headers['X-Device-ID'] = deviceId;
+
+    // 2. Attach auth token if available
     final token = await SecureStorage.getToken();
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
@@ -40,7 +51,7 @@ class _AuthInterceptor extends Interceptor {
     // If the error is 401 Unauthorized, we could trigger a refresh flow here if needed
     // or log the user out directly depending on the backend implementation
     if (err.response?.statusCode == 401) {
-      SecureStorage.clearAll();
+      SecureStorage.logout();
       // Optionally emit a session expired event to UI
     }
     return handler.next(err);
@@ -56,9 +67,14 @@ class ApiException implements Exception {
   factory ApiException.fromDioError(DioException error) {
     if (error.response?.data is Map<String, dynamic>) {
       final msg = error.response?.data['message'];
-      if (msg != null) return ApiException(msg.toString(), error.response?.statusCode);
+      if (msg != null) {
+        return ApiException(msg.toString(), error.response?.statusCode);
+      }
     }
-    return ApiException(error.message ?? 'Unknown error occurred', error.response?.statusCode);
+    return ApiException(
+      error.message ?? 'Unknown error occurred',
+      error.response?.statusCode,
+    );
   }
 
   @override
