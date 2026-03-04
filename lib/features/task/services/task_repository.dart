@@ -233,6 +233,13 @@ class TaskRepository {
         .watch(fireImmediately: true);
   }
 
+  Stream<List<TaskLocal>> watchAllTasks(String userEmail) {
+    return _isar.taskLocals
+        .filter()
+        .userEmailEqualTo(userEmail)
+        .watch(fireImmediately: true);
+  }
+
   // Migrate guest tasks to user email
   Future<void> migrateGuestTasksToUser(String newEmail) async {
     final guestTasks = await _isar.taskLocals
