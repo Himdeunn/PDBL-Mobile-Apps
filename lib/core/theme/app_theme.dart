@@ -4,7 +4,7 @@ class AppColors {
   // Primary & Backgrounds
   static const Color primary = Color(0xFF3D1C3B);
   static const Color primaryDark = Color(0xFF2A1329);
-  static const Color background = Color(0xFFF0EDE8);
+  static const Color background = Color(0xFFF3EDE6);
   static const Color surface = Color(0xFFE8DDD0);
   static const Color surfaceDark = Color(0xFF332736);
   static const Color white = Colors.white;
@@ -23,14 +23,14 @@ class AppColors {
   static const Color calendarOtherMonth = Color(0xFFB0B0B0);
   static const Color calendarEmptyIcon = Color(0xFFC0AFA9);
   static const Color calendarEmptyText = Color(0xFF8B7E79);
-  
+
   // Task Timeline
   static const Color timelineDot = Color(0xFFCCC0B3);
   static const Color timelineLine = Color(0xFFDDD5CA);
-  
+
   // Text Fields
   static const Color inputDarkBg = Color(0xFF2F2235);
-  
+
   // Errors
   static const Color errorBg = Color(0xFFFFEBEE);
   static const Color errorText = Color(0xFFC62828);

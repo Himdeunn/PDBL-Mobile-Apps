@@ -1,20 +1,30 @@
-import '../../../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import '../../task/services/task_repository.dart';
+import '../../task/pages/create_task_page.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../auth/services/auth_service.dart';
+import '../../task/models/task_local.dart';
 
 class CalendarPage extends StatefulWidget {
-  const CalendarPage({super.key});
+  final AuthService? authService;
+  const CalendarPage({super.key, this.authService});
 
   @override
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
 class _CalendarPageState extends State<CalendarPage> {
+  final TaskRepository _taskRepository = TaskRepository();
   DateTime _selectedDate = DateTime.now();
   DateTime _currentMonth = DateTime(
     DateTime.now().year,
     DateTime.now().month,
     1,
   );
+
+  List<TaskLocal> _allTasks = [];
+  List<TaskLocal> _selectedDayTasks = [];
+  bool _isLoading = true;
 
   static const _monthNames = [
     'January',
@@ -30,6 +40,36 @@ class _CalendarPageState extends State<CalendarPage> {
     'November',
     'December',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    setState(() => _isLoading = true);
+    final user = await widget.authService?.getCurrentUser();
+    final userEmail = user?.email ?? 'guest';
+
+    final tasks = await _taskRepository.getAllTasks(userEmail);
+    if (mounted) {
+      setState(() {
+        _allTasks = tasks;
+        _filterSelectedDayTasks();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _filterSelectedDayTasks() {
+    _selectedDayTasks = _allTasks.where((task) {
+      if (task.dueDate == null) return false;
+      return task.dueDate!.year == _selectedDate.year &&
+          task.dueDate!.month == _selectedDate.month &&
+          task.dueDate!.day == _selectedDate.day;
+    }).toList();
+  }
 
   void _previousMonth() {
     setState(() {
@@ -47,24 +87,20 @@ class _CalendarPageState extends State<CalendarPage> {
     final firstDayOfMonth = DateTime(month.year, month.month, 1);
     final lastDayOfMonth = DateTime(month.year, month.month + 1, 0);
 
-    // DateTime.weekday: Mon=1 ... Sun=7. Map to Sun=0 ... Sat=6.
     int firstWeekday = firstDayOfMonth.weekday == 7
         ? 0
         : firstDayOfMonth.weekday;
 
     final days = <DateTime>[];
 
-    // Previous month days
     for (int i = firstWeekday - 1; i >= 0; i--) {
       days.add(firstDayOfMonth.subtract(Duration(days: i + 1)));
     }
 
-    // Current month days
     for (int i = 0; i < lastDayOfMonth.day; i++) {
       days.add(firstDayOfMonth.add(Duration(days: i)));
     }
 
-    // Next month days to complete a 6-week grid (42 cells) to keep height consistent
     while (days.length < 42) {
       days.add(days.last.add(const Duration(days: 1)));
     }
@@ -84,7 +120,12 @@ class _CalendarPageState extends State<CalendarPage> {
           const SizedBox(height: 16),
           _buildCalendarGrid(),
           const SizedBox(height: 16),
-          Expanded(child: _buildTodoList()),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadTasks,
+              child: _buildTodoList(),
+            ),
+          ),
         ],
       ),
     );
@@ -102,17 +143,19 @@ class _CalendarPageState extends State<CalendarPage> {
               Text(
                 _monthNames[_currentMonth.month - 1],
                 style: const TextStyle(
-                  fontSize: 22,
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
+                  letterSpacing: -0.5,
                 ),
               ),
               Text(
                 '${_currentMonth.year}',
                 style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
                   color: AppColors.textSecondary,
+                  letterSpacing: 1.2,
                 ),
               ),
             ],
@@ -127,14 +170,14 @@ class _CalendarPageState extends State<CalendarPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 44,
-        height: 44,
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
           color: Colors.transparent,
-          border: Border.all(color: AppColors.calendarBorder, width: 1),
-          borderRadius: BorderRadius.circular(12),
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.calendarBorder, width: 1.2),
         ),
-        child: Icon(icon, color: AppColors.textPrimary, size: 24),
+        child: Icon(icon, color: AppColors.textPrimary, size: 28),
       ),
     );
   }
@@ -176,7 +219,6 @@ class _CalendarPageState extends State<CalendarPage> {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: days.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          // Using childAspectRatio to keep the height tight since we removed the double dots
           crossAxisCount: 7,
           mainAxisSpacing: 10,
           crossAxisSpacing: 8,
@@ -190,11 +232,19 @@ class _CalendarPageState extends State<CalendarPage> {
               date.month == _selectedDate.month &&
               date.day == _selectedDate.day;
 
+          // Get tasks for this date to show dots
+          final dayTasks = _allTasks.where((task) {
+            if (task.dueDate == null) return false;
+            return task.dueDate!.year == date.year &&
+                task.dueDate!.month == date.month &&
+                task.dueDate!.day == date.day;
+          }).toList();
+
           return GestureDetector(
             onTap: () {
               setState(() {
                 _selectedDate = date;
-                // If user taps a date in previous/next month, jump to that month
+                _filterSelectedDayTasks();
                 if (!isCurrentMonth) {
                   _currentMonth = DateTime(date.year, date.month, 1);
                 }
@@ -207,19 +257,31 @@ class _CalendarPageState extends State<CalendarPage> {
                     : Colors.transparent,
                 shape: BoxShape.circle,
               ),
-              child: Center(
-                child: Text(
-                  date.day.toString(),
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: !isCurrentMonth
-                        ? AppColors.calendarOtherMonth
-                        : isSelected
-                        ? Colors.white
-                        : AppColors.textPrimary,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    date.day.toString(),
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w400,
+                      color: !isCurrentMonth
+                          ? AppColors.calendarOtherMonth
+                          : isSelected
+                          ? Colors.white
+                          : AppColors.textPrimary,
+                    ),
                   ),
-                ),
+                  if (dayTasks.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _buildPriorityDots(dayTasks, isSelected),
+                    ),
+                  ],
+                ],
               ),
             ),
           );
@@ -228,52 +290,47 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  Widget _buildTodoList() {
+  List<Widget> _buildPriorityDots(List<TaskLocal> tasks, bool isSelected) {
+    // Collect unique colors
+    final priorities = tasks.map((t) => t.priority.toLowerCase()).toSet();
+    final List<Color> dotColors = [];
+
+    if (priorities.contains('high')) {
+      dotColors.add(isSelected ? const Color(0xFFE57373) : Colors.red);
+    }
+    if (priorities.contains('medium')) {
+      dotColors.add(isSelected ? const Color(0xFFFFD54F) : Colors.orange);
+    }
+    if (priorities.contains('low')) {
+      dotColors.add(isSelected ? const Color(0xFF81C784) : Colors.green);
+    }
+
+    return List.generate(dotColors.length, (index) {
+      return Align(
+        widthFactor: 0.6, // This creates the overlap effect
+        child: _buildDot(dotColors[index]),
+      );
+    });
+  }
+
+  Widget _buildDot(Color color) {
     return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(32),
-          topRight: Radius.circular(32),
-        ),
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        border: Border.all(color: Colors.white, width: 1.2),
       ),
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Notification / To do list',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.calendarSelected,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '${_selectedDate.day} ${_monthNames[_selectedDate.month - 1]}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
+    );
+  }
+
+  Widget _buildTodoList() {
+    return Column(
+      children: [
+        if (_isLoading)
+          const Expanded(child: Center(child: CircularProgressIndicator()))
+        else if (_selectedDayTasks.isEmpty)
           const Expanded(
             child: Center(
               child: Column(
@@ -282,21 +339,210 @@ class _CalendarPageState extends State<CalendarPage> {
                   Icon(
                     Icons.event_busy_outlined,
                     size: 48,
-                    color: AppColors.calendarEmptyIcon,
+                    color: Color(0xFFB0A495),
                   ),
                   SizedBox(height: 16),
                   Text(
-                    'No tasks on this date.',
+                    'No tasks for this day',
                     style: TextStyle(
-                      color: AppColors.calendarEmptyText,
-                      fontSize: 14,
+                      color: Color(0xFF8B7E6F),
+                      fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
             ),
+          )
+        else
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              physics: const BouncingScrollPhysics(),
+              itemCount: _selectedDayTasks.length,
+              itemBuilder: (context, index) {
+                final task = _selectedDayTasks[index];
+                return _TaskTile(
+                  task: task,
+                  onEdit: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CreateTaskPage(task: task),
+                      ),
+                    );
+                    if (result == true) {
+                      _loadTasks();
+                    }
+                  },
+                  onDelete: () => _deleteTask(task),
+                );
+              },
+            ),
           ),
+      ],
+    );
+  }
+
+  Future<void> _deleteTask(TaskLocal task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Task'),
+        content: const Text('Are you sure you want to delete this task?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _taskRepository.deleteTask(task);
+      _loadTasks();
+    }
+  }
+}
+
+class _TaskTile extends StatelessWidget {
+  final TaskLocal task;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _TaskTile({
+    required this.task,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  Color _getPriorityColor() {
+    switch (task.priority.toLowerCase()) {
+      case 'high':
+        return const Color(0xFFD32F2F);
+      case 'medium':
+        return const Color(0xFFFBC02D);
+      case 'low':
+        return const Color(0xFF388E3C);
+      default:
+        return const Color(0xFF1976D2);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.5), // Subtle transparent background
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _getPriorityColor(), width: 2.5),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                task.dueTime ?? 'All day',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF5D544E),
+                ),
+              ),
+              const Spacer(),
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    onEdit();
+                  } else if (value == 'delete') {
+                    onDelete();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 20),
+                        SizedBox(width: 8),
+                        Text('Edit'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Delete', style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                  ),
+                ],
+                child: const Icon(
+                  Icons.more_horiz_rounded,
+                  color: Color(0xFF5D544E),
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            task.title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.2,
+            ),
+          ),
+          if (task.description != null && task.description!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            RichText(
+              text: TextSpan(
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6B6159),
+                  height: 1.4,
+                ),
+                children: [
+                  TextSpan(
+                    text: task.description!.length > 60
+                        ? '${task.description!.substring(0, 60)}...'
+                        : task.description,
+                  ),
+                  if (task.description!.length > 60)
+                    const TextSpan(
+                      text: ' view more',
+                      style: TextStyle(
+                        color: Color(0xFF7B5BED),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

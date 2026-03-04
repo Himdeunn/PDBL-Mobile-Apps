@@ -6,6 +6,7 @@ import '../../../../core/theme/primary_textfield.dart';
 import '../services/auth_service.dart';
 import 'register_page.dart';
 import '../../shell/pages/main_navigation.dart';
+import '../../task/services/task_repository.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -50,11 +51,17 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final authService = AuthService();
-      await authService.login(email: email, password: password);
+      final user = await authService.login(email: email, password: password);
+
+      // Migrate guest tasks to user email
+      await TaskRepository().migrateGuestTasksToUser(user.email ?? '');
+
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => MainNavigation(authService: authService)),
+        MaterialPageRoute(
+          builder: (_) => MainNavigation(authService: authService),
+        ),
         (_) => false,
       );
     } catch (e) {
@@ -85,131 +92,122 @@ class _LoginPageState extends State<LoginPage> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                  child: IntrinsicHeight(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        SizedBox(height: isSmallScreen ? 40 : 60),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(height: isSmallScreen ? 40 : 60),
 
-                        // Logo
-                        const WudiLogo(),
+                    // Logo
+                    const WudiLogo(),
 
-                        SizedBox(height: isSmallScreen ? 60 : 100),
+                    SizedBox(height: isSmallScreen ? 60 : 100),
 
-                        // Subtitle
-                        const Text(
-                          'Sign in to continue your productivity\njourney with FocusFlow.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: AppColors.textSecondary,
-                            height: 1.6,
-                          ),
-                        ),
-
-                        SizedBox(height: isSmallScreen ? 24 : 36),
-
-                        // Error message
-                        if (_errorMessage != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.errorBg,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                _errorMessage!,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.errorText,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-
-                        // Email Field
-                        CustomTextField(
-                          controller: _emailController,
-                          hintText: 'Enter Your Email',
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        // Password Field
-                        CustomTextField(
-                          controller: _passwordController,
-                          hintText: 'Enter Your Password',
-                          obscureText: _obscurePassword,
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              color: AppColors.textTertiary,
-                            ),
-                            onPressed: _togglePasswordVisibility,
-                          ),
-                        ),
-
-                        SizedBox(height: isSmallScreen ? 24 : 40),
-
-                        // Login Button
-                        _isLoading
-                            ? const SizedBox(
-                                height: 52,
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                              )
-                            : PrimaryButton(
-                                label: 'Login',
-                                onPressed: _onLogin,
-                              ),
-
-                        const SizedBox(height: 20),
-
-                        // Sign Up Link
-                        GestureDetector(
-                          onTap: _onSignUp,
-                          child: RichText(
-                            text: const TextSpan(
-                              text: "Don't Have An Account? ",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                                fontStyle: FontStyle.italic,
-                              ),
-                              children: [
-                                TextSpan(
-                                  text: 'Sign-Up',
-                                  style: TextStyle(
-                                    fontStyle: FontStyle.italic,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const Spacer(),
-
-                        SizedBox(height: isSmallScreen ? 20 : 40),
-                      ],
+                    // Subtitle
+                    const Text(
+                      'Sign in to continue your productivity\njourney with FocusFlow.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: AppColors.textSecondary,
+                        height: 1.6,
+                      ),
                     ),
-                  ),
+
+                    SizedBox(height: isSmallScreen ? 24 : 36),
+
+                    // Error message
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.errorBg,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.errorText,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+
+                    // Email Field
+                    CustomTextField(
+                      controller: _emailController,
+                      hintText: 'Enter Your Email',
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Password Field
+                    CustomTextField(
+                      controller: _passwordController,
+                      hintText: 'Enter Your Password',
+                      obscureText: _obscurePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: AppColors.textTertiary,
+                        ),
+                        onPressed: _togglePasswordVisibility,
+                      ),
+                    ),
+
+                    SizedBox(height: isSmallScreen ? 24 : 40),
+
+                    // Login Button
+                    _isLoading
+                        ? const SizedBox(
+                            height: 52,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          )
+                        : PrimaryButton(label: 'Login', onPressed: _onLogin),
+
+                    const SizedBox(height: 20),
+
+                    // Sign Up Link
+                    GestureDetector(
+                      onTap: _onSignUp,
+                      child: RichText(
+                        text: const TextSpan(
+                          text: "Don't Have An Account? ",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: 'Sign-Up',
+                              style: TextStyle(
+                                fontStyle: FontStyle.italic,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 40),
+                  ],
                 ),
               ),
             );

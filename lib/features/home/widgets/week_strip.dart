@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 class WeekStrip extends StatefulWidget {
   final int selectedIndex;
-  final ValueChanged<int> onDaySelected;
+  final ValueChanged<DateTime> onDaySelected;
 
   const WeekStrip({
     super.key,
@@ -17,22 +17,30 @@ class WeekStrip extends StatefulWidget {
 
 class _WeekStripState extends State<WeekStrip> {
   late List<DateTime> _weekDates;
+  late ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
     _weekDates = _getWeekDates();
+    // 30 days back + today + 14 days forward = 45 days
+    // Each item is 60 width + 12 separator = 72
+    // We want to center today (index 30)
+    final initialOffset = (30 * 72.0) - 20.0; // Subtract a bit of padding
+    _scrollController = ScrollController(initialScrollOffset: initialOffset);
   }
 
-  // Get the 5 days of the current week (Monday to Friday)
-  List<DateTime> _getWeekDates() {
-    final now = DateTime.now();
-    // Weekday: 1 = Monday, ..., 7 = Sunday
-    // Find the Monday of the current week
-    final monday = now.subtract(Duration(days: now.weekday - 1));
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
-    // Generate Mon-Fri (5 days)
-    return List.generate(5, (index) => monday.add(Duration(days: index)));
+  // Get 45 days: 30 days before today, today, and 14 days after today
+  List<DateTime> _getWeekDates() {
+    final today = DateTime.now();
+    final start = today.subtract(const Duration(days: 30));
+    return List.generate(45, (index) => start.add(Duration(days: index)));
   }
 
   String _formatDay(int weekday) {
@@ -58,55 +66,64 @@ class _WeekStripState extends State<WeekStrip> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List.generate(_weekDates.length, (index) {
-        final date = _weekDates[index];
-        final isSelected = widget.selectedIndex == index;
+    return SizedBox(
+      height: 90,
+      child: ListView.separated(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        itemCount: _weekDates.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final date = _weekDates[index];
+          final isSelected = widget.selectedIndex == index;
 
-        return GestureDetector(
-          onTap: () => widget.onDaySelected(index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 60,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: isSelected ? AppColors.surfaceDark : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Text(
-                  _formatDay(date.weekday),
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isSelected
-                        ? Colors.white70
-                        : const Color(0xFF9CA3AF),
-                    fontWeight: FontWeight.w500,
+          return GestureDetector(
+            onTap: () => widget.onDaySelected(date),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 60,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.surfaceDark : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  date.day.toString(),
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                ],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _formatDay(date.weekday),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isSelected
+                          ? Colors.white70
+                          : const Color(0xFF9CA3AF),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    date.day.toString(),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? Colors.white : AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        );
-      }),
+          );
+        },
+      ),
     );
   }
 }
