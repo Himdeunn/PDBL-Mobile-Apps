@@ -165,11 +165,44 @@ class _HomePageState extends State<HomePage> {
                         }).toList();
 
                   // Calculate focus task
-                  final focusTask =
-                      tasks
-                          .where((t) => !t.isCompleted && t.priority == 'high')
-                          .firstOrNull ??
-                      tasks.where((t) => !t.isCompleted).firstOrNull;
+                  final uncompletedTasks = tasks
+                      .where((t) => !t.isCompleted)
+                      .toList();
+
+                  // Sort by priority weight and then by time
+                  uncompletedTasks.sort((a, b) {
+                    // Priority weight: high(3) > medium(2) > low(1)
+                    int getWeight(String p) {
+                      switch (p.toLowerCase()) {
+                        case 'high':
+                          return 3;
+                        case 'medium':
+                          return 2;
+                        case 'low':
+                          return 1;
+                        default:
+                          return 0;
+                      }
+                    }
+
+                    final weightA = getWeight(a.priority);
+                    final weightB = getWeight(b.priority);
+
+                    if (weightA != weightB) {
+                      return weightB.compareTo(weightA);
+                    }
+
+                    // If same priority, sort by dueTime
+                    if (a.dueTime != null && b.dueTime != null) {
+                      return a.dueTime!.compareTo(b.dueTime!);
+                    }
+                    if (a.dueTime != null) return -1;
+                    if (b.dueTime != null) return 1;
+
+                    return 0;
+                  });
+
+                  final focusTask = uncompletedTasks.firstOrNull;
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
