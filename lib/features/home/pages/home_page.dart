@@ -169,9 +169,20 @@ class _HomePageState extends State<HomePage> {
                       .where((t) => !t.isCompleted)
                       .toList();
 
-                  // Sort by priority weight and then by time
+                  // Sort by time first, then by priority weight
                   uncompletedTasks.sort((a, b) {
-                    // Priority weight: high(3) > medium(2) > low(1)
+                    // 1. Sort by dueTime primarily
+                    if (a.dueTime != null && b.dueTime != null) {
+                      final timeCompare = a.dueTime!.compareTo(b.dueTime!);
+                      if (timeCompare != 0) return timeCompare;
+                    } else if (a.dueTime != null) {
+                      return -1;
+                    } else if (b.dueTime != null) {
+                      return 1;
+                    }
+
+                    // 2. Tie-breaker: Priority weight if times are same (or both null)
+                    // High(3) > medium(2) > low(1)
                     int getWeight(String p) {
                       switch (p.toLowerCase()) {
                         case 'high':
@@ -188,18 +199,7 @@ class _HomePageState extends State<HomePage> {
                     final weightA = getWeight(a.priority);
                     final weightB = getWeight(b.priority);
 
-                    if (weightA != weightB) {
-                      return weightB.compareTo(weightA);
-                    }
-
-                    // If same priority, sort by dueTime
-                    if (a.dueTime != null && b.dueTime != null) {
-                      return a.dueTime!.compareTo(b.dueTime!);
-                    }
-                    if (a.dueTime != null) return -1;
-                    if (b.dueTime != null) return 1;
-
-                    return 0;
+                    return weightB.compareTo(weightA);
                   });
 
                   final focusTask = uncompletedTasks.firstOrNull;
