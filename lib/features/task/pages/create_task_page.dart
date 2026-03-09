@@ -177,7 +177,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 maxLines: 4,
                 decoration: InputDecoration(
                   hintText: 'Write details about your task here...',
-                  fillColor: Colors.grey[100],
+                  fillColor: AppColors.surface,
                   filled: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -246,7 +246,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                               vertical: 16,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.grey[100],
+                              color: AppColors.surface,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(

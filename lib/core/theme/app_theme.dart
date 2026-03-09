@@ -19,14 +19,14 @@ class AppColors {
   // Accents & Components
   static const Color iconAccent = Color(0xFFA79D9E);
   static const Color calendarSelected = Color(0xFFA58B86);
-  static const Color calendarBorder = Color(0xFFD0CACA);
+  static const Color calendarBorder = Color(0xFFA58B86);
   static const Color calendarOtherMonth = Color(0xFFB0B0B0);
   static const Color calendarEmptyIcon = Color(0xFFC0AFA9);
   static const Color calendarEmptyText = Color(0xFF8B7E79);
 
   // Task Timeline
-  static const Color timelineDot = Color(0xFFCCC0B3);
-  static const Color timelineLine = Color(0xFFDDD5CA);
+  static const Color timelineDot = Color(0xFFA58B86);
+  static const Color timelineLine = Color(0xFFA58B86);
 
   // Text Fields
   static const Color inputDarkBg = Color(0xFF2F2235);
