@@ -160,7 +160,7 @@ class _SkeletonTaskItemState extends State<_SkeletonTaskItem>
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFD9D9D9),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -287,7 +287,9 @@ class _TaskItem extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFD9D9D9),
+          color: task.isCompleted
+              ? AppColors.surface.withValues(alpha: 0.5)
+              : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -300,9 +302,14 @@ class _TaskItem extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.rectangle,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey[600]!, width: 2),
+                  border: Border.all(
+                    color: task.isCompleted
+                        ? AppColors.calendarSelected
+                        : AppColors.calendarSelected,
+                    width: 2,
+                  ),
                   color: task.isCompleted
-                      ? Colors.grey[600]
+                      ? AppColors.calendarSelected
                       : Colors.transparent,
                 ),
                 child: task.isCompleted
@@ -323,7 +330,9 @@ class _TaskItem extends StatelessWidget {
                       decoration: task.isCompleted
                           ? TextDecoration.lineThrough
                           : null,
-                      color: const Color(0xFF2D3142),
+                      color: task.isCompleted
+                          ? AppColors.textTertiary
+                          : AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -354,7 +363,12 @@ class _TaskItem extends StatelessWidget {
                                   ? task.dueTime!.substring(0, 5)
                                   : task.dueTime!)
                             : 'No time',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: task.isCompleted
+                              ? AppColors.textTertiary
+                              : AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
