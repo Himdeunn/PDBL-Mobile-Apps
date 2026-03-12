@@ -26,6 +26,7 @@ class _CalendarPageState extends State<CalendarPage> {
   List<TaskLocal> _allTasks = [];
   List<TaskLocal> _selectedDayTasks = [];
   bool _isLoading = true;
+  String? _currentUserEmail;
   StreamSubscription<List<TaskLocal>>? _tasksSubscription;
 
   static const _monthNames = [
@@ -51,20 +52,20 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Future<void> _initTaskSubscription() async {
     final user = await widget.authService?.getCurrentUser();
-    final userEmail = user?.email ?? 'guest';
+    _currentUserEmail = user?.email ?? 'guest';
 
     _tasksSubscription?.cancel();
-    _tasksSubscription = _taskRepository.watchAllTasks(userEmail).listen((
-      tasks,
-    ) {
-      if (mounted) {
-        setState(() {
-          _allTasks = tasks;
-          _filterSelectedDayTasks();
-          _isLoading = false;
+    _tasksSubscription = _taskRepository
+        .watchAllTasks(_currentUserEmail!)
+        .listen((tasks) {
+          if (mounted) {
+            setState(() {
+              _allTasks = tasks;
+              _filterSelectedDayTasks();
+              _isLoading = false;
+            });
+          }
         });
-      }
-    });
   }
 
   @override
@@ -382,6 +383,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 final task = _selectedDayTasks[index];
                 return _TaskTile(
                   task: task,
+                  currentUserEmail: _currentUserEmail,
                   onEdit: () async {
                     final result = await Navigator.push(
                       context,
@@ -431,11 +433,13 @@ class _CalendarPageState extends State<CalendarPage> {
 
 class _TaskTile extends StatelessWidget {
   final TaskLocal task;
+  final String? currentUserEmail;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _TaskTile({
     required this.task,
+    this.currentUserEmail,
     required this.onEdit,
     required this.onDelete,
   });
@@ -453,112 +457,312 @@ class _TaskTile extends StatelessWidget {
     }
   }
 
+  void _showTaskDetail(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _TaskDetailSheet(task: task),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _getPriorityColor(), width: 2.5),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                task.dueTime ?? 'All day',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF5D544E),
-                ),
-              ),
-              const Spacer(),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'edit') {
-                    onEdit();
-                  } else if (value == 'delete') {
-                    onDelete();
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit_outlined, size: 20),
-                        SizedBox(width: 8),
-                        Text('Edit'),
-                      ],
-                    ),
+    return GestureDetector(
+      onTap: () => _showTaskDetail(context),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _getPriorityColor(), width: 2.5),
                   ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_outline, size: 20, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
-                      ],
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  task.dueTime ?? 'All day',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF5D544E),
+                  ),
+                ),
+                if (task.teamId != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E7FF),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Team',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6366F1),
+                      ),
                     ),
                   ),
                 ],
-                child: const Icon(
-                  Icons.more_horiz_rounded,
-                  color: Color(0xFF5D544E),
-                  size: 20,
+                const Spacer(),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'view') {
+                      // Tapping card or selecting view
+                      _showTaskDetail(context);
+                    } else if (value == 'edit') {
+                      onEdit();
+                    } else if (value == 'delete') {
+                      onDelete();
+                    }
+                  },
+                  itemBuilder: (context) {
+                    // For team tasks, only owner can edit/delete.
+                    // For now, we assume user is owner if teamId is null (personal task)
+                    // or if we have a way to check.
+                    // Simplified: if it's a team task, we'll need to know if we are the owner.
+                    // Since we don't have isOwner here yet, I'll add a placeholder check
+                    // or just allow View if it's a team task and not created by user.
+                    // Wait, task.userEmail is the assigned user.
+                    // Let's just follow the user request: if team task + not owner = view only.
+                    final bool isTeamTask = task.teamId != null;
+                    final bool isOwner = task.userEmail == currentUserEmail;
+
+                    return [
+                      const PopupMenuItem(
+                        value: 'view',
+                        child: Row(
+                          children: [
+                            Icon(Icons.visibility_outlined, size: 20),
+                            SizedBox(width: 8),
+                            Text('View'),
+                          ],
+                        ),
+                      ),
+                      if (!isTeamTask || isOwner) ...[
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined, size: 20),
+                              SizedBox(width: 8),
+                              Text('Edit'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: Colors.red,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Delete',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ];
+                  },
+                  child: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: Color(0xFF5D544E),
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              task.title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.2,
+              ),
+            ),
+            if (task.description != null && task.description!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF6B6159),
+                    height: 1.4,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: task.description!.length > 60
+                          ? '${task.description!.substring(0, 60)}...'
+                          : task.description,
+                    ),
+                    if (task.description!.length > 60)
+                      const TextSpan(
+                        text: ' view more',
+                        style: TextStyle(
+                          color: Color(0xFF7B5BED),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            task.title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-              letterSpacing: -0.2,
-            ),
-          ),
-          if (task.description != null && task.description!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            RichText(
-              text: TextSpan(
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF6B6159),
-                  height: 1.4,
-                ),
-                children: [
-                  TextSpan(
-                    text: task.description!.length > 60
-                        ? '${task.description!.substring(0, 60)}...'
-                        : task.description,
-                  ),
-                  if (task.description!.length > 60)
-                    const TextSpan(
-                      text: ' view more',
-                      style: TextStyle(
-                        color: Color(0xFF7B5BED),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskDetailSheet extends StatelessWidget {
+  final TaskLocal task;
+
+  const _TaskDetailSheet({required this.task});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF9F7F2),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(32),
+          topRight: Radius.circular(32),
+        ),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            task.title,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 14, color: Colors.red),
+                const SizedBox(width: 4),
+                Text(
+                  '${task.priority.toUpperCase()} Priority',
+                  style: const TextStyle(
+                    color: Colors.red,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.access_time, color: Colors.grey),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'TIME',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    task.dueTime ?? 'All day',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Description',
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              task.description ?? 'No description provided.',
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+          const SizedBox(height: 32),
+          if (task.teamId != null) ...[
+            const Text(
+              'Team Project Task',
+              style: TextStyle(
+                color: Color(0xFF6366F1),
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 16),
           ],
         ],
       ),

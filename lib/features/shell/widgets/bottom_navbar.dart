@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import '../../task/pages/create_task_page.dart';
+import '../../group/pages/create_group_task_page.dart';
+import '../../auth/pages/welcome_page.dart';
 
 class WudiBottomBar extends StatefulWidget {
   final int currentIndex;
@@ -35,7 +37,7 @@ class _WudiBottomBarState extends State<WudiBottomBar>
       icon: Icons.person_add_outlined,
       label: 'Create Personal To-Do',
     ),
-    _NavItemData(icon: Icons.group_add_outlined, label: 'Create Group To-Do'),
+    _NavItemData(icon: Icons.group_add_outlined, label: 'Create Team Project'),
   ];
 
   @override
@@ -79,7 +81,7 @@ class _WudiBottomBarState extends State<WudiBottomBar>
         anim: _expandAnim,
         layerLink: _layerLink,
         onClose: _closePlusMenu,
-        onTapItem: (index) {
+        onTapItem: (index) async {
           _closePlusMenu();
           if (index == 0) {
             Navigator.push(
@@ -88,11 +90,62 @@ class _WudiBottomBarState extends State<WudiBottomBar>
                 builder: (_) => CreateTaskPage(authService: widget.authService),
               ),
             );
+          } else if (index == 1) {
+            final user = await widget.authService?.getCurrentUser();
+            if (user == null || user.isGuest) {
+              if (context.mounted) {
+                _showAuthRequiredDialog(context);
+              }
+              return;
+            }
+
+            if (context.mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      CreateGroupTaskPage(authService: widget.authService),
+                ),
+              );
+            }
           }
         },
       ),
     );
     Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _showAuthRequiredDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Authentication Required'),
+        content: const Text(
+          'Creating team projects is only available for registered users. Would you like to log in or register now?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const WelcomePage()),
+                (route) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Login / Register'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _hideOverlay() {
@@ -135,55 +188,74 @@ class _WudiBottomBarState extends State<WudiBottomBar>
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: true,
-      child: CompositedTransformTarget(
-        link: _layerLink,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            // ── Curved Bottom bar ──
-            CurvedNavigationBar(
-              index: _internalIndex,
-              backgroundColor: Colors.transparent,
-              color: AppColors.primaryDark,
-              buttonBackgroundColor: AppColors.surface,
-              animationDuration: const Duration(milliseconds: 300),
-              letIndexChange: (index) => true,
-              onTap: _onItemTap,
-              items: [
-                Icon(
-                  Icons.home_rounded,
-                  size: 28,
-                  color: _internalIndex == 0
-                      ? AppColors.primaryDark
-                      : AppColors.surface,
-                ),
-                Icon(
-                  Icons.add,
-                  size: 28,
-                  color: _internalIndex == 1
-                      ? AppColors.primaryDark
-                      : AppColors.surface,
-                ),
-                Icon(
-                  Icons.calendar_month_rounded,
-                  size: 28,
-                  color: _internalIndex == 2
-                      ? AppColors.primaryDark
-                      : AppColors.surface,
-                ),
-                Icon(
-                  Icons.group_outlined,
-                  size: 28,
-                  color: _internalIndex == 3
-                      ? AppColors.primaryDark
-                      : AppColors.surface,
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 32, top: 0),
+        child: Container(
+          height: 85, // Buffered height for rising icon
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(100),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryDark.withValues(alpha: 0.4),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(100),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: CurvedNavigationBar(
+                    index: _internalIndex,
+                    backgroundColor: Colors.transparent,
+                    color: AppColors.primaryDark,
+                    buttonBackgroundColor: AppColors.surface,
+                    animationDuration: const Duration(milliseconds: 300),
+                    height: 65, // Thin bar look
+                    letIndexChange: (index) => true,
+                    onTap: _onItemTap,
+                    items: [
+                      Icon(
+                        Icons.home_rounded,
+                        size: 28,
+                        color: _internalIndex == 0
+                            ? AppColors.primaryDark
+                            : AppColors.surface,
+                      ),
+                      Icon(
+                        Icons.add,
+                        size: 28,
+                        color: _internalIndex == 1
+                            ? AppColors.primaryDark
+                            : AppColors.surface,
+                      ),
+                      Icon(
+                        Icons.calendar_month_rounded,
+                        size: 28,
+                        color: _internalIndex == 2
+                            ? AppColors.primaryDark
+                            : AppColors.surface,
+                      ),
+                      Icon(
+                        Icons.group_outlined,
+                        size: 28,
+                        color: _internalIndex == 3
+                            ? AppColors.primaryDark
+                            : AppColors.surface,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -208,7 +280,7 @@ class _PlusMenuOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const subBtnSize = 44.0;
-    const radius = 70.0;
+    const radius = 48.0;
     final angles = [-150.0, -30.0];
 
     return GestureDetector(
@@ -221,7 +293,7 @@ class _PlusMenuOverlay extends StatelessWidget {
             CompositedTransformFollower(
               link: layerLink,
               showWhenUnlinked: false,
-              offset: const Offset(0, -80), // Position above the bar
+              offset: const Offset(0, -75), // Perfectly above the plus button
               child: AnimatedBuilder(
                 animation: anim,
                 builder: (context, _) {
@@ -230,8 +302,11 @@ class _PlusMenuOverlay extends StatelessWidget {
 
                   return LayoutBuilder(
                     builder: (context, constraints) {
-                      final barWidth = MediaQuery.of(context).size.width;
-                      final plusCenterX = (3.0 * barWidth) / 8.0;
+                      final barWidth = constraints.maxWidth;
+                      // Centering logic for 4 items: plus is centered at (Width / 4) * 1.5 approx? 
+                      // Actually 4 items means centers are at 1/8, 3/8, 5/8, 7/8. 
+                      // "Add" is index 1, so center is 3/8 = 0.375
+                      final plusCenterX = barWidth * 0.375;
 
                       return Stack(
                         clipBehavior: Clip.none,
@@ -264,16 +339,9 @@ class _PlusMenuOverlay extends StatelessWidget {
                                               .label,
                                           textAlign: TextAlign.center,
                                           style: const TextStyle(
-                                            color: AppColors.surface,
-                                            fontSize: 10,
+                                            color: AppColors.primary,
+                                            fontSize: 11,
                                             fontWeight: FontWeight.bold,
-                                            shadows: [
-                                              Shadow(
-                                                color: Colors.black45,
-                                                blurRadius: 4,
-                                                offset: Offset(0, 1),
-                                              ),
-                                            ],
                                           ),
                                         ),
                                         const SizedBox(height: 8),
@@ -288,9 +356,10 @@ class _PlusMenuOverlay extends StatelessWidget {
                                               boxShadow: [
                                                 BoxShadow(
                                                   color: Colors.black
-                                                      .withOpacity(0.12),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 2),
+                                                      .withValues(alpha: 0.2),
+                                                  blurRadius: 12,
+                                                  spreadRadius: 1,
+                                                  offset: const Offset(0, 4),
                                                 ),
                                               ],
                                             ),

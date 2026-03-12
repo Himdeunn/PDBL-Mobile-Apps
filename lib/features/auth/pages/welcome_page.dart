@@ -144,15 +144,14 @@ class _WelcomePageState extends State<WelcomePage> {
                           onPressed: () async {
                             final authService = AuthService();
                             await authService.enterGuestMode();
-                            if (mounted) {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      MainNavigation(authService: authService),
-                                ),
-                              );
-                            }
+                            if (!context.mounted) return;
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    MainNavigation(authService: authService),
+                              ),
+                            );
                           },
                           child: const Text(
                             'Continue as Guest',

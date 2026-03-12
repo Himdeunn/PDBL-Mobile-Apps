@@ -25,4 +25,6 @@ class TaskLocal {
   int lastLocalUpdate = 0; // Timestamp for version-aware sync
 
   String? userEmail; // To scope tasks to the logged-in user
+
+  int? teamId; // ID of the team if this is a group task
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 class HomeHeader extends StatelessWidget {
   final String displayName;
+  final String? avatarUrl;
   final bool isLoading;
   final bool isGuest;
   final VoidCallback? onAvatarTap;
@@ -13,6 +14,7 @@ class HomeHeader extends StatelessWidget {
   const HomeHeader({
     super.key,
     required this.displayName,
+    this.avatarUrl,
     this.isLoading = false,
     this.isGuest = false,
     this.onAvatarTap,
@@ -32,8 +34,8 @@ class HomeHeader extends StatelessWidget {
             children: [
               Text(
                 'Hello, $displayName!',
-                style: const TextStyle(
-                  fontSize: 22,
+                style: TextStyle(
+                  fontSize: MediaQuery.of(context).size.width > 400 ? 22 : 18,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
                 ),
@@ -165,11 +167,25 @@ class HomeHeader extends StatelessWidget {
                         color: AppColors.primary,
                       ),
                     )
-                  : const Icon(
-                      Icons.person,
-                      color: AppColors.primary,
-                      size: 24,
-                    ),
+                  : avatarUrl != null
+                      ? ClipOval(
+                          child: Image.network(
+                            avatarUrl!,
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, _) => const Icon(
+                              Icons.person,
+                              color: AppColors.primary,
+                              size: 24,
+                            ),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.person,
+                          color: AppColors.primary,
+                          size: 24,
+                        ),
             ),
           ),
         ),

@@ -132,6 +132,7 @@ class TaskRepository {
           task.isCompleted = todo['is_completed'] ?? false;
           task.isSynced = true;
           task.userEmail = userEmail;
+          task.teamId = todo['team_id'];
 
           if (todo['deadline'] != null) {
             try {
@@ -162,6 +163,7 @@ class TaskRepository {
         'is_completed': task.isCompleted,
         'created_at': DateTime.now().toIso8601String(),
         'device_id': await SecureStorage.getDeviceId(),
+        if (task.teamId != null) 'team_id': task.teamId,
       };
 
       if (task.apiId == null) {

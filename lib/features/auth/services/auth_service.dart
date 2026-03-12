@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/storage/local_database.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../../../../core/models/user.dart';
 
@@ -7,7 +8,20 @@ class AuthService {
   final ApiClient _api = ApiClient();
 
   Future<User?> getCurrentUser() async {
-    return SecureStorage.getUser();
+    final user = await SecureStorage.getUser();
+    if (user != null && user.id == null && !user.isGuest) {
+      try {
+        final response = await _api.get('/user');
+        final userData = response.data;
+        if (userData != null && userData['id'] != null) {
+          user.id = userData['id'] as int?;
+          await SecureStorage.saveUser(user);
+        }
+      } catch (e) {
+        // Silently fail, might be offline or session expired
+      }
+    }
+    return user;
   }
 
   Future<User> register({
@@ -54,6 +68,7 @@ class AuthService {
     final userData = data['user'] as Map<String, dynamic>?;
 
     final user = User()
+      ..id = userData?['id'] as int?
       ..name = userData?['name'] as String? ?? ''
       ..email = userData?['email'] as String? ?? ''
       ..isGuest = false
@@ -85,6 +100,7 @@ class AuthService {
     } catch (_) {
       // Ignore network errors on logout
     } finally {
+      await LocalDatabase.clearAll();
       await SecureStorage.logout();
     }
   }

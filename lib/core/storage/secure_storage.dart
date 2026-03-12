@@ -34,6 +34,7 @@ class SecureStorage {
 
   static Future<void> saveUser(User user) async {
     final Map<String, dynamic> json = {
+      'id': user.id,
       'name': user.name,
       'email': user.email,
       'isGuest': user.isGuest,
@@ -48,6 +49,7 @@ class SecureStorage {
 
     final map = jsonDecode(userStr);
     return User()
+      ..id = map['id']
       ..name = map['name']
       ..email = map['email']
       ..isGuest = map['isGuest'] ?? false

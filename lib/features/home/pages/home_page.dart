@@ -11,6 +11,7 @@ import '../widgets/week_strip.dart';
 import '../widgets/daily_task_list.dart';
 import '../../task/models/task_local.dart';
 import '../../task/services/task_repository.dart';
+import '../../profile/pages/profile_page.dart';
 
 class HomePage extends StatefulWidget {
   final AuthService authService;
@@ -23,7 +24,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   User? _user;
-  int _selectedDayIndex = 30; // Default to today (index 30 in our 45-day list)
+  int _selectedDayIndex = 30;
   DateTime _selectedDate = DateTime.now();
   final TaskRepository _taskRepository = TaskRepository();
 
@@ -50,7 +51,6 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
-    // Pull from server in background
     _taskRepository.fetchTasksFromServer(userEmail).then((_) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -59,7 +59,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onDaySelected(DateTime date) {
-    // Find index in the 45-day strip (30 days ago to 14 days future)
     final today = DateTime.now();
     final start = DateTime(
       today.year,
@@ -107,159 +106,169 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _goToProfile() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProfilePage(authService: widget.authService)),
+    );
+    _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayName = _user?.name ?? 'Guest';
     final isGuest = _user?.isGuest ?? true;
     final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalPadding = screenWidth > 600 ? screenWidth * 0.1 : 20.0;
+    final horizontalPadding = screenWidth > 900
+        ? screenWidth * 0.15
+        : screenWidth > 600
+        ? screenWidth * 0.08
+        : 20.0;
 
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _loadData,
-        color: AppColors.primary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 24),
-              HomeHeader(
-                displayName: displayName,
-                isGuest: isGuest,
-                onLogoutTap: _logout,
-                onLoginTap: _goToLogin,
-                onRegisterTap: _goToRegister,
-              ),
-              const SizedBox(height: 24),
-              WudiSearchBar(
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 24),
-              WeekStrip(
-                selectedIndex: _selectedDayIndex,
-                onDaySelected: _onDaySelected,
-              ),
-              const SizedBox(height: 32),
-              StreamBuilder<List<TaskLocal>>(
-                stream: _tasksStream,
-                builder: (context, snapshot) {
-                  final tasks = snapshot.data ?? [];
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      color: AppColors.primary,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          MediaQuery.of(context).padding.top + 16.0,
+          horizontalPadding,
+          120,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            HomeHeader(
+              displayName: displayName,
+              avatarUrl: _user?.avatar,
+              isGuest: isGuest,
+              onAvatarTap: _goToProfile,
+              onLogoutTap: _logout,
+              onLoginTap: _goToLogin,
+              onRegisterTap: _goToRegister,
+            ),
+            const SizedBox(height: 16),
+            WudiSearchBar(
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+            const SizedBox(height: 24),
+            WeekStrip(
+              selectedIndex: _selectedDayIndex,
+              onDaySelected: _onDaySelected,
+            ),
+            const SizedBox(height: 32),
+            StreamBuilder<List<TaskLocal>>(
+              stream: _tasksStream,
+              builder: (context, snapshot) {
+                final tasks = snapshot.data ?? [];
 
-                  // Apply search filtering
-                  final filteredTasks = _searchQuery.isEmpty
-                      ? tasks
-                      : tasks.where((task) {
-                          return task.title.toLowerCase().contains(
-                                _searchQuery.toLowerCase(),
-                              ) ||
-                              (task.description?.toLowerCase().contains(
-                                    _searchQuery.toLowerCase(),
-                                  ) ??
-                                  false);
-                        }).toList();
+                final filteredTasks = _searchQuery.isEmpty
+                    ? tasks
+                    : tasks.where((task) {
+                        return task.title.toLowerCase().contains(
+                              _searchQuery.toLowerCase(),
+                            ) ||
+                            (task.description?.toLowerCase().contains(
+                                  _searchQuery.toLowerCase(),
+                                ) ??
+                                false);
+                      }).toList();
 
-                  // Calculate focus task
-                  final uncompletedTasks = tasks
-                      .where((t) => !t.isCompleted)
-                      .toList();
+                final uncompletedTasks = tasks
+                    .where((t) => !t.isCompleted)
+                    .toList();
 
-                  // Sort by time first, then by priority weight
-                  uncompletedTasks.sort((a, b) {
-                    // 1. Sort by dueTime primarily
-                    if (a.dueTime != null && b.dueTime != null) {
-                      final timeCompare = a.dueTime!.compareTo(b.dueTime!);
-                      if (timeCompare != 0) return timeCompare;
-                    } else if (a.dueTime != null) {
-                      return -1;
-                    } else if (b.dueTime != null) {
-                      return 1;
+                uncompletedTasks.sort((a, b) {
+                  if (a.dueTime != null && b.dueTime != null) {
+                    final timeCompare = a.dueTime!.compareTo(b.dueTime!);
+                    if (timeCompare != 0) return timeCompare;
+                  } else if (a.dueTime != null) {
+                    return -1;
+                  } else if (b.dueTime != null) {
+                    return 1;
+                  }
+
+                  int getWeight(String p) {
+                    switch (p.toLowerCase()) {
+                      case 'high':
+                        return 3;
+                      case 'medium':
+                        return 2;
+                      case 'low':
+                        return 1;
+                      default:
+                        return 0;
                     }
+                  }
 
-                    // 2. Tie-breaker: Priority weight if times are same (or both null)
-                    // High(3) > medium(2) > low(1)
-                    int getWeight(String p) {
-                      switch (p.toLowerCase()) {
-                        case 'high':
-                          return 3;
-                        case 'medium':
-                          return 2;
-                        case 'low':
-                          return 1;
-                        default:
-                          return 0;
-                      }
-                    }
+                  final weightA = getWeight(a.priority);
+                  final weightB = getWeight(b.priority);
+                  return weightB.compareTo(weightA);
+                });
 
-                    final weightA = getWeight(a.priority);
-                    final weightB = getWeight(b.priority);
+                final focusTask = uncompletedTasks.firstOrNull;
 
-                    return weightB.compareTo(weightA);
-                  });
-
-                  final focusTask = uncompletedTasks.firstOrNull;
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Today\'s Focus',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Today\'s Focus',
+                      style: TextStyle(
+                        fontSize: MediaQuery.of(context).size.width > 400
+                            ? 18
+                            : 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
                       ),
-                      const SizedBox(height: 16),
-                      if (_isLoading && focusTask == null)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 40),
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
-                      else if (focusTask != null)
-                        _buildFocusCard(focusTask)
-                      else
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 40,
-                            horizontal: 20,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceDark,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'No focus for today yet.',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (_isLoading && focusTask == null)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 40),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (focusTask != null)
+                      _buildFocusCard(focusTask)
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 24,
+                          horizontal: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceDark,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'No focus for today yet.',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
                             ),
                           ),
                         ),
-                      const SizedBox(height: 32),
-                      DailyTaskList(
-                        tasks: filteredTasks,
-                        onRefresh: _loadData,
-                        authService: widget.authService,
-                        isLoading: _isLoading,
                       ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
+                    const SizedBox(height: 32),
+                    DailyTaskList(
+                      tasks: filteredTasks,
+                      onRefresh: _loadData,
+                      authService: widget.authService,
+                      isLoading: _isLoading,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -270,17 +279,20 @@ class _HomePageState extends State<HomePage> {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.primaryDark],
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFF1E6D2),
+            const Color(0xFF8E848F).withValues(alpha: 0.8),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -290,59 +302,96 @@ class _HomePageState extends State<HomePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.red[100]?.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Text(
-                  task.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
+                  '${task.priority} Priority',
+                  style: TextStyle(
+                    color: Colors.red[700],
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              const Icon(Icons.star_rounded, color: Colors.amber, size: 28),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black87, width: 1.5),
+                ),
+                child: _user?.avatar != null
+                    ? ClipOval(
+                        child: Image.network(
+                          _user!.avatar!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, _) => const Icon(Icons.person, size: 24, color: Colors.black54),
+                        ),
+                      )
+                    : const CircleAvatar(
+                        backgroundColor: Color(0xFFC4D7D6),
+                        child: Icon(Icons.person, size: 24, color: Colors.black54),
+                      ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 24),
+          Text(
+            task.title,
+            style: const TextStyle(
+              color: Color(0xFF45424B),
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
           if (task.description != null && task.description!.isNotEmpty)
             Text(
               task.description!,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+              style: const TextStyle(
+                color: Color(0xFF6A6770),
                 fontSize: 14,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
               ),
             ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(Icons.access_time, color: Colors.white70, size: 16),
-              const SizedBox(width: 6),
-              Text(
-                task.dueTime ?? 'Whole Day',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.access_time_rounded,
+                  color: Colors.white,
+                  size: 18,
                 ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  task.priority.toUpperCase(),
+                const SizedBox(width: 8),
+                Text(
+                  task.dueTime != null
+                      ? '${task.dueTime} AM - 14.00 PM'
+                      : '08:00 AM - 10:00 AM',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

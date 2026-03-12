@@ -95,29 +95,24 @@ class _DailyTaskListState extends State<DailyTaskList> {
             ),
           )
         else
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 320),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: widget.tasks.length > 4
-                  ? const BouncingScrollPhysics()
-                  : const NeverScrollableScrollPhysics(),
-              itemCount: widget.isLoading
-                  ? widget.tasks.length + 1
-                  : widget.tasks.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                if (widget.isLoading && index == widget.tasks.length) {
-                  return const _SkeletonTaskItem();
-                }
-                final task = widget.tasks[index];
-                return _TaskItem(
-                  task: task,
-                  onToggle: () => _toggleTask(task),
-                  onDelete: () => _deleteTask(task),
-                );
-              },
-            ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: widget.isLoading
+                ? widget.tasks.length + 1
+                : widget.tasks.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              if (widget.isLoading && index == widget.tasks.length) {
+                return const _SkeletonTaskItem();
+              }
+              final task = widget.tasks[index];
+              return _TaskItem(
+                task: task,
+                onToggle: () => _toggleTask(task),
+                onDelete: () => _deleteTask(task),
+              );
+            },
           ),
       ],
     );
@@ -169,7 +164,7 @@ class _SkeletonTaskItemState extends State<_SkeletonTaskItem>
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
@@ -182,7 +177,7 @@ class _SkeletonTaskItemState extends State<_SkeletonTaskItem>
                     width: 150,
                     height: 16,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -193,7 +188,7 @@ class _SkeletonTaskItemState extends State<_SkeletonTaskItem>
                         width: 60,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -202,7 +197,7 @@ class _SkeletonTaskItemState extends State<_SkeletonTaskItem>
                         width: 40,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),

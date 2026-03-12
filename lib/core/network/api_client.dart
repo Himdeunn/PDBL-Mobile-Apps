@@ -1,6 +1,7 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:dio/dio.dart';
 import '../storage/secure_storage.dart';
+import '../utils/error_handler.dart';
 
 class ApiClient {
   static String get baseUrl => dotenv.env['API_URL'] ?? 'http://localhost/api';
@@ -26,6 +27,12 @@ class ApiClient {
 
   Future<Response> post(String path, {dynamic data}) =>
       dio.post(path, data: data);
+
+  Future<Response> put(String path, {dynamic data}) =>
+      dio.put(path, data: data);
+
+  Future<Response> delete(String path, {dynamic data}) =>
+      dio.delete(path, data: data);
 }
 
 class _AuthInterceptor extends Interceptor {
@@ -48,12 +55,20 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    // If the error is 401 Unauthorized, we could trigger a refresh flow here if needed
-    // or log the user out directly depending on the backend implementation
+    final apiException = ApiException.fromDioError(err);
+
     if (err.response?.statusCode == 401) {
       SecureStorage.logout();
-      // Optionally emit a session expired event to UI
+      ErrorHandler.showErrorPopup(
+        apiException.message,
+        title: 'Session Expired',
+      );
+    } else if (err.type == DioExceptionType.connectionError ||
+        err.type == DioExceptionType.connectionTimeout ||
+        (err.response?.statusCode ?? 0) >= 500) {
+      ErrorHandler.showErrorPopup(apiException.message, title: 'Server Error');
     }
+
     return handler.next(err);
   }
 }

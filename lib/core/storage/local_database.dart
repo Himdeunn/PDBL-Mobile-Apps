@@ -9,4 +9,8 @@ class LocalDatabase {
     final dir = await getApplicationDocumentsDirectory();
     isar = await Isar.open([TaskLocalSchema], directory: dir.path);
   }
+
+  static Future<void> clearAll() async {
+    await isar.writeTxn(() => isar.clear());
+  }
 }
