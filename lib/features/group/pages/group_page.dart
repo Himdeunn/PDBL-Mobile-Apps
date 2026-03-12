@@ -7,6 +7,7 @@ import '../widgets/group_card.dart';
 import '../services/team_service.dart';
 import '../../auth/services/auth_service.dart';
 import 'team_detail_page.dart';
+import 'create_group_task_page.dart';
 
 class GroupPage extends StatefulWidget {
   const GroupPage({super.key});
@@ -171,7 +172,7 @@ class _GroupPageState extends State<GroupPage> {
           onRefresh: _fetchData,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 32, 20, 100),
+            padding: const EdgeInsets.fromLTRB(20, 32, 20, 110),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -317,6 +318,21 @@ class _GroupPageState extends State<GroupPage> {
             ],
           ),
         ),
+      ),
+    ),
+    floatingActionButton: Padding(
+      padding: const EdgeInsets.only(bottom: 90),
+      child: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CreateGroupTaskPage(authService: _authService),
+            ),
+          ).then((_) => _fetchData());
+        },
+        backgroundColor: const Color(0xFF1E1E1E),
+        child: const Icon(Icons.group_add_rounded, color: Colors.white, size: 28),
       ),
     ),
   );

@@ -333,18 +333,6 @@ class _PlusMenuOverlay extends StatelessWidget {
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text(
-                                          _WudiBottomBarState
-                                              ._plusSubItems[i]
-                                              .label,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            color: AppColors.primary,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
                                         GestureDetector(
                                           onTap: () => onTapItem(i),
                                           child: Container(

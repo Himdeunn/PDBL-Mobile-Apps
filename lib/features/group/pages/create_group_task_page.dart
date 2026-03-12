@@ -67,6 +67,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
   }
 
   Future<void> _handleCreate() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);

@@ -50,6 +50,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
   }
 
   Future<void> _handleCreate() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_selectedMemberEmails.isEmpty) {
       ScaffoldMessenger.of(
