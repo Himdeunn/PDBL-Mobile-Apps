@@ -1,4 +1,4 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 
 part 'task_local.g.dart';
 
@@ -27,4 +27,6 @@ class TaskLocal {
   String? userEmail; // To scope tasks to the logged-in user
 
   int? teamId; // ID of the team if this is a group task
+
+  String? assignedEmails; // Comma-separated emails for team task assignment
 }

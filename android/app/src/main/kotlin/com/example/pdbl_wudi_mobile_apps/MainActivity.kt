@@ -1,4 +1,4 @@
-package com.example.pdbl_wudi_mobile_apps
+package com.pdbl.wudi
 
 import io.flutter.embedding.android.FlutterActivity
 

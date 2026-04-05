@@ -3,8 +3,10 @@ class User {
   String? name;
   String? email;
   String? avatar;
+  String? avatarUrl;
   bool isGuest = false;
   DateTime? loginAt;
+  int todayTarget = 0;
 
   User();
 
@@ -12,8 +14,10 @@ class User {
     : id = json['id'],
       name = json['name'],
       email = json['email'],
-      avatar = json['avatar'],
+      avatar = json['avatar'] ?? json['avatar_url'],
+      avatarUrl = json['avatar_url'] ?? json['avatar'],
       isGuest = json['isGuest'] ?? false,
+      todayTarget = (json['today_target'] as num?)?.toInt() ?? 0,
       loginAt = json['loginAt'] != null
           ? DateTime.parse(json['loginAt'])
           : null;
@@ -23,7 +27,9 @@ class User {
     'name': name,
     'email': email,
     'avatar': avatar,
+    'avatar_url': avatarUrl,
     'isGuest': isGuest,
+    'today_target': todayTarget,
     'loginAt': loginAt?.toIso8601String(),
   };
 }

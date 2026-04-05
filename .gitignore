@@ -27,11 +27,40 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+build/
 /coverage/
+
+# Android-specific
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/key.properties
+android/app/src/main/res/raw/google_services.json
+android/hs_err_pid*.log
+android/replay_pid*.log
+
+# iOS-specific
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.podspec
+ios/Pods/
+ios/.generated/
+ios/DerivedData/
+ios/Runner/GeneratedPluginRegistrant.h
+ios/Runner/GeneratedPluginRegistrant.m
+ios/Runner/GeneratedPluginRegistrant.swift
+
+# web related
+**/web/index.html
+
+# Tools
+tmp_flutter/
 
 # Symbolication related
 app.*.symbols
@@ -46,3 +75,5 @@ app.*.map.json
 
 # Dotenv variables
 .env
+**/.env
+**/flutter_assets/.env

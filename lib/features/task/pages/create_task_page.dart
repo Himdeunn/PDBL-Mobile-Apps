@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/primary_button.dart';
+import '../../../../core/utils/error_handler.dart';
 import '../../auth/services/auth_service.dart';
 import '../models/task_local.dart';
 import '../services/task_repository.dart';
@@ -19,7 +20,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
   TimeOfDay _selectedTime = TimeOfDay.now();
   String _selectedPriority = 'High';
   final TaskRepository _repository = TaskRepository();
@@ -50,10 +51,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
+      initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
+      firstDate: today,
       lastDate: DateTime(2101),
     );
     if (picked != null && picked != _selectedDate) {
@@ -88,9 +91,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         final userEmail = user?.email ?? 'guest';
 
         final task = widget.task ?? TaskLocal();
-        task.title = _titleController.text;
-        task.description = _descriptionController.text;
-        task.dueDate = _selectedDate;
+        task.title = _titleController.text.trim();
+        task.description = _descriptionController.text.trim();
+        task.dueDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
         task.dueTime =
             '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00';
         task.priority = _selectedPriority.toLowerCase();
@@ -104,6 +107,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         }
 
         if (mounted) {
+          ErrorHandler.showSuccessPopup(
+            widget.task == null ? 'Task created successfully' : 'Task updated successfully'
+          );
           Navigator.pop(context, true);
         }
       } catch (e) {
@@ -111,9 +117,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           setState(() {
             _isSaving = false;
           });
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to save task: $e')));
+          ErrorHandler.handleApiError(e);
         }
       }
     }
@@ -128,7 +132,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
         ),
         title: Text(
           widget.task == null ? 'Create New Task' : 'Edit Task',
@@ -139,181 +143,193 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Task Title',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _titleController,
-                decoration: InputDecoration(
-                  hintText: 'Enter task name...',
-                  fillColor: AppColors.surface,
-                  filled: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
+      body: AbsorbPointer(
+        absorbing: _isSaving,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Task Title',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                validator: (value) => value == null || value.isEmpty
-                    ? 'Please enter title'
-                    : null,
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Description',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _descriptionController,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  hintText: 'Write details about your task here...',
-                  fillColor: AppColors.surface,
-                  filled: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Due Date',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () => _selectDate(context),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.calendar_today,
-                                  size: 20,
-                                  color: Colors.grey,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  DateFormat(
-                                    'MMM dd, yyyy',
-                                  ).format(_selectedDate),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _titleController,
+                  enabled: !_isSaving,
+                  decoration: InputDecoration(
+                    hintText: 'Enter task name...',
+                    fillColor: AppColors.surface,
+                    filled: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Time',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () => _selectTime(context),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.access_time,
-                                  size: 20,
-                                  color: Colors.grey,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(_selectedTime.format(context)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                  maxLength: 100,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter title';
+                    }
+                    if (value.trim().length > 100) {
+                      return 'Title must be 100 characters or less';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Description',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _descriptionController,
+                  enabled: !_isSaving,
+                  maxLines: 4,
+                  maxLength: 500,
+                  decoration: InputDecoration(
+                    hintText: 'Write details about your task here...',
+                    fillColor: AppColors.surface,
+                    filled: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Priority',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: ['High', 'Medium', 'Low'].map((p) {
-                  final isSelected = _selectedPriority == p;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedPriority = p),
-                    child: Container(
-                      width: MediaQuery.of(context).size.width * 0.25,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? Colors.transparent
-                            : AppColors.surface,
-                        border: Border.all(
-                          color: isSelected ? Colors.brown : Colors.transparent,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            p == 'High'
-                                ? Icons.error
-                                : (p == 'Medium'
-                                      ? Icons.warning_amber
-                                      : Icons.rule),
-                            color: p == 'High'
-                                ? Colors.red
-                                : (p == 'Medium'
-                                      ? Colors.orange
-                                      : Colors.green),
+                          const Text(
+                            'Due Date',
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          const SizedBox(height: 4),
-                          Text(p),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: _isSaving ? null : () => _selectDate(context),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_today,
+                                    size: 20,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(_selectedDate),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 40),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Time',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: _isSaving ? null : () => _selectTime(context),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.access_time,
+                                    size: 20,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(_selectedTime.format(context)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Priority',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: ['High', 'Medium', 'Low'].map((p) {
+                    final isSelected = _selectedPriority == p;
+                    return GestureDetector(
+                      onTap: _isSaving ? null : () => setState(() => _selectedPriority = p),
+                      child: Container(
+                        width: MediaQuery.of(context).size.width * 0.25,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Colors.transparent
+                              : AppColors.surface,
+                          border: Border.all(
+                            color: isSelected ? Colors.brown : Colors.transparent,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              p == 'High'
+                                  ? Icons.error
+                                  : (p == 'Medium'
+                                        ? Icons.warning_amber
+                                        : Icons.rule),
+                              color: p == 'High'
+                                  ? Colors.red
+                                  : (p == 'Medium'
+                                        ? Colors.orange
+                                        : Colors.green),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(p),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 40),
               _isSaving
                   ? const Center(
                       child: Padding(
@@ -330,6 +346,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                       onPressed: _saveTask,
                     ),
             ],
+          ),
           ),
         ),
       ),

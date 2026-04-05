@@ -6,10 +6,12 @@ class HomeHeader extends StatelessWidget {
   final String? avatarUrl;
   final bool isLoading;
   final bool isGuest;
+  final VoidCallback? onNotificationTap;
   final VoidCallback? onAvatarTap;
   final VoidCallback? onLogoutTap;
   final VoidCallback? onLoginTap;
   final VoidCallback? onRegisterTap;
+  final int todayTarget;
 
   const HomeHeader({
     super.key,
@@ -17,10 +19,12 @@ class HomeHeader extends StatelessWidget {
     this.avatarUrl,
     this.isLoading = false,
     this.isGuest = false,
+    this.onNotificationTap,
     this.onAvatarTap,
     this.onLogoutTap,
     this.onLoginTap,
     this.onRegisterTap,
+    this.todayTarget = 0,
   });
 
   @override
@@ -43,9 +47,11 @@ class HomeHeader extends StatelessWidget {
                 maxLines: 1,
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Let\'s make today a productive day.',
-                style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
+              Text(
+                todayTarget > 0 
+                  ? 'Your goal today: $todayTarget tasks'
+                  : 'Let\'s make today a productive day.',
+                style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -66,7 +72,7 @@ class HomeHeader extends StatelessWidget {
               if (value == 'profile') {
                 onAvatarTap?.call();
               } else if (value == 'notifications') {
-                // TODO: Navigate to notifications
+                onNotificationTap?.call();
               } else if (value == 'logout') {
                 onLogoutTap?.call();
               } else if (value == 'login') {
@@ -174,7 +180,7 @@ class HomeHeader extends StatelessWidget {
                             width: 44,
                             height: 44,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, _) => const Icon(
+                            errorBuilder: (_, _, _) => const Icon(
                               Icons.person,
                               color: AppColors.primary,
                               size: 24,

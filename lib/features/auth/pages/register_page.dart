@@ -4,9 +4,10 @@ import '../../../../core/theme/logo.dart';
 import '../../../../core/theme/secondary_button.dart';
 import '../../../../core/theme/secondary_textfield.dart';
 import '../services/auth_service.dart';
-import 'login_page.dart';
 import '../../shell/pages/main_navigation.dart';
-import '../../task/services/task_repository.dart';
+import '../../../../core/utils/error_handler.dart';
+import '../../../../core/services/connection_service.dart';
+import 'login_page.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -16,12 +17,19 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _fullnameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
+
+  // Rate limiting: prevent spam registration attempts
+  int _failedAttempts = 0;
+  DateTime? _lockoutUntil;
+  static const int _maxAttempts = 5;
+  static const Duration _lockoutDuration = Duration(seconds: 30);
 
   @override
   void dispose() {
@@ -38,33 +46,44 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Future<void> _onRegister() async {
-    final fullname = _fullnameController.text.trim();
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-
-    if (fullname.isEmpty || email.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in all fields');
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    setState(() {
+    // Rate limiting check
+    if (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)) {
+      final remaining = _lockoutUntil!.difference(DateTime.now()).inSeconds;
+      ErrorHandler.showErrorPopup(
+        'Too many failed attempts. Please wait $remaining seconds.',
+      );
+      return;
+    }
+
+    if (mounted) setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
+      // Check network connection
+      if (!await ConnectionService().isConnected()) {
+        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
       final authService = AuthService();
-      final user = await authService.register(
-        name: fullname,
-        email: email,
-        password: password,
-        passwordConfirmation: password,
+      await authService.register(
+        name: _fullnameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        passwordConfirmation: _passwordController.text,
       );
 
-      // Migrate guest tasks to user email
-      await TaskRepository().migrateGuestTasksToUser(user.email ?? '');
-
       if (!mounted) return;
+      _failedAttempts = 0;
+      _lockoutUntil = null;
+      ErrorHandler.showSuccessPopup('Account successfully registered!');
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -74,7 +93,16 @@ class _RegisterPageState extends State<RegisterPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.toString());
+      _failedAttempts++;
+      if (_failedAttempts >= _maxAttempts) {
+        _lockoutUntil = DateTime.now().add(_lockoutDuration);
+        _failedAttempts = 0;
+        ErrorHandler.showErrorPopup(
+          'Too many failed attempts. Please wait 30 seconds before trying again.',
+        );
+      } else {
+        ErrorHandler.handleApiError(e);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -148,48 +176,91 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                       ),
 
-                    // Fullname Field
-                    DarkTextField(
-                      controller: _fullnameController,
-                      hintText: 'Enter Your Fullname',
-                      prefixIcon: const Icon(
-                        Icons.person_outline,
-                        color: AppColors.iconAccent,
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Email Field
-                    DarkTextField(
-                      controller: _emailController,
-                      hintText: 'Enter Your Email',
-                      keyboardType: TextInputType.emailAddress,
-                      prefixIcon: const Icon(
-                        Icons.mail_outline,
-                        color: AppColors.iconAccent,
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Password Field
-                    DarkTextField(
-                      controller: _passwordController,
-                      hintText: 'Create Your Password',
-                      obscureText: _obscurePassword,
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                        color: AppColors.iconAccent,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: AppColors.iconAccent,
+                    AbsorbPointer(
+                      absorbing: _isLoading,
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          children: [
+                            // Fullname Field
+                            DarkTextField(
+                              controller: _fullnameController,
+                              label: 'Full Name',
+                              enabled: !_isLoading,
+                              isRequired: true,
+                              hintText: 'Enter Your Fullname',
+                              prefixIcon: const Icon(
+                                Icons.person_outline,
+                                color: AppColors.iconAccent,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Full name is required';
+                                }
+                                return null;
+                              },
+                            ),
+  
+                            const SizedBox(height: 18),
+  
+                            // Email Field
+                            DarkTextField(
+                              controller: _emailController,
+                              label: 'Email',
+                              enabled: !_isLoading,
+                              isRequired: true,
+                              hintText: 'Enter Your Email',
+                              keyboardType: TextInputType.emailAddress,
+                              prefixIcon: const Icon(
+                                Icons.mail_outline,
+                                color: AppColors.iconAccent,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Email is required';
+                                }
+                                if (!value.contains('@')) {
+                                  return 'Please enter a valid email';
+                                }
+                                return null;
+                              },
+                            ),
+  
+                            const SizedBox(height: 18),
+  
+                            // Password Field
+                            DarkTextField(
+                              controller: _passwordController,
+                              label: 'Password',
+                              enabled: !_isLoading,
+                              isRequired: true,
+                              hintText: 'Create Your Password',
+                              obscureText: _obscurePassword,
+                              prefixIcon: const Icon(
+                                Icons.lock_outline,
+                                color: AppColors.iconAccent,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Password is required';
+                                }
+                                if (value.length < 6) {
+                                  return 'Password must be at least 6 characters';
+                                }
+                                return null;
+                              },
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: AppColors.iconAccent,
+                                ),
+                                onPressed: _togglePasswordVisibility,
+                              ),
+                            ),
+                          ],
                         ),
-                        onPressed: _togglePasswordVisibility,
                       ),
                     ),
 
@@ -206,33 +277,36 @@ class _RegisterPageState extends State<RegisterPage> {
                             ),
                           )
                         : SecondaryButton(
-                            label: 'Sign-Up',
+                            label: 'Sign up',
                             onPressed: _onRegister,
                           ),
 
                     const SizedBox(height: 20),
 
                     // Login Link
-                    GestureDetector(
-                      onTap: _onLogin,
-                      child: RichText(
-                        text: const TextSpan(
-                          text: 'Already Have An Account? ',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                            fontStyle: FontStyle.italic,
-                          ),
-                          children: [
-                            TextSpan(
-                              text: 'Login',
-                              style: TextStyle(
-                                fontStyle: FontStyle.italic,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
+                    AbsorbPointer(
+                      absorbing: _isLoading,
+                      child: GestureDetector(
+                        onTap: _onLogin,
+                        child: RichText(
+                          text: const TextSpan(
+                            text: 'Already Have An Account? ',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                              fontStyle: FontStyle.italic,
                             ),
-                          ],
+                            children: [
+                              TextSpan(
+                                text: 'Login',
+                                style: TextStyle(
+                                  fontStyle: FontStyle.italic,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

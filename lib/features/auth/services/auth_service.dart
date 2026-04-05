@@ -1,83 +1,163 @@
-import 'package:dio/dio.dart';
+// lib/features/auth/services/auth_service.dart
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/local_database.dart';
 import '../../../core/storage/secure_storage.dart';
-import '../../../../core/models/user.dart';
+import '../../../core/models/user.dart';
+import '../../task/services/task_repository.dart';
 
 class AuthService {
   final ApiClient _api = ApiClient();
+  User? _cachedUser;
 
-  Future<User?> getCurrentUser() async {
-    final user = await SecureStorage.getUser();
-    if (user != null && user.id == null && !user.isGuest) {
-      try {
-        final response = await _api.get('/user');
-        final userData = response.data;
-        if (userData != null && userData['id'] != null) {
-          user.id = userData['id'] as int?;
-          await SecureStorage.saveUser(user);
-        }
-      } catch (e) {
-        // Silently fail, might be offline or session expired
+  /// Single in-flight background refresh future — prevents multiple pages
+  /// from each triggering their own parallel background refresh.
+  Future<void>? _backgroundRefreshFuture;
+
+  /// Retrieves the current user. Uses in-memory cache first, then SecureStorage.
+  /// If [forceRefresh] is true, it will wait for the API to return.
+  /// Otherwise, it performs a background refresh if it's been a while.
+  Future<User?> getCurrentUser({bool forceRefresh = false}) async {
+    // 1. Check in-memory cache
+    if (_cachedUser != null && !forceRefresh) {
+      // If we have a user, trigger a background refresh just in case
+      if (!_cachedUser!.isGuest) {
+        _backgroundRefresh();
       }
+      return _cachedUser;
     }
-    return user;
+
+    // 2. Check SecureStorage if cache is empty
+    _cachedUser ??= await SecureStorage.getUser();
+
+    // 3. If force refresh or no user at all, fetch from API
+    if (forceRefresh || (_cachedUser != null && !_cachedUser!.isGuest && _cachedUser!.loginAt == null)) {
+      await refreshUser();
+    } else if (_cachedUser != null && !_cachedUser!.isGuest) {
+      // Just background sync if we have a basic user object
+      _backgroundRefresh();
+    }
+
+    return _cachedUser;
   }
 
-  Future<User> register({
+  /// Deduplicates background refresh: if one is already in-flight, reuses it.
+  /// Only calls refreshUser() — the Dio interceptor handles token refresh
+  /// automatically on 401, so we don't need a separate refreshToken() call here.
+  void _backgroundRefresh() {
+    if (_backgroundRefreshFuture != null) return;
+    _backgroundRefreshFuture = refreshUser().whenComplete(() {
+      _backgroundRefreshFuture = null;
+    });
+  }
+
+  Future<void> refreshUser() async {
+    try {
+      final token = await SecureStorage.getToken();
+      if (token == null || token.isEmpty) return;
+
+      final response = await _api.get('user');
+      final userData = response.data;
+      if (userData != null && userData['id'] != null) {
+        final existingUser = _cachedUser ?? User();
+        existingUser.id = userData['id'] as int?;
+        existingUser.name = userData['name'] as String? ?? existingUser.name;
+        existingUser.email = userData['email'] as String? ?? existingUser.email;
+        existingUser.avatar = userData['avatar_url'] as String? ?? existingUser.avatar;
+        existingUser.avatarUrl = (userData['avatar_url'] as String?) ?? existingUser.avatarUrl;
+        existingUser.isGuest = false;
+        
+        _cachedUser = existingUser;
+        await SecureStorage.saveUser(existingUser);
+        
+        // Background sync-up FCM Token if logged in
+        syncFcmToken();
+      }
+    } catch (e) {
+      // Silently fail, could be network or session issues
+    }
+  }
+
+  /// Synchronously returns the current cached user if available,
+  /// otherwise returns null. Fast for UI initialization.
+  User? get currentCachedUser => _cachedUser;
+
+  /// Retrieves from local storage without network sync. Fast.
+  Future<User?> getCachedUser() async {
+    if (_cachedUser != null) return _cachedUser;
+    _cachedUser = await SecureStorage.getUser();
+    return _cachedUser;
+  }
+
+  Future<User?> register({
     required String name,
     required String email,
     required String password,
     required String passwordConfirmation,
   }) async {
-    try {
-      final deviceId = await SecureStorage.getDeviceId();
-      final response = await _api.post(
-        '/register',
-        data: {
-          'name': name,
-          'email': email,
-          'password': password,
-          'password_confirmation': passwordConfirmation,
-          'device_id': deviceId,
-        },
-      );
+    final deviceId = await SecureStorage.getDeviceId();
+    final response = await _api.post(
+      'register',
+      data: {
+        'name': name,
+        'email': email,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+        'device_id': deviceId,
+      },
+    );
 
-      return _handleAuthSuccess(response.data);
-    } on DioException catch (e) {
-      throw ApiException.fromDioError(e);
-    }
+    return await _handleAuthSuccess(response.data);
   }
 
-  Future<User> login({required String email, required String password}) async {
-    try {
-      final deviceId = await SecureStorage.getDeviceId();
-      final response = await _api.post(
-        '/login',
-        data: {'email': email, 'password': password, 'device_id': deviceId},
-      );
+  Future<User?> login({required String email, required String password}) async {
+    final deviceId = await SecureStorage.getDeviceId();
+    final response = await _api.post(
+      'login',
+      data: {'email': email, 'password': password, 'device_id': deviceId},
+    );
 
-      return _handleAuthSuccess(response.data);
-    } on DioException catch (e) {
-      throw ApiException.fromDioError(e);
-    }
+    return await _handleAuthSuccess(response.data);
   }
 
   Future<User> _handleAuthSuccess(Map<String, dynamic> data) async {
     final token = data['token'] as String?;
     final userData = data['user'] as Map<String, dynamic>?;
 
+    // Detect if we were previously in Guest Mode to trigger migration
+    final wasGuest = _cachedUser?.isGuest ?? (await SecureStorage.getUser())?.isGuest ?? false;
+
     final user = User()
       ..id = userData?['id'] as int?
       ..name = userData?['name'] as String? ?? ''
       ..email = userData?['email'] as String? ?? ''
+      ..avatar = userData?['avatar_url'] as String?
+      ..avatarUrl = userData?['avatar_url'] as String?
       ..isGuest = false
       ..loginAt = DateTime.now();
 
-    if (token != null) {
-      await SecureStorage.saveToken(token);
+    // Save token first so migration sync can use it
+    if (token == null || token.isEmpty) {
+      throw Exception('Failed to obtain access session from server. (Token is empty)');
     }
+    
+    await SecureStorage.saveToken(token);
+    
+    _cachedUser = user;
     await SecureStorage.saveUser(user);
+
+    // Sync FCM Token with the backend
+    await syncFcmToken();
+    
+    // Check if we need to sync local tasks to server
+    if (wasGuest && user.email != null) {
+      try {
+        final taskRepo = TaskRepository();
+        await taskRepo.migrateGuestTasksToUser(user.email!);
+      } catch (e) {
+        // Migration failed
+      }
+    }
 
     return user;
   }
@@ -89,6 +169,7 @@ class AuthService {
       ..isGuest = true
       ..loginAt = DateTime.now();
 
+    _cachedUser = user;
     await SecureStorage.saveUser(user);
     return user;
   }
@@ -96,17 +177,19 @@ class AuthService {
   Future<void> logout() async {
     try {
       // API expects the token to log out. The AuthInterceptor handles attaching it.
-      await _api.post('/logout');
+      await _api.post('logout');
     } catch (_) {
       // Ignore network errors on logout
     } finally {
+      _cachedUser = null;
       await LocalDatabase.clearAll();
       await SecureStorage.logout();
     }
   }
 
   Future<bool> isLoggedIn() async {
-    final user = await getCurrentUser();
+    // Use cached user if possible to speed this up significantly
+    final user = _cachedUser ?? await getCachedUser();
     if (user == null) return false;
     if (user.isGuest) return true;
     if (user.loginAt == null) return false;
@@ -117,10 +200,83 @@ class AuthService {
     final now = DateTime.now();
     final difference = now.difference(user.loginAt!);
 
-    if (difference.inDays >= 7) {
-      await logout();
-      return false;
+    if (difference.inDays >= 14) {
+      // Proactive refresh — well before the 21-day TTL expires.
+      // With JWT_REFRESH_IAT=true, each successful refresh resets the window.
+      try {
+        await refreshToken();
+        return true;
+      } catch (_) {
+        if (difference.inDays >= 21) {
+          await logout();
+          return false;
+        }
+        // Token still valid (< 21 days), just couldn't refresh — continue
+      }
     }
+    
     return true;
+  }
+
+  Future<bool> isGuest() async {
+    final user = await getCurrentUser();
+    return user?.isGuest ?? true;
+  }
+
+  /// Refresh the current token with a new one from the server.
+  /// Throws on failure so callers (e.g. isLoggedIn) can react.
+  Future<void> refreshToken() async {
+    final response = await _api.post('refresh');
+    final newToken = response.data['token'] as String?;
+    if (newToken != null && newToken.isNotEmpty) {
+      await SecureStorage.saveToken(newToken);
+      
+      // Update loginAt to reset the day counter
+      if (_cachedUser != null) {
+        _cachedUser!.loginAt = DateTime.now();
+        await SecureStorage.saveUser(_cachedUser!);
+      }
+    }
+  }
+
+  /// Syncs the FCM token for the currently authenticated user with deduplication.
+  Future<void> syncFcmToken({String? fcmToken}) async {
+    try {
+      final user = _cachedUser;
+      if (user == null || user.isGuest) return;
+
+      final token = fcmToken ?? await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+
+      // Deduplication check
+      final lastToken = await SecureStorage.getLastFcmToken();
+      final lastSync = await SecureStorage.getLastFcmSyncTime();
+      final now = DateTime.now();
+
+      if (token == lastToken && lastSync != null && now.difference(lastSync).inHours < 4) {
+        // Already synced recently with the same token
+        return;
+      }
+
+      final response = await _api.post('auth/register-fcm-token', data: {'token': token});
+      if (response.statusCode == 200) {
+        await SecureStorage.saveLastFcmToken(token);
+        await SecureStorage.saveLastFcmSyncTime(now);
+      }
+    } catch (e) {
+      // Failed to sync, will retry on next check
+    }
+  }
+
+  /// Manually updates the in-memory cache and SecureStorage with a new user object.
+  /// Useful for immediate UI updates after profile changes.
+  Future<void> updateUserCache(User user) async {
+    _cachedUser = user;
+    await SecureStorage.saveUser(user);
+  }
+
+  /// Clears the in-memory cache.
+  void clearUserCache() {
+    _cachedUser = null;
   }
 }

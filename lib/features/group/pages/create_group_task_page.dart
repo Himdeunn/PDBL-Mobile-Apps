@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/primary_button.dart';
 import '../../auth/services/auth_service.dart';
 import '../../task/models/task_local.dart';
 import '../../task/services/task_repository.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../services/team_service.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/services/connection_service.dart';
 
 class CreateGroupTaskPage extends StatefulWidget {
   final AuthService? authService;
@@ -27,18 +29,83 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
 
   final TeamService _teamService = TeamService();
   final TaskRepository _taskRepository = TaskRepository();
+  final ConnectionService _connectionService = ConnectionService();
   bool _isSaving = false;
-  String _selectedPriority = 'Medium';
+  bool _isOffline = false;
+  bool _isLoading = true;
+  bool _isValidatingEmail = false;
 
-  void _addEmail() {
-    final email = _emailController.text.trim();
-    if (email.isNotEmpty &&
-        email.contains('@') &&
-        !_invitedEmails.contains(email)) {
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialConnection();
+  }
+
+  Future<void> _checkInitialConnection() async {
+    final isOnline = await _connectionService.isConnected();
+    if (mounted) {
       setState(() {
-        _invitedEmails.add(email);
-        _emailController.clear();
+        _isOffline = !isOnline;
+        _isLoading = false;
       });
+      if (!isOnline) {
+        ErrorHandler.showErrorPopup(
+          "Sorry, you don't have internet. Please connect to internet to create or see the team.",
+          title: "No Internet Connection",
+        );
+      }
+    }
+  }
+
+  Future<void> _addEmail() async {
+    final email = _emailController.text.trim().toLowerCase();
+    final emailRegex = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
+    
+    if (email.isEmpty) return;
+
+    if (!emailRegex.hasMatch(email)) {
+      ErrorHandler.showErrorPopup("Please enter a valid email address.", title: "Invalid Email");
+      return;
+    }
+    
+    if (_invitedEmails.contains(email)) {
+      ErrorHandler.showErrorPopup("This email is already in your invite list.", title: "Duplicate Email");
+      return;
+    }
+
+    // New validation: check if user exists in backend
+    setState(() => _isValidatingEmail = true);
+
+    try {
+      final result = await _teamService.checkEmail(email);
+      
+      if (result['exists'] == true) {
+        setState(() {
+          _invitedEmails.add(email);
+          _emailController.clear();
+        });
+      } else {
+        ErrorHandler.showErrorPopup(
+          "User with this email was not found in our system.", 
+          title: "User Not Found"
+        );
+      }
+    } catch (e) {
+      if (e.toString().contains('404')) {
+        ErrorHandler.showErrorPopup(
+          "User with this email was not found in our system.", 
+          title: "User Not Found"
+        );
+      } else {
+        ErrorHandler.showErrorPopup(
+          "Could not verify user at this time. Please check your connection.", 
+          title: "Verification Error"
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isValidatingEmail = false);
+      }
     }
   }
 
@@ -49,10 +116,12 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now(),
+      initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
+      firstDate: today,
       lastDate: DateTime(2101),
     );
     if (picked != null) setState(() => _selectedDate = picked);
@@ -70,21 +139,35 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
+    final isOnline = await _connectionService.isConnected();
+    if (!isOnline) {
+      ErrorHandler.showErrorPopup(
+        "Sorry, you don't have internet. Please connect to internet to create or see the team.",
+        title: "No Internet Connection",
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
+      final String trimmedTitle = _titleController.text.trim();
+      final String trimmedDescription = _descriptionController.text.trim();
+
       // 1. Create Team
       final teamResponse = await _teamService.createTeam(
-        _titleController.text,
-        description: _descriptionController.text, // Added description support
+        trimmedTitle,
+        description: trimmedDescription, // Added description support
       );
       final int teamId = teamResponse['team']['id'];
 
       // 2. Invite People
       if (_invitedEmails.isNotEmpty) {
         await Future.wait(
-          _invitedEmails.map((email) => _teamService.inviteToTeam(teamId, email).catchError((e) {
-            debugPrint('Failed to invite $email: $e');
-          })),
+          _invitedEmails.map(
+            (email) => _teamService.inviteToTeam(teamId, email).catchError((e) {
+              // Silently fail
+            }),
+          ),
         );
       }
 
@@ -93,20 +176,20 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
       final userEmail = user?.email ?? 'guest';
 
       final task = TaskLocal();
-      task.title = _titleController.text;
-      task.description = _descriptionController.text;
+      task.title = trimmedTitle;
+      task.description = trimmedDescription;
       task.dueDate = _selectedDate;
       task.dueTime =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00';
-      task.priority = _selectedPriority.toLowerCase();
+      task.priority = 'medium';
       task.userEmail = userEmail;
       task.teamId = teamId;
 
       await _taskRepository.createTask(task, userEmail);
 
       if (mounted) {
-        Navigator.pop(context, true);
         ErrorHandler.showSuccessPopup('Project Team created successfully!');
+        Navigator.pop(context, true);
       }
     } catch (e) {
       ErrorHandler.handleApiError(e);
@@ -117,6 +200,73 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    if (_isOffline) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary, size: 32),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text('No Internet Connection', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+          centerTitle: true,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.wifi_off_rounded, size: 80, color: Colors.red),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                "You're Offline",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 12),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 40),
+                child: Text(
+                  "Sorry, you don't have internet. Please connect to internet to create or see the team.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary, height: 1.5, fontSize: 14),
+                ),
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() => _isLoading = true);
+                  _checkInitialConnection();
+                },
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text("Try Again"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -128,7 +278,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
             color: AppColors.textPrimary,
             size: 32,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
         ),
         title: const Text(
           'Create Project Team',
@@ -139,133 +289,138 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildLabel('Task Title'),
-              _buildTextField(
-                _titleController,
-                'Enter task name...',
-                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-              ),
-
-              const SizedBox(height: 24),
-              _buildLabel('Description'),
-              _buildTextField(
-                _descriptionController,
-                'Write details about your task here...',
-                maxLines: 5,
-              ),
-
-              const SizedBox(height: 24),
-              _buildLabel('Add People'),
-              TextField(
-                controller: _emailController,
-                onSubmitted: (_) => _addEmail(),
-                decoration: InputDecoration(
-                  hintText: 'Add People',
-                  fillColor: const Color(0xFFF1E6D2),
-                  filled: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.add, color: AppColors.primary),
-                    onPressed: _addEmail,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                children: _invitedEmails
-                    .map((email) => _buildEmailChip(email))
-                    .toList(),
-              ),
-
-              const SizedBox(height: 24),
-              Row(
+      body: SafeArea(
+        child: AbsorbPointer(
+          absorbing: _isSaving,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Due Date'),
-                        _buildPickerTile(
-                          icon: Icons.calendar_today_outlined,
-                          text: DateFormat(
-                            'MMM dd, yyyy',
-                          ).format(_selectedDate),
-                          onTap: () => _selectDate(context),
-                        ),
-                      ],
-                    ),
+                  _buildLabel('Task Title'),
+                  _buildTextField(
+                    _titleController,
+                    'Enter task name...',
+                    enabled: !_isSaving,
+                    maxLength: 100,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Please enter title';
+                      if (v.trim().length > 100) return 'Title must be 100 characters or less';
+                      return null;
+                    },
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Time'),
-                        _buildPickerTile(
-                          icon: Icons.access_time,
-                          text: _selectedTime.format(context),
-                          onTap: () => _selectTime(context),
-                        ),
-                      ],
-                    ),
+
+                  const SizedBox(height: 24),
+                  _buildLabel('Description'),
+                  _buildTextField(
+                    _descriptionController,
+                    'Write details about your task here...',
+                    enabled: !_isSaving,
+                    maxLines: 5,
+                    maxLength: 500,
                   ),
+
+                  const SizedBox(height: 24),
+                  _buildLabel('Add Member'),
+                  TextField(
+                    controller: _emailController,
+                    onSubmitted: (_) => _isSaving ? null : _addEmail(),
+                    enabled: !_isSaving,
+                    decoration: InputDecoration(
+                      hintText: 'Add Member Email',
+                      fillColor: AppColors.surface,
+                      filled: true,
+                      counterText: "", // Hide count for email field
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      suffixIcon: _isValidatingEmail
+                          ? const Padding(
+                              padding: EdgeInsets.all(12.0),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                                ),
+                              ),
+                            )
+                          : IconButton(
+                              icon: const Icon(Icons.add, color: AppColors.primary),
+                              onPressed: (_isSaving || _isValidatingEmail) ? null : _addEmail,
+                            ),
+                    ),
+                    maxLength: 100,
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    children: _invitedEmails
+                        .map((email) => _buildEmailChip(email))
+                        .toList(),
+                  ),
+
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLabel('Due Date'),
+                            _buildPickerTile(
+                              icon: Icons.calendar_today_outlined,
+                              text: DateFormat(
+                                'MMM dd, yyyy',
+                              ).format(_selectedDate),
+                              onTap: _isSaving
+                                  ? () {}
+                                  : () => _selectDate(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLabel('Time'),
+                            _buildPickerTile(
+                              icon: Icons.access_time,
+                              text: _selectedTime.format(context),
+                              onTap: _isSaving
+                                  ? () {}
+                                  : () => _selectTime(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 40),
+                  _isSaving
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        )
+                      : PrimaryButton(
+                          label: 'Create Task',
+                          onPressed: _handleCreate,
+                        ),
                 ],
               ),
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
         ),
-      ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: _isSaving
-            ? const SizedBox(
-                height: 56,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _handleCreate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF140E0E),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Create Task',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
       ),
     );
   }
@@ -288,15 +443,20 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     TextEditingController controller,
     String hint, {
     int maxLines = 1,
+    int? maxLength,
     String? Function(String?)? validator,
+    bool enabled = true,
+    Color? fillColor,
   }) {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
+      maxLength: maxLength,
       validator: validator,
+      enabled: enabled,
       decoration: InputDecoration(
         hintText: hint,
-        fillColor: const Color(0xFFF1E6D2),
+        fillColor: fillColor ?? AppColors.surface,
         filled: true,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
@@ -310,13 +470,14 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     required IconData icon,
     required String text,
     required VoidCallback onTap,
+    Color? fillColor,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1E6D2),
+          color: fillColor ?? AppColors.surface,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -336,67 +497,13 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     );
   }
 
-
-  Widget _buildPriorityPicker() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: ["High", "Medium", "Low"].map((p) {
-        final bool isSelected = _selectedPriority == p;
-        Color iconColor;
-        IconData icon;
-        
-        if (p == "High") {
-          iconColor = const Color(0xFFFF5252);
-          icon = Icons.error_rounded;
-        } else if (p == "Medium") {
-          iconColor = const Color(0xFFFFD700);
-          icon = Icons.priority_high_rounded;
-        } else {
-          iconColor = const Color(0xFF4CAF50);
-          icon = Icons.sync_rounded;
-        }
-
-        return Expanded(
-          child: GestureDetector(
-            onTap: () => setState(() => _selectedPriority = p),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1E6D2),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isSelected ? const Color(0xFF8B7E74) : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Icon(icon, color: iconColor, size: 28),
-                  const SizedBox(height: 8),
-                  Text(
-                    p,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? Colors.black : Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
   Widget _buildEmailChip(String email) {
     return Chip(
       avatar: const CircleAvatar(child: Icon(Icons.person, size: 14)),
       label: Text(email, style: const TextStyle(fontSize: 12)),
       deleteIcon: const Icon(Icons.close, size: 14),
-      onDeleted: () => _removeEmail(email),
-      backgroundColor: const Color(0xFFF1E6D2),
+      onDeleted: _isSaving ? null : () => _removeEmail(email),
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     );
   }

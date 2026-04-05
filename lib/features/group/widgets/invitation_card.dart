@@ -28,8 +28,9 @@ class InvitationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFE5DDD5).withValues(alpha: 0.8),
+        color: const Color(0xFFEEE8E0),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [

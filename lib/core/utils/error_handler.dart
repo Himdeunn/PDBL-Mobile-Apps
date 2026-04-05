@@ -1,75 +1,267 @@
 import 'package:flutter/material.dart';
 import 'navigator_service.dart';
+import 'dart:async';
 
 class ErrorHandler {
-  static void showSuccessPopup(String message, {String? title}) {
-    final context = NavigatorService.context;
-    if (context == null) return;
+  static bool _isSessionExpiredShowing = false;
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green),
-            const SizedBox(width: 10),
-            Text(title ?? 'Success', style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+  static void showSuccessPopup(String message, {String? title}) {
+    _showTopNotification(
+      message,
+      title: title ?? 'Success',
+      backgroundColor: Colors.green.shade600,
+      icon: Icons.check_circle,
     );
   }
 
-  static void showErrorPopup(String message, {String? title}) {
-    final context = NavigatorService.context;
-    if (context == null) return;
+  static void _showTopNotification(
+    String message, {
+    required String title,
+    required Color backgroundColor,
+    required IconData icon,
+  }) {
+    // Attempt to get the current context or fallback to navigator context
+    final overlay = NavigatorService.navigatorKey.currentState?.overlay;
+    if (overlay == null) {
+      return;
+    }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red),
-            const SizedBox(width: 10),
-            Text(title ?? 'Error', style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
+    // Deduplicate "Session Expired" popups
+    if (title.toLowerCase().contains('expired') || 
+        message.toLowerCase().contains('expired') || 
+        title.toLowerCase().contains('unauthorized')) {
+      if (_isSessionExpiredShowing) return;
+      _isSessionExpiredShowing = true;
+      Timer(const Duration(seconds: 3), () {
+        _isSessionExpiredShowing = false;
+      });
+    }
+
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (context) => _SlidingNotification(
+        title: title,
+        message: message,
+        backgroundColor: backgroundColor,
+        icon: icon,
+        onDismiss: () {
+          if (entry.mounted) entry.remove();
+        },
       ),
+    );
+
+    overlay.insert(entry);
+    
+    // Auto dismiss after 5.5 seconds to allow exit animation to finish
+    Timer(const Duration(milliseconds: 5500), () {
+      if (entry.mounted) {
+        entry.remove();
+      }
+    });
+  }
+
+  static void showErrorPopup(String message, {String? title}) {
+    _showTopNotification(
+      message,
+      title: title ?? 'Error',
+      backgroundColor: Colors.red.shade600,
+      icon: Icons.error_outline,
     );
   }
 
   static void handleApiError(dynamic error) {
-    if (error.toString().contains('SocketException') || 
-        error.toString().toLowerCase().contains('connection failed') ||
-        error.toString().toLowerCase().contains('failed host lookup')) {
-      showErrorPopup('No internet connection or server is offline.', title: 'Server Offline');
-    } else if (error.toString().contains('401')) {
-      showErrorPopup('Your session has expired. Please log in again.', title: 'Session Expired');
-    } else if (error.toString().contains('403')) {
-      showErrorPopup('You do not have permission to perform this action.', title: 'Access Denied');
-    } else {
-      // Clean up the error message if it's too long
-      String msg = error.toString();
-      if (msg.length > 100) {
-        msg = msg.substring(0, 97) + '...';
+    String title = 'Error';
+    String message = '';
+    
+    // 1. Try to extract message from DioException specific format
+    try {
+      final errorStr = error.toString();
+      if (errorStr.contains('DioException')) {
+        final response = (error as dynamic).response;
+        if (response != null && response.data is Map && response.data['message'] != null) {
+          message = response.data['message'].toString();
+        }
       }
-      showErrorPopup(msg, title: 'Error');
+      
+      // 2. Fallback to generic message property if still empty
+      if (message.isEmpty) {
+        final msg = (error as dynamic).message;
+        message = (msg is String && msg.isNotEmpty) ? msg : error.toString();
+      }
+    } catch (_) {
+      message = error.toString();
     }
+
+    // Remove "Exception: " prefix from generic Dart exceptions
+    if (message.startsWith('Exception: ')) {
+      message = message.substring(11);
+    }
+
+    // Sanitize: ONLY if it's truly technical or empty, replace with safe message
+    // We EXCLUDE valid Indonesian/English messages from the server
+    final isTechnical = message.isEmpty ||
+        message == 'null' ||
+        message.contains('http://') ||
+        message.contains('https://') ||
+        message.contains('HandshakeException') ||
+        message.contains('uri:') ||
+        (message.contains('Error:') && !message.contains(' ')); // Only if it's a single word error code
+
+
+    if (isTechnical) {
+      message = 'Sorry, something went wrong. Please try again later.';
+    }
+
+    // Adjust title based on keywords for better context
+    final msgLower = message.toLowerCase();
+    if (msgLower.contains('socket') || 
+        msgLower.contains('connection') || 
+        msgLower.contains('network') ||
+        msgLower.contains('host lookup') ||
+        msgLower.contains('is not reachable')) {
+      // Silently ignore connection errors to avoid showing red popups when offline
+      return;
+    } else if (msgLower.contains('expired') || msgLower.contains('unauthorized')) {
+      title = 'Session Expired';
+      message = 'Your session has expired. Please log in again.';
+    } else if (msgLower.contains('permission') || msgLower.contains('access denied')) {
+      title = 'Access Denied';
+      message = 'You do not have permission to perform this action.';
+    } else if (msgLower.contains('not found')) {
+      title = 'Not Found';
+      message = 'The requested resource was not found.';
+    } else if (msgLower.contains('internal error') || msgLower.contains('server error')) {
+      // Suppress server error popups as well (as requested: "server mati mendadak jangan munculin popup")
+      return;
+    }
+    
+    showErrorPopup(message, title: title);
+  }
+}
+
+class _SlidingNotification extends StatefulWidget {
+  final String title;
+  final String message;
+  final Color backgroundColor;
+  final IconData icon;
+  final VoidCallback onDismiss;
+
+  const _SlidingNotification({
+    required this.title,
+    required this.message,
+    required this.backgroundColor,
+    required this.icon,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_SlidingNotification> createState() => _SlidingNotificationState();
+}
+
+class _SlidingNotificationState extends State<_SlidingNotification>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Offset> _offsetAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _offsetAnimation = Tween<Offset>(
+      begin: const Offset(0.0, -2.0),
+      end: const Offset(0.0, 0.0),
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
+    ));
+
+    _controller.forward();
+
+    // Start exit animation after 4.5 seconds
+    Timer(const Duration(milliseconds: 4500), () {
+      if (mounted) {
+        _controller.animateTo(-0.1, duration: const Duration(milliseconds: 200), curve: Curves.easeIn)
+          .then((_) => _controller.animateTo(-2.0, duration: const Duration(milliseconds: 400), curve: Curves.easeInCubic));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 20,
+      left: 16,
+      right: 16,
+      child: SlideTransition(
+        position: _offsetAnimation,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: widget.backgroundColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(widget.icon, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                  onPressed: widget.onDismiss,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

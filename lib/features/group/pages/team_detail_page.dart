@@ -1,17 +1,29 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
+import '../../../../core/utils/image_utils.dart';
+
 import '../services/team_service.dart';
 import '../../auth/services/auth_service.dart';
 import 'create_team_task_page.dart';
+import 'edit_team_task_page.dart';
 import 'member_detail_page.dart';
+import '../../task/services/task_repository.dart';
+import '../../../../core/services/connection_service.dart';
 
 class TeamDetailPage extends StatefulWidget {
   final int teamId;
   final AuthService? authService;
+  final String? taskId; // Added for deep linking
 
-  const TeamDetailPage({super.key, required this.teamId, this.authService});
+  const TeamDetailPage({
+    super.key,
+    required this.teamId,
+    this.authService,
+    this.taskId,
+  });
 
   @override
   State<TeamDetailPage> createState() => _TeamDetailPageState();
@@ -19,46 +31,106 @@ class TeamDetailPage extends StatefulWidget {
 
 class _TeamDetailPageState extends State<TeamDetailPage> {
   final TeamService _teamService = TeamService();
+  final TaskRepository _taskRepository = TaskRepository();
   bool _isLoading = true;
   Map<String, dynamic>? _teamData;
   List<dynamic> _members = [];
   List<dynamic> _tasks = [];
+  final ConnectionService _connectionService = ConnectionService();
   int? _currentUserId;
   String? _currentUserEmail;
+  bool _isOffline = false;
+  bool _isInviting = false;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadData().then((_) {
+      if (widget.taskId != null) {
+        final task = _tasks
+            .where((t) => t['id']?.toString() == widget.taskId)
+            .firstOrNull;
+        if (task != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showTaskDetail(task);
+          });
+        }
+      }
+    });
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
     if (showLoading) setState(() => _isLoading = true);
+    
+    final isOnline = await _connectionService.isConnected();
+    if (!isOnline) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isOffline = true;
+        });
+        ErrorHandler.showErrorPopup(
+          "Sorry, you don't have internet. Please connect to internet to create or see the team.",
+          title: "No Internet Connection",
+        );
+      }
+      return;
+    }
+
     try {
       final user = await widget.authService?.getCurrentUser();
       _currentUserId = user?.id;
       _currentUserEmail = user?.email;
 
-      final data = await _teamService.getTeamDetails(widget.teamId);
-      setState(() {
-        _teamData = data['team'];
-        _members = data['team']['members'] ?? [];
-        _tasks = data['tasks'] ?? [];
-        _isLoading = false;
-      });
+      final rawData = await _teamService.getTeamDetails(widget.teamId);
+      if (mounted) {
+        setState(() {
+          _isOffline = false;
+          // Robust parsing for the top-level object
+          if (rawData is Map) {
+            _teamData = rawData['team'] is Map ? rawData['team'] : null;
+            
+            // Robust parsing for members
+            final membersPart = _teamData?['members'];
+            if (membersPart is List) {
+              _members = membersPart;
+            } else if (membersPart is Map) {
+              _members = membersPart.values.toList();
+            } else {
+              _members = [];
+            }
+            
+            // Robust parsing for tasks
+            final tasksPart = rawData['tasks'];
+            if (tasksPart is List) {
+              _tasks = tasksPart;
+            } else if (tasksPart is Map) {
+              _tasks = tasksPart.values.toList();
+            } else {
+              _tasks = [];
+            }
+          }
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading team: $e')));
+        ErrorHandler.handleApiError(e);
       }
       setState(() => _isLoading = false);
     }
   }
 
   void _showMemberOptions(dynamic member) {
-    final bool isOwner = _teamData?['created_by']?.toString() == _currentUserId?.toString();
-    if (!isOwner || member['id']?.toString() == _currentUserId?.toString()) return;
+    final String? teamOwnerId = _teamData?['created_by']?.toString();
+    final String? currentUserIdStr = _currentUserId?.toString();
+    final bool isOwner = teamOwnerId != null && 
+                         currentUserIdStr != null && 
+                         teamOwnerId == currentUserIdStr;
+
+    if (!isOwner || member['id']?.toString() == currentUserIdStr) {
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -77,17 +149,6 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 _handleRemoveMember(member['id']);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.block, color: Colors.red),
-              title: const Text(
-                'Ban Member',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _handleBanMember(member['id']);
-              },
-            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -104,6 +165,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
         title: const Text('Edit Team'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -125,6 +187,14 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           ),
           TextButton(
             onPressed: () async {
+              final isOnline = await _connectionService.isConnected();
+              if (!isOnline) {
+                ErrorHandler.showErrorPopup(
+                  "Sorry, you don't have internet. Please connect to internet to create or see the team.",
+                  title: "No Internet Connection"
+                );
+                return;
+              }
               try {
                 await _teamService.updateTeam(
                   widget.teamId,
@@ -132,8 +202,8 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                   descController.text,
                 );
                 if (context.mounted) {
-                  Navigator.pop(context);
                   ErrorHandler.showSuccessPopup('Team updated successfully');
+                  Navigator.pop(context);
                   _loadData();
                 }
               } catch (e) {
@@ -151,41 +221,102 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
     final emailController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Member'),
-        content: TextField(
-          controller: emailController,
-          decoration: const InputDecoration(labelText: 'User Email'),
+      barrierDismissible: !_isInviting,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Invite Team Member'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Enter the email address of the person you want to invite to this project.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailController,
+                enabled: !_isInviting,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  hintText: 'user@example.com',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: _isInviting ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: _isInviting
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+                      if (email.isEmpty) {
+                        ErrorHandler.showErrorPopup('Please enter an email address');
+                        return;
+                      }
+
+                      final isOnline = await _connectionService.isConnected();
+                      if (!isOnline) {
+                        ErrorHandler.showErrorPopup(
+                          "No internet connection. Please check your connection.",
+                          title: "Offline",
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => _isInviting = true);
+                      try {
+                        await _teamService.inviteToTeam(widget.teamId, email);
+                        if (context.mounted) {
+                          ErrorHandler.showSuccessPopup('Invitation successfully sent to $email');
+                          Navigator.pop(context);
+                          // Small delay to let dialog finish closing before refresh
+                          Future.delayed(const Duration(milliseconds: 300), () => _loadData());
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ErrorHandler.handleApiError(e);
+                        }
+                      } finally {
+                        setDialogState(() => _isInviting = false);
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: _isInviting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text('Send Invite'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              try {
-                await _teamService.inviteToTeam(
-                  widget.teamId,
-                  emailController.text,
-                );
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ErrorHandler.showSuccessPopup('Invitation sent');
-                  _loadData();
-                }
-              } catch (e) {
-                ErrorHandler.handleApiError(e);
-              }
-            },
-            child: const Text('Invite'),
-          ),
-        ],
       ),
     );
   }
 
   Future<void> _handleRemoveMember(int userId) async {
+    final isOnline = await _connectionService.isConnected();
+    if (!isOnline) {
+      ErrorHandler.showErrorPopup(
+        "Sorry, you don't have internet. Please connect to internet to create or see the team.",
+        title: "No Internet Connection"
+      );
+      return;
+    }
     try {
       await _teamService.removeMember(widget.teamId, userId);
       _loadData();
@@ -195,15 +326,6 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
     }
   }
 
-  Future<void> _handleBanMember(int userId) async {
-    try {
-      await _teamService.banMember(widget.teamId, userId);
-      _loadData();
-      ErrorHandler.showSuccessPopup('Member banned successfully');
-    } catch (e) {
-      ErrorHandler.handleApiError(e);
-    }
-  }
 
   void _showTaskDetail(dynamic task) {
     showModalBottomSheet(
@@ -212,7 +334,25 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => _TaskDetailSheet(
         task: task,
-        isOwner: true, // All team members can now manage tasks
+        isOwner: true,
+        teamMembers: _members,
+        onDelete: () async {
+          try {
+            // Optimistic UI: Remove task immediately
+            setState(() {
+              _tasks.removeWhere((t) => t['id'] == task['id']);
+            });
+            await _teamService.deleteTask(task['id']);
+            // Sync with server quietly
+            _loadData(showLoading: false);
+            ErrorHandler.showSuccessPopup('Task deleted successfully');
+          } catch (e) {
+            // Revert or show error
+            _loadData(showLoading: false);
+            ErrorHandler.handleApiError(e);
+          }
+        },
+        onEditComplete: () => _loadData(showLoading: false),
       ),
     );
   }
@@ -221,6 +361,54 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_isOffline && _teamData == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary, size: 32),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text('No Internet Connection', style: TextStyle(color: AppColors.textPrimary)),
+          centerTitle: true,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.wifi_off_rounded, size: 80, color: Colors.red.withValues(alpha: 0.5)),
+              const SizedBox(height: 24),
+              const Text(
+                "You're Offline",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 40),
+                child: Text(
+                  "Sorry, you don't have internet. Please connect to internet to create or see the team.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+                ),
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () => _loadData(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                ),
+                child: const Text("Try Again"),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     final String teamName = _teamData?['name'] ?? 'Team Detail';
@@ -291,7 +479,9 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       ],
                     ),
                   ),
-                  if (_teamData?['created_by']?.toString() == _currentUserId?.toString())
+                  if (_teamData?['created_by'] != null && 
+                      _currentUserId != null &&
+                      _teamData?['created_by'].toString() == _currentUserId.toString())
                     IconButton(
                       icon: const Icon(Icons.more_vert),
                       onPressed: () => _showEditTeamDialog(),
@@ -305,10 +495,11 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Anggota Team',
+                    'Team Members',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  if (_teamData?['created_by']?.toString() == _currentUserId?.toString())
+                  if (_teamData?['created_by']?.toString() ==
+                      _currentUserId?.toString())
                     _SmallButton(
                       label: 'Add New Member',
                       onTap: () => _showAddMemberDialog(),
@@ -317,28 +508,49 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
               ),
               const SizedBox(height: 16),
               ..._members.map(
-                (m) => _MemberTile(
-                  name: m['name'] ?? 'Member',
-                  role: m['role'] ?? 'Member',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MemberDetailPage(
-                          teamId: widget.teamId,
-                          member: m,
-                          memberTasks: _tasks
-                              .where((t) => (t['user']?['email'] ?? '') == m['email'])
-                              .toList(),
-                          currentUserEmail: _currentUserEmail,
-                          onToggle: _loadData,
-                          isOwner: _teamData?['created_by']?.toString() == _currentUserId?.toString(),
+                (m) {
+                  final String? ownerId = _teamData?['created_by']?.toString();
+                  final String? myId = _currentUserId?.toString();
+                  final bool isOwner = ownerId != null && myId != null && ownerId == myId;
+                  
+                  final bool isMe = m['email']?.toString().toLowerCase().trim() ==
+                      _currentUserEmail?.toLowerCase().trim();
+
+                  return _MemberTile(
+                    name: m['name'] ?? '',
+                    role: m['role'] ?? 'Member',
+                    avatarUrl: ImageUtils.getAvatarUrl(m['avatar']),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MemberDetailPage(
+                            teamId: widget.teamId,
+                            member: m,
+                            memberTasks: _tasks.where((t) {
+                              final assignedEmails =
+                                  (t['assigned_emails'] as List<dynamic>?)
+                                      ?.cast<String>() ??
+                                  [];
+                              final memberEmail = m['email']
+                                  ?.toString()
+                                  .toLowerCase()
+                                  .trim();
+                              return memberEmail != null &&
+                                  assignedEmails.any(
+                                    (e) =>
+                                        e.toLowerCase().trim() == memberEmail,
+                                  );
+                            }).toList(),
+                            currentUserEmail: _currentUserEmail,
+                            isOwner: isOwner,
+                          ),
                         ),
-                      ),
-                    ).then((_) => _loadData());
-                  },
-                  onMore: () => _showMemberOptions(m),
-                ),
+                      ).then((_) => _loadData());
+                    },
+                    onMore: (isOwner && !isMe) ? () => _showMemberOptions(m) : null,
+                  );
+                },
               ),
 
               const SizedBox(height: 32),
@@ -348,7 +560,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Task Team',
+                    'Team Tasks',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   _SmallButton(
@@ -378,40 +590,87 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                     style: TextStyle(color: AppColors.textTertiary),
                   ),
                 )
-              else
+                  else
                 ..._tasks.map(
                   (t) => _TaskTile(
                     title: t['judul'] ?? '',
-                    email: t['user']?['email'] ?? 'Unassigned',
+                    assignedEmails:
+                        (t['assigned_emails'] as List<dynamic>?)
+                            ?.cast<String>() ??
+                        [t['user']?['email'] ?? 'Unassigned'],
+                    completedBy:
+                        (t['completed_by'] as List<dynamic>?)?.cast<String>() ??
+                        [],
                     isDone: t['is_completed'] == true,
+                    currentUserEmail: _currentUserEmail,
+                    isOffline: _isOffline,
                     onTap: () => _showTaskDetail(t),
                     onToggle: () async {
-                      final bool isOwner = _teamData?['created_by']?.toString() == _currentUserId?.toString();
-                      final String? assignedEmail = t['user']?['email'];
-                      
-                      final String? assignedEmailNormalized = assignedEmail?.toLowerCase().trim();
-                      final String? currentUserEmailNormalized = _currentUserEmail?.toLowerCase().trim();
+                      if (_isOffline) return;
+                      final bool isOwner =
+                          _teamData?['created_by']?.toString() ==
+                          _currentUserId?.toString();
+                      final List<String> assignedEmails =
+                          (t['assigned_emails'] as List<dynamic>?)
+                              ?.cast<String>() ??
+                          [];
+                      final String? currentUserEmailNormalized =
+                          _currentUserEmail?.toLowerCase().trim();
 
-                      if (isOwner || (currentUserEmailNormalized != null && assignedEmailNormalized != null &&
-                          currentUserEmailNormalized == assignedEmailNormalized)) {
-                        try {
-                          final int taskIndex = _tasks.indexWhere((task) => task['id'] == t['id']);
-                          if (taskIndex == -1) return;
+                      final bool isAssigned =
+                          currentUserEmailNormalized != null &&
+                          assignedEmails.any(
+                            (e) =>
+                                e.toLowerCase().trim() ==
+                                currentUserEmailNormalized,
+                          );
 
-                          final oldStatus = _tasks[taskIndex]['is_completed'] == true;
-                          final newStatus = !oldStatus;
-
-                          // Optimistic UI: Update local state immediately
+                      if (isOwner || isAssigned) {
+                        final taskIndex = _tasks.indexOf(t);
+                        if (taskIndex != -1) {
                           setState(() {
-                            _tasks[taskIndex]['is_completed'] = newStatus;
-                          });
+                            final task = Map<String, dynamic>.from(
+                              _tasks[taskIndex],
+                            );
+                            final List<String> completedBy =
+                                (task['completed_by'] as List<dynamic>?)
+                                    ?.cast<String>() ??
+                                [];
 
-                          await _teamService.toggleTaskStatus(t['id'], newStatus);
-                          
-                          // After success, sync with server without showing a loading spinner
+                            if (currentUserEmailNormalized != null) {
+                              if (completedBy.any(
+                                (e) =>
+                                    e.toLowerCase().trim() ==
+                                    currentUserEmailNormalized,
+                              )) {
+                                completedBy.removeWhere(
+                                  (e) =>
+                                      e.toLowerCase().trim() ==
+                                      currentUserEmailNormalized,
+                                );
+                              } else {
+                                completedBy.add(_currentUserEmail!);
+                              }
+                            }
+
+                            task['completed_by'] = completedBy;
+                            final int totalAssigned = assignedEmails.isNotEmpty
+                                ? assignedEmails.length
+                                : 1;
+                            task['is_completed'] =
+                                completedBy.length >= totalAssigned;
+                            _tasks[taskIndex] = task;
+                          });
+                        }
+
+                        try {
+                          await _teamService.toggleMemberTaskStatus(t['id']);
+                          // Logic for sync with today's focus (Dashboard sync)
+                          if (_currentUserEmail != null) {
+                            _taskRepository.fetchTasksFromServer(_currentUserEmail!);
+                          }
                           _loadData(showLoading: false);
                         } catch (e) {
-                          // Revert optimistic update on error
                           _loadData(showLoading: false);
                           ErrorHandler.handleApiError(e);
                         }
@@ -462,14 +721,16 @@ class _SmallButton extends StatelessWidget {
 class _MemberTile extends StatelessWidget {
   final String name;
   final String role;
+  final String? avatarUrl;
   final VoidCallback onTap;
-  final VoidCallback onMore;
+  final VoidCallback? onMore;
 
   const _MemberTile({
     required this.name,
     required this.role,
+    this.avatarUrl,
     required this.onTap,
-    required this.onMore,
+    this.onMore,
   });
 
   @override
@@ -485,9 +746,14 @@ class _MemberTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const CircleAvatar(
+            CircleAvatar(
               backgroundColor: Colors.white,
-              child: Icon(Icons.person, color: Colors.grey),
+              backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty
+                  ? NetworkImage(avatarUrl!)
+                  : null,
+              child: avatarUrl == null || avatarUrl!.isEmpty
+                  ? const Icon(Icons.person, color: Colors.grey)
+                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -505,7 +771,11 @@ class _MemberTile extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(icon: const Icon(Icons.more_vert), onPressed: onMore),
+            if (onMore != null)
+              IconButton(
+                onPressed: onMore,
+                icon: const Icon(Icons.more_vert, color: Colors.grey),
+              ),
           ],
         ),
       ),
@@ -515,55 +785,168 @@ class _MemberTile extends StatelessWidget {
 
 class _TaskTile extends StatelessWidget {
   final String title;
-  final String email;
+  final List<String> assignedEmails;
+  final List<String> completedBy;
   final bool isDone;
+  final String? currentUserEmail;
+  final bool isOffline;
   final VoidCallback onTap;
   final VoidCallback onToggle;
 
   const _TaskTile({
     required this.title,
-    required this.email,
+    required this.assignedEmails,
+    required this.completedBy,
     required this.isDone,
+    this.currentUserEmail,
+    required this.isOffline,
     required this.onTap,
     required this.onToggle,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE5E5E5),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
+    final int totalAssigned = assignedEmails.length;
+    final int totalCompleted = completedBy.length;
+    final double progress = totalAssigned > 0
+        ? totalCompleted / totalAssigned
+        : 0;
+    final bool currentUserChecked =
+        currentUserEmail != null &&
+        completedBy.any(
+          (e) =>
+              e.toLowerCase().trim() == currentUserEmail!.toLowerCase().trim(),
+        );
+
+    return AbsorbPointer(
+      absorbing: isOffline,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Stack(
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5E5E5),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        ...assignedEmails.map((email) {
+                          final bool memberChecked = completedBy.any(
+                            (e) =>
+                                e.toLowerCase().trim() == email.toLowerCase().trim(),
+                          );
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                memberChecked
+                                    ? Icons.check_circle
+                                    : Icons.radio_button_unchecked,
+                                size: 14,
+                                color: memberChecked ? Colors.green : Colors.grey,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  email,
+                                  style: TextStyle(
+                                    color: memberChecked ? Colors.green : Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: progress,
+                                  backgroundColor: Colors.grey.withValues(alpha: 0.3),
+                                  color: isDone ? Colors.green : Colors.blue,
+                                  minHeight: 4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '$totalCompleted/$totalAssigned',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isDone ? Colors.green : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  Text(
-                    email,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  Checkbox(
+                    value: currentUserChecked,
+                    onChanged: (val) => onToggle(),
+                    activeColor: Colors.green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
                 ],
               ),
             ),
-            Checkbox(
-              value: isDone,
-              onChanged: (val) => onToggle(),
-              activeColor: Colors.green,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
+            if (isOffline)
+              Positioned.fill(
+                bottom: 12,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                    child: Container(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.75),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.wifi_off, color: Colors.white, size: 14),
+                              SizedBox(width: 8),
+                              Text(
+                                "Offline",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -574,13 +957,26 @@ class _TaskTile extends StatelessWidget {
 class _TaskDetailSheet extends StatelessWidget {
   final dynamic task;
   final bool isOwner;
+  final List<dynamic> teamMembers;
+  final VoidCallback onDelete;
+  final VoidCallback onEditComplete;
 
-  const _TaskDetailSheet({required this.task, required this.isOwner});
+  const _TaskDetailSheet({
+    required this.task,
+    required this.isOwner,
+    required this.teamMembers,
+    required this.onDelete,
+    required this.onEditComplete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final DateTime? deadline = task['deadline'] != null ? DateTime.tryParse(task['deadline']) : null;
-    final String time = deadline != null ? DateFormat('HH:mm').format(deadline) : '--:--';
+    final DateTime? deadline = task['deadline'] != null
+        ? DateTime.tryParse(task['deadline'])
+        : null;
+    final String time = deadline != null
+        ? DateFormat('HH:mm').format(deadline)
+        : '--:--';
 
     return Container(
       decoration: const BoxDecoration(
@@ -602,7 +998,7 @@ class _TaskDetailSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Colors.grey.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -612,65 +1008,65 @@ class _TaskDetailSheet extends StatelessWidget {
               task['judul'] ?? '',
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.access_time, color: Colors.grey),
                 ),
-                child: const Icon(Icons.access_time, color: Colors.grey),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'TIME',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'TIME',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  Text(
-                    time,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                    Text(
+                      time,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Description',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Description',
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
             ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(16),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                task['deskripsi'] ?? 'No description provided.',
+                style: const TextStyle(fontSize: 14),
+              ),
             ),
-            child: Text(
-              task['deskripsi'] ?? 'No description provided.',
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
-          const SizedBox(height: 32),
-          // Allow all members to manage group tasks
-          Row(
+            const SizedBox(height: 32),
+            // Allow all members to manage group tasks
+            Row(
               children: [
                 Expanded(
                   child: TextButton.icon(
@@ -678,26 +1074,30 @@ class _TaskDetailSheet extends StatelessWidget {
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
+                          backgroundColor: AppColors.surface,
                           title: const Text('Delete Task'),
-                          content: const Text('Are you sure you want to delete this task?'),
+                          content: const Text(
+                            'Are you sure you want to delete this task?',
+                          ),
                           actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text(
+                                'Delete',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ),
                           ],
                         ),
                       );
 
-                      if (confirm == true) {
-                        try {
-                          final TeamService teamService = TeamService();
-                          await teamService.deleteTask(task['id']);
-                          if (context.mounted) {
-                            Navigator.pop(context, true); // Close sheet and indicate refresh
-                            ErrorHandler.showSuccessPopup('Task deleted successfully');
-                          }
-                        } catch (e) {
-                          ErrorHandler.handleApiError(e);
-                        }
+                      if (confirm == true && context.mounted) {
+                        Navigator.pop(context); // Close sheet immediately
+                        onDelete();
                       }
                     },
                     icon: const Icon(
@@ -720,53 +1120,22 @@ class _TaskDetailSheet extends StatelessWidget {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      final titleController = TextEditingController(text: task['judul']);
-                      final descController = TextEditingController(text: task['deskripsi']);
-
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Edit Task'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextField(
-                                controller: titleController,
-                                decoration: const InputDecoration(labelText: 'Title'),
-                              ),
-                              TextField(
-                                controller: descController,
-                                decoration: const InputDecoration(labelText: 'Description'),
-                                maxLines: 3,
-                              ),
-                            ],
+                    onPressed: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EditTeamTaskPage(
+                            teamId: task['team_id'],
+                            task: task,
+                            members: teamMembers,
                           ),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                            TextButton(
-                              onPressed: () async {
-                                try {
-                                  final TeamService teamService = TeamService();
-                                  await teamService.updateTask(
-                                    task['id'],
-                                    titleController.text,
-                                    descController.text,
-                                  );
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                  if (context.mounted) {
-                                    Navigator.pop(context, true);
-                                    ErrorHandler.showSuccessPopup('Task updated successfully');
-                                  }
-                                } catch (e) {
-                                  ErrorHandler.handleApiError(e);
-                                }
-                              },
-                              child: const Text('Save'),
-                            ),
-                          ],
                         ),
                       );
+
+                      if (result == true && context.mounted) {
+                        Navigator.pop(context); // Close sheet
+                        onEditComplete();
+                      }
                     },
                     icon: const Icon(Icons.edit_outlined, color: Colors.white),
                     label: const Text(

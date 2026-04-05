@@ -12,6 +12,8 @@ class SecureStorage {
   static const _tokenKey = 'auth_token';
   static const _userKey = 'auth_user';
   static const _deviceKey = 'device_id';
+  static const _lastFcmTokenKey = 'last_fcm_token';
+  static const _lastFcmSyncTimeKey = 'last_fcm_sync_time';
 
   static Future<String> getDeviceId() async {
     final curId = await _storage.read(key: _deviceKey);
@@ -37,6 +39,8 @@ class SecureStorage {
       'id': user.id,
       'name': user.name,
       'email': user.email,
+      'avatar': user.avatar,
+      'avatar_url': user.avatarUrl,
       'isGuest': user.isGuest,
       'loginAt': user.loginAt?.toIso8601String(),
     };
@@ -52,17 +56,47 @@ class SecureStorage {
       ..id = map['id']
       ..name = map['name']
       ..email = map['email']
+      ..avatar = map['avatar']
+      ..avatarUrl = map['avatar_url'] ?? map['avatar']
       ..isGuest = map['isGuest'] ?? false
       ..loginAt = map['loginAt'] != null
           ? DateTime.parse(map['loginAt'])
           : null;
   }
 
+  static Future<String?> getEmail() async {
+    final user = await getUser();
+    return user?.email;
+  }
+
   static Future<void> logout() async {
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userKey);
+    await _storage.delete(key: _lastFcmTokenKey);
+    await _storage.delete(key: _lastFcmSyncTimeKey);
     // CRITICAL: We DO NOT delete the device_id here.
     // This allows guest tasks to persist for this device.
+  }
+
+  static Future<void> saveLastFcmToken(String? token) async {
+    if (token == null) {
+      await _storage.delete(key: _lastFcmTokenKey);
+    } else {
+      await _storage.write(key: _lastFcmTokenKey, value: token);
+    }
+  }
+
+  static Future<String?> getLastFcmToken() async {
+    return await _storage.read(key: _lastFcmTokenKey);
+  }
+
+  static Future<void> saveLastFcmSyncTime(DateTime time) async {
+    await _storage.write(key: _lastFcmSyncTimeKey, value: time.toIso8601String());
+  }
+
+  static Future<DateTime?> getLastFcmSyncTime() async {
+    final str = await _storage.read(key: _lastFcmSyncTimeKey);
+    return str != null ? DateTime.parse(str) : null;
   }
 
   static Future<void> clearAll() async {

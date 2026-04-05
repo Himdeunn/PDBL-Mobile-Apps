@@ -1,4 +1,8 @@
+import 'dart:async';
 import '../../../../core/theme/app_theme.dart';
+
+import '../../../../core/utils/image_utils.dart';
+import '../../../../core/utils/debouncer.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/models/user.dart';
 import '../../auth/services/auth_service.dart';
@@ -11,7 +15,9 @@ import '../widgets/week_strip.dart';
 import '../widgets/daily_task_list.dart';
 import '../../task/models/task_local.dart';
 import '../../task/services/task_repository.dart';
+import '../../../../core/services/connection_service.dart';
 import '../../profile/pages/profile_page.dart';
+import '../../profile/pages/notification_page.dart';
 
 class HomePage extends StatefulWidget {
   final AuthService authService;
@@ -27,19 +33,52 @@ class _HomePageState extends State<HomePage> {
   int _selectedDayIndex = 30;
   DateTime _selectedDate = DateTime.now();
   final TaskRepository _taskRepository = TaskRepository();
+  final _searchDebouncer = Debouncer(milliseconds: 300);
 
   Stream<List<TaskLocal>>? _tasksStream;
   bool _isLoading = true;
   String _searchQuery = '';
+  bool _isOffline = false;
+  StreamSubscription? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
+    _checkInitialConnection();
+    _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
+      if (mounted) {
+        setState(() {
+          _isOffline = !connected;
+        });
+        if (connected) {
+          _loadData();
+        }
+      }
+    });
     _loadData(_selectedDate);
+  }
+
+  Future<void> _checkInitialConnection() async {
+    final connected = await ConnectionService().isConnected();
+    if (mounted) {
+      setState(() {
+        _isOffline = !connected;
+      });
+    }
   }
 
   Future<void> _loadData([DateTime? targetDate]) async {
     final dateToLoad = targetDate ?? _selectedDate;
+    
+    // 1. Get cached user immediately for fast UI response
+    final cachedUser = await widget.authService.getCachedUser();
+    if (cachedUser != null && mounted) {
+      setState(() {
+        _user = cachedUser;
+      });
+    }
+
+    // 2. Perform regular fetch (now faster due to AuthService caching)
     final user = await widget.authService.getCurrentUser();
     final userEmail = user?.email ?? 'guest';
 
@@ -49,6 +88,11 @@ class _HomePageState extends State<HomePage> {
         _isLoading = true;
         _tasksStream = _taskRepository.watchTasksForDate(dateToLoad, userEmail);
       });
+    }
+
+    if (userEmail == 'guest') {
+      if (mounted) setState(() => _isLoading = false);
+      return;
     }
 
     _taskRepository.fetchTasksFromServer(userEmail).then((_) {
@@ -114,6 +158,20 @@ class _HomePageState extends State<HomePage> {
     _loadData();
   }
 
+  void _goToNotifications() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationPage()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchDebouncer.dispose();
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayName = _user?.name ?? 'Guest';
@@ -141,9 +199,11 @@ class _HomePageState extends State<HomePage> {
           children: [
             HomeHeader(
               displayName: displayName,
-              avatarUrl: _user?.avatar,
+              avatarUrl: _user?.avatarUrl,
               isGuest: isGuest,
+              todayTarget: _user?.todayTarget ?? 0,
               onAvatarTap: _goToProfile,
+              onNotificationTap: _goToNotifications,
               onLogoutTap: _logout,
               onLoginTap: _goToLogin,
               onRegisterTap: _goToRegister,
@@ -151,8 +211,12 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 16),
             WudiSearchBar(
               onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
+                _searchDebouncer.run(() {
+                  if (mounted) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  }
                 });
               },
             ),
@@ -263,6 +327,8 @@ class _HomePageState extends State<HomePage> {
                       onRefresh: _loadData,
                       authService: widget.authService,
                       isLoading: _isLoading,
+                      filterDate: _selectedDate,
+                      isOffline: _isOffline,
                     ),
                   ],
                 );
@@ -327,22 +393,26 @@ class _HomePageState extends State<HomePage> {
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.black87, width: 1.5),
                 ),
-                child: _user?.avatar != null
+                child: _user?.avatarUrl != null
                     ? ClipOval(
                         child: Image.network(
-                          _user!.avatar!,
+                          ImageUtils.getAvatarUrl(_user!.avatarUrl!),
+                          key: ValueKey(_user!.avatarUrl),
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, _) => const Icon(Icons.person, size: 24, color: Colors.black54),
+                          errorBuilder: (_, error, __) {
+                            return const Icon(Icons.person, size: 24, color: Colors.black54);
+                          },
                         ),
                       )
-                    : const CircleAvatar(
-                        backgroundColor: Color(0xFFC4D7D6),
-                        child: Icon(Icons.person, size: 24, color: Colors.black54),
+                    : CircleAvatar(
+                        key: const ValueKey('default_avatar'),
+                        backgroundColor: const Color(0xFFC4D7D6),
+                        child: const Icon(Icons.person, size: 24, color: Colors.black54),
                       ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
           Text(
             task.title,
             style: const TextStyle(
@@ -382,8 +452,8 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(width: 8),
                 Text(
                   task.dueTime != null
-                      ? '${task.dueTime} AM - 14.00 PM'
-                      : '08:00 AM - 10:00 AM',
+                      ? _formatTime(task.dueTime!, context)
+                      : '08:00 - 10:00',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -396,5 +466,18 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  String _formatTime(String timeStr, BuildContext context) {
+    try {
+      final parts = timeStr.split(':');
+      final tod = TimeOfDay(
+        hour: int.parse(parts[0]),
+        minute: int.parse(parts[1]),
+      );
+      return tod.format(context);
+    } catch (e) {
+      return timeStr;
+    }
   }
 }

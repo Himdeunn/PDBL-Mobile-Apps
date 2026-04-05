@@ -5,12 +5,15 @@ import '../../task/models/task_local.dart';
 import '../../task/pages/task_page.dart';
 import '../../task/services/task_repository.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import '../../../../core/utils/error_handler.dart';
+import 'dart:ui';
 
 class DailyTaskList extends StatefulWidget {
   final List<TaskLocal> tasks;
   final VoidCallback onRefresh;
   final AuthService? authService;
   final bool isLoading;
+  final DateTime? filterDate;
 
   const DailyTaskList({
     super.key,
@@ -18,7 +21,11 @@ class DailyTaskList extends StatefulWidget {
     required this.onRefresh,
     this.authService,
     this.isLoading = false,
+    this.filterDate,
+    this.isOffline = false,
   });
+
+  final bool isOffline;
 
   @override
   State<DailyTaskList> createState() => _DailyTaskListState();
@@ -28,17 +35,15 @@ class _DailyTaskListState extends State<DailyTaskList> {
   final TaskRepository _taskRepository = TaskRepository();
 
   Future<void> _toggleTask(TaskLocal task) async {
-    // Rely on TaskRepository update + StreamBuilder reactive flow.
-    // Manual setState here can conflict with background sync/watch refreshes.
-    task.isCompleted = !task.isCompleted;
-
-    // Don't await this, let it happen in the background
-    // Repository handles sync with debouncing, locking, and versioning.
-    _taskRepository.updateTask(task);
+    final email = widget.authService?.currentCachedUser?.email ?? 'guest';
+    
+    // Use specialized toggle logic that handles team task individual progress
+    _taskRepository.toggleTaskStatus(task, email);
   }
 
   Future<void> _deleteTask(TaskLocal task) async {
     await _taskRepository.deleteTask(task);
+    ErrorHandler.showSuccessPopup('Task deleted successfully');
     widget.onRefresh();
   }
 
@@ -63,8 +68,10 @@ class _DailyTaskListState extends State<DailyTaskList> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) =>
-                        TaskPage(authService: widget.authService),
+                    builder: (context) => TaskPage(
+                      authService: widget.authService,
+                      filterDate: widget.filterDate ?? DateTime.now(),
+                    ),
                   ),
                 );
               },
@@ -111,6 +118,7 @@ class _DailyTaskListState extends State<DailyTaskList> {
                 task: task,
                 onToggle: () => _toggleTask(task),
                 onDelete: () => _deleteTask(task),
+                isOffline: widget.isOffline,
               );
             },
           ),
@@ -217,11 +225,13 @@ class _TaskItem extends StatelessWidget {
   final TaskLocal task;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
+  final bool isOffline;
 
   const _TaskItem({
     required this.task,
     required this.onToggle,
     required this.onDelete,
+    this.isOffline = false,
   });
 
   Color _getPriorityColor() {
@@ -265,114 +275,168 @@ class _TaskItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Slidable(
-      endActionPane: ActionPane(
-        motion: const ScrollMotion(),
-        children: [
-          SlidableAction(
-            onPressed: (context) => onDelete(),
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-            icon: Icons.delete,
-            label: 'Delete',
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ],
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: task.isCompleted
-              ? AppColors.surface.withValues(alpha: 0.5)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
+    return AbsorbPointer(
+      absorbing: task.teamId != null && isOffline,
+      child: Slidable(
+        endActionPane: ActionPane(
+          motion: const ScrollMotion(),
           children: [
-            GestureDetector(
-              onTap: onToggle,
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  shape: BoxShape.rectangle,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: task.isCompleted
-                        ? AppColors.calendarSelected
-                        : AppColors.calendarSelected,
-                    width: 2,
-                  ),
-                  color: task.isCompleted
-                      ? AppColors.calendarSelected
-                      : Colors.transparent,
-                ),
-                child: task.isCompleted
-                    ? const Icon(Icons.check, color: Colors.white, size: 20)
-                    : null,
-              ),
+            SlidableAction(
+              onPressed: (context) => onDelete(),
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              icon: Icons.delete,
+              label: 'Delete',
+              borderRadius: BorderRadius.circular(16),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: Stack(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: task.isCompleted
+                    ? AppColors.surface.withValues(alpha: 0.5)
+                    : AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
                 children: [
-                  Text(
-                    task.title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      decoration: task.isCompleted
-                          ? TextDecoration.lineThrough
+                  GestureDetector(
+                    onTap: onToggle,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.rectangle,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: task.isCompleted
+                              ? AppColors.calendarSelected
+                              : AppColors.calendarSelected,
+                          width: 2,
+                        ),
+                        color: task.isCompleted
+                            ? AppColors.calendarSelected
+                            : Colors.transparent,
+                      ),
+                      child: task.isCompleted
+                          ? const Icon(Icons.check, color: Colors.white, size: 20)
                           : null,
-                      color: task.isCompleted
-                          ? AppColors.textTertiary
-                          : AppColors.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getPriorityColor(),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          _getPriorityLabel(),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.title,
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 15,
                             fontWeight: FontWeight.bold,
-                            color: _getPriorityTextColor(),
+                            decoration: task.isCompleted
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: task.isCompleted
+                                ? AppColors.textTertiary
+                                : AppColors.textPrimary,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        task.dueTime != null
-                            ? (task.dueTime!.length > 5
-                                  ? task.dueTime!.substring(0, 5)
-                                  : task.dueTime!)
-                            : 'No time',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: task.isCompleted
-                              ? AppColors.textTertiary
-                              : AppColors.textSecondary,
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getPriorityColor(),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _getPriorityLabel(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _getPriorityTextColor(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              task.dueTime != null
+                                  ? _formatTime(task.dueTime!, context)
+                                  : 'No time',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: task.isCompleted
+                                    ? AppColors.textTertiary
+                                    : AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
+            if (task.teamId != null && isOffline)
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                    child: Container(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.wifi_off, color: Colors.white, size: 14),
+                              SizedBox(width: 8),
+                              Text(
+                                "Connection Required",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatTime(String timeStr, BuildContext context) {
+    try {
+      final parts = timeStr.split(':');
+      final tod = TimeOfDay(
+        hour: int.parse(parts[0]),
+        minute: int.parse(parts[1]),
+      );
+      return tod.format(context);
+    } catch (e) {
+      return timeStr;
+    }
   }
 }

@@ -1,9 +1,14 @@
 import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage.dart';
+import '../../../core/utils/error_handler.dart';
+import '../../auth/services/auth_service.dart';
 
 class ProfileService {
   final ApiClient _api = ApiClient();
+  final AuthService? _authService;
+
+  ProfileService({AuthService? authService}) : _authService = authService;
 
   Future<void> updateAvatar(String filePath) async {
     try {
@@ -11,21 +16,22 @@ class ProfileService {
         'avatar': await MultipartFile.fromFile(filePath),
       });
 
-      final response = await _api.post('/profile/avatar', data: formData);
+      final response = await _api.post('profile/avatar', data: formData);
 
       if (response.statusCode == 200) {
-        final userData = response.data['user'] as Map<String, dynamic>?;
-        if (userData != null) {
-          final currentUser = await SecureStorage.getUser();
-          if (currentUser != null) {
-            // Updated user model would include avatar URL if stored there
-            // For now let's just refresh local user info if needed
-            // SecureStorage.saveUser(currentUser);
+        final avatarUrl = response.data['avatar_url'] as String?;
+        final currentUser = await SecureStorage.getUser();
+        if (currentUser != null && avatarUrl != null) {
+          currentUser.avatarUrl = avatarUrl;
+          await SecureStorage.saveUser(currentUser);
+          if (_authService != null) {
+            await _authService.updateUserCache(currentUser);
           }
         }
       }
-    } on DioException catch (e) {
-      throw ApiException.fromDioError(e);
+    } catch (e) {
+      ErrorHandler.handleApiError(e);
+      rethrow;
     }
   }
 
@@ -36,15 +42,16 @@ class ProfileService {
   }) async {
     try {
       await _api.post(
-        '/profile/password',
+        'profile/password',
         data: {
           'current_password': currentPassword,
           'password': newPassword,
           'password_confirmation': newPasswordConfirmation,
         },
       );
-    } on DioException catch (e) {
-      throw ApiException.fromDioError(e);
+    } catch (e) {
+      ErrorHandler.handleApiError(e);
+      rethrow;
     }
   }
 
@@ -54,7 +61,7 @@ class ProfileService {
   }) async {
     try {
       final response = await _api.post(
-        '/profile/email',
+        'profile/email',
         data: {'email': email, 'current_password': currentPassword},
       );
 
@@ -64,17 +71,21 @@ class ProfileService {
         if (currentUser != null) {
           currentUser.email = userData['email'];
           await SecureStorage.saveUser(currentUser);
+          if (_authService != null) {
+            await _authService.updateUserCache(currentUser);
+          }
         }
       }
-    } on DioException catch (e) {
-      throw ApiException.fromDioError(e);
+    } catch (e) {
+      ErrorHandler.handleApiError(e);
+      rethrow;
     }
   }
 
   Future<void> updateProfile({required String name}) async {
     try {
       final response = await _api.post(
-        '/profile/update',
+        'profile/update',
         data: {'name': name},
       );
 
@@ -84,11 +95,14 @@ class ProfileService {
         if (currentUser != null) {
           currentUser.name = userData['name'];
           await SecureStorage.saveUser(currentUser);
+          if (_authService != null) {
+            await _authService.updateUserCache(currentUser);
+          }
         }
       }
-    } on DioException catch (e) {
-      throw ApiException.fromDioError(e);
+    } catch (e) {
+      ErrorHandler.handleApiError(e);
+      rethrow;
     }
   }
 }
-

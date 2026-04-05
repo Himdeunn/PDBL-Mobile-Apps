@@ -1,13 +1,20 @@
 import '../../../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../auth/services/auth_service.dart';
 import '../models/task_local.dart';
 import '../services/task_repository.dart';
+import '../../../../core/utils/error_handler.dart';
+import '../../../../core/services/connection_service.dart';
+import 'dart:async';
+import 'dart:ui';
 import 'create_task_page.dart';
 
 class TaskPage extends StatefulWidget {
   final AuthService? authService;
-  const TaskPage({super.key, this.authService});
+  final String? taskId; // Added for deep linking
+  final DateTime? filterDate; // Added for today task filtering
+  const TaskPage({super.key, this.authService, this.taskId, this.filterDate});
 
   @override
   State<TaskPage> createState() => _TaskPageState();
@@ -17,11 +24,48 @@ class _TaskPageState extends State<TaskPage> {
   final TaskRepository _repository = TaskRepository();
   List<TaskLocal> _tasks = [];
   bool _isLoading = true;
+  bool _isOffline = false;
+  StreamSubscription? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadTasks();
+    _checkInitialConnection();
+    _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
+      if (mounted) {
+        setState(() {
+          _isOffline = !connected;
+        });
+        if (connected) {
+          _loadTasks();
+        }
+      }
+    });
+    _loadTasks().then((_) {
+      if (widget.taskId != null) {
+        final task = _tasks.where((t) => t.id.toString() == widget.taskId).firstOrNull;
+        if (task != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showTaskDetails(task);
+          });
+        }
+      }
+    });
+  }
+
+  Future<void> _checkInitialConnection() async {
+    final connected = await ConnectionService().isConnected();
+    if (mounted) {
+      setState(() {
+        _isOffline = !connected;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadTasks() async {
@@ -29,7 +73,9 @@ class _TaskPageState extends State<TaskPage> {
     final user = await widget.authService?.getCurrentUser();
     final userEmail = user?.email ?? 'guest';
 
-    final tasks = await _repository.getAllTasks(userEmail);
+    final tasks = widget.filterDate != null
+        ? await _repository.getTasksForDate(widget.filterDate!, userEmail)
+        : await _repository.getAllTasks(userEmail);
     if (mounted) {
       setState(() {
         _tasks = tasks;
@@ -39,14 +85,17 @@ class _TaskPageState extends State<TaskPage> {
   }
 
   Future<void> _toggleTask(TaskLocal task) async {
-    task.isCompleted = !task.isCompleted;
-    _repository.updateTask(task);
+    final user = await widget.authService?.getCurrentUser();
+    final userEmail = user?.email ?? 'guest';
+    
+    await _repository.toggleTaskStatus(task, userEmail);
     // Refresh the list to reflect changes
     setState(() {});
   }
 
   Future<void> _deleteTask(TaskLocal task) async {
     await _repository.deleteTask(task);
+    ErrorHandler.showSuccessPopup('Task deleted successfully');
     _loadTasks();
   }
 
@@ -134,8 +183,15 @@ class _TaskPageState extends State<TaskPage> {
                 final task = sortedTasks[index];
                 return _TodayTaskCard(
                   task: task,
-                  onToggle: () => _toggleTask(task),
-                  onTap: () => _showTaskDetails(task),
+                  onToggle: () {
+                    if (_isOffline && task.teamId != null) return;
+                    _toggleTask(task);
+                  },
+                  onTap: () {
+                    if (_isOffline && task.teamId != null) return;
+                    _showTaskDetails(task);
+                  },
+                  isOffline: _isOffline,
                 );
               },
             ),
@@ -184,11 +240,13 @@ class _TodayTaskCard extends StatelessWidget {
   final TaskLocal task;
   final VoidCallback onToggle;
   final VoidCallback onTap;
+  final bool isOffline;
 
   const _TodayTaskCard({
     required this.task,
     required this.onToggle,
     required this.onTap,
+    this.isOffline = false,
   });
 
   Color _getPriorityBgColor() {
@@ -262,126 +320,193 @@ class _TodayTaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCompleted = task.isCompleted;
+    final bool isTeamOffline = task.teamId != null && isOffline;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 300),
-        opacity: isCompleted ? 0.55 : 1.0,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return AbsorbPointer(
+      absorbing: isTeamOffline,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 300),
+          opacity: isCompleted ? 0.55 : 1.0,
+          child: Stack(
             children: [
-              // ── Checkbox ──
-              GestureDetector(
-                onTap: onToggle,
-                child: Container(
-                  width: 30,
-                  height: 30,
-                  margin: const EdgeInsets.only(top: 2),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.calendarSelected,
-                      width: 2,
-                    ),
-                    color: isCompleted
-                        ? AppColors.calendarSelected
-                        : Colors.transparent,
-                  ),
-                  child: isCompleted
-                      ? const Icon(Icons.check, color: Colors.white, size: 18)
-                      : null,
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              ),
-              const SizedBox(width: 14),
-              // ── Content ──
-              Expanded(
-                child: Column(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      task.title,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: isCompleted
-                            ? AppColors.textTertiary
-                            : AppColors.textPrimary,
-                        decoration: isCompleted
-                            ? TextDecoration.lineThrough
+                    // ── Checkbox ──
+                    GestureDetector(
+                      onTap: onToggle,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        margin: const EdgeInsets.only(top: 2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.calendarSelected,
+                            width: 2,
+                          ),
+                          color: isCompleted
+                              ? AppColors.calendarSelected
+                              : Colors.transparent,
+                        ),
+                        child: isCompleted
+                            ? const Icon(Icons.check, color: Colors.white, size: 18)
                             : null,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        // Priority badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
+                    const SizedBox(width: 14),
+                    // ── Content ──
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            task.title,
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: isCompleted
+                                  ? AppColors.textTertiary
+                                  : AppColors.textPrimary,
+                              decoration: isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
                           ),
-                          decoration: BoxDecoration(
-                            color: _getPriorityBgColor(),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          const SizedBox(height: 6),
+                          Row(
                             children: [
-                              Icon(
-                                _getPriorityIcon(),
-                                size: 12,
-                                color: _getPriorityTextColor(),
+                              // Priority badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _getPriorityBgColor(),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _getPriorityIcon(),
+                                      size: 12,
+                                      color: _getPriorityTextColor(),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _getPriorityLabel(),
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: _getPriorityTextColor(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 10),
+                              // Date if exists
+                              if (task.dueDate != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: Text(
+                                    DateFormat('d MMM yyyy')
+                                        .format(task.dueDate!),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: isCompleted
+                                          ? AppColors.textTertiary
+                                          : AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              // Time
                               Text(
-                                _getPriorityLabel(),
+                                _formatTime(),
                                 style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: _getPriorityTextColor(),
+                                  fontSize: 12,
+                                  color: isCompleted
+                                      ? AppColors.textTertiary
+                                      : AppColors.textSecondary,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        // Time
-                        Text(
-                          _formatTime(),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isCompleted
-                                ? AppColors.textTertiary
-                                : AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (task.description != null &&
-                        task.description!.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Description : ${task.description}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isCompleted
-                              ? AppColors.textTertiary
-                              : AppColors.textSecondary,
-                        ),
+                          if (task.description != null &&
+                              task.description!.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Description: ${task.description}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isCompleted
+                                    ? AppColors.textTertiary
+                                    : AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
+              if (isTeamOffline)
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                      child: Container(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.wifi_off,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  "Connection Required",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -516,6 +641,47 @@ class _TaskDetailSheet extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          // ── Date ──
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.calendar_today_rounded,
+                  size: 20,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'DUE DATE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[500],
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    DateFormat('MMM dd, yyyy').format(task.dueDate ?? DateTime.now()),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 20),
 

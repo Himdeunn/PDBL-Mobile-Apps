@@ -8,49 +8,11 @@ import 'login_page.dart';
 import 'register_page.dart';
 import '../../shell/pages/main_navigation.dart';
 
-class WelcomePage extends StatefulWidget {
+class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
 
   @override
-  State<WelcomePage> createState() => _WelcomePageState();
-}
-
-class _WelcomePageState extends State<WelcomePage> {
-  bool _checkingSession = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkExistingSession();
-  }
-
-  Future<void> _checkExistingSession() async {
-    final authService = AuthService();
-    final isLoggedIn = await authService.isLoggedIn();
-
-    if (isLoggedIn && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MainNavigation(authService: authService),
-        ),
-      );
-      return;
-    }
-    if (mounted) setState(() => _checkingSession = false);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_checkingSession) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
-      );
-    }
-
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = screenWidth > 600 ? screenWidth * 0.15 : 32.0;
 

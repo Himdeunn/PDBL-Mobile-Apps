@@ -18,7 +18,7 @@ class TeamService {
     await _api.post('/teams/$teamId/invite', data: {'email': email});
   }
 
-  Future<Map<String, dynamic>> getTeamDetails(int teamId) async {
+  Future<dynamic> getTeamDetails(int teamId) async {
     final response = await _api.get('/teams/$teamId');
     return response.data;
   }
@@ -46,7 +46,7 @@ class TeamService {
     await _api.post('/teams/$teamId/decline');
   }
 
-  Future<Map<String, dynamic>> getDashboardData() async {
+  Future<dynamic> getDashboardData() async {
     final response = await _api.get('/teams');
     return response.data;
   }
@@ -63,10 +63,42 @@ class TeamService {
     await _api.delete('/todos/$taskId');
   }
 
-  Future<void> updateTask(int taskId, String title, String? description) async {
-    await _api.put(
-      '/todos/$taskId',
-      data: {'judul': title, 'deskripsi': description},
-    );
+  Future<void> updateTask(
+    int taskId,
+    String title,
+    String? description, {
+    DateTime? deadline,
+    String? priority,
+    List<String>? assignedEmails,
+  }) async {
+    final Map<String, dynamic> data = {
+      'judul': title,
+      'deskripsi': description,
+    };
+
+    if (deadline != null) {
+      data['deadline'] = deadline.toIso8601String();
+      data['is_deadline_set'] = true;
+    }
+
+    if (priority != null) {
+      data['priority'] = priority;
+    }
+
+    if (assignedEmails != null) {
+      data['assigned_emails'] = assignedEmails;
+    }
+
+    await _api.put('/todos/$taskId', data: data);
+  }
+
+  Future<Map<String, dynamic>> toggleMemberTaskStatus(int taskId) async {
+    final response = await _api.post('/todos/$taskId/toggle-member');
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> checkEmail(String email) async {
+    final response = await _api.get('/users/check-email', queryParameters: {'email': email});
+    return response.data;
   }
 }

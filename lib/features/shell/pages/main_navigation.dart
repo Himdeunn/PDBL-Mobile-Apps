@@ -6,7 +6,6 @@ import '../../home/pages/home_page.dart';
 import '../../task/pages/task_page.dart';
 import '../../calendar/pages/calendar_page.dart';
 import '../../group/pages/group_page.dart';
-import '../../auth/pages/welcome_page.dart';
 
 class MainNavigation extends StatefulWidget {
   final AuthService authService;
@@ -27,63 +26,20 @@ class _MainNavigationState extends State<MainNavigation> {
       HomePage(authService: widget.authService),
       TaskPage(authService: widget.authService),
       CalendarPage(authService: widget.authService),
-      const GroupPage(),
+      GroupPage(authService: widget.authService),
     ];
   }
 
-  void _onNavTap(int index) async {
+  void _onNavTap(int index) {
     if (index == _currentIndex) return;
-
-    if (index == 3) {
-      final user = await widget.authService.getCurrentUser();
-      if (user == null || user.isGuest) {
-        if (mounted) {
-          _showAuthRequiredDialog();
-        }
-        return;
-      }
-    }
-
     setState(() => _currentIndex = index);
-  }
-
-  void _showAuthRequiredDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Authentication Required'),
-        content: const Text(
-          'Group features are only available for registered users. Would you like to log in or register now?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Later'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const WelcomePage()),
-                (route) => false,
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Login / Register'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: false, // Prevents navbar from following keyboard
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -93,31 +49,41 @@ class _MainNavigationState extends State<MainNavigation> {
             bottom: false,
             child: Align(
               alignment: Alignment.topCenter,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                child: KeyedSubtree(
-                  key: ValueKey<int>(_currentIndex),
-                  child: _pages[_currentIndex],
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 100), // Adjusted for slimmer navbar
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+                  child: IndexedStack(
+                    key: ValueKey<int>(_currentIndex),
+                    index: _currentIndex,
+                    children: _pages,
+                  ),
                 ),
               ),
             ),
           ),
           // ── Floating bottom navbar ──
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: MediaQuery.of(context).padding.bottom + 8,
-            child: ClipRect(
-              clipBehavior: Clip.none,
-              child: WudiBottomBar(
-                currentIndex: _currentIndex,
-                onTap: _onNavTap,
-                authService: widget.authService,
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            left: 8,
+            right: 8,
+            bottom: MediaQuery.of(context).viewInsets.bottom > 0 
+                ? -100 // Fully hide below screen when keyboard is up
+                : MediaQuery.of(context).padding.bottom + 12,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: MediaQuery.of(context).viewInsets.bottom > 0 ? 0 : 1,
+              child: ClipRect(
+                clipBehavior: Clip.none,
+                child: WudiBottomBar(
+                  currentIndex: _currentIndex,
+                  onTap: _onNavTap,
+                  authService: widget.authService,
+                ),
               ),
             ),
           ),

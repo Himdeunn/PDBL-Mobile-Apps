@@ -1,11 +1,11 @@
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/auth_required_dialog.dart';
 import '../../auth/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import 'package:curved_navigation_bar/curved_navigation_bar.dart';
+
 import '../../task/pages/create_task_page.dart';
 import '../../group/pages/create_group_task_page.dart';
-import '../../auth/pages/welcome_page.dart';
 
 class WudiBottomBar extends StatefulWidget {
   final int currentIndex;
@@ -46,12 +46,12 @@ class _WudiBottomBarState extends State<WudiBottomBar>
     _internalIndex = widget.currentIndex;
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 180),
     );
     _expandAnim = CurvedAnimation(
       parent: _animController,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeIn,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     );
   }
 
@@ -75,33 +75,27 @@ class _WudiBottomBarState extends State<WudiBottomBar>
   }
 
   void _showOverlay() {
-    if (_overlayEntry != null) return;
+    final navigator = Navigator.of(context);
     _overlayEntry = OverlayEntry(
-      builder: (context) => _PlusMenuOverlay(
+      builder: (overlayContext) => _PlusMenuOverlay(
         anim: _expandAnim,
         layerLink: _layerLink,
         onClose: _closePlusMenu,
         onTapItem: (index) async {
           _closePlusMenu();
           if (index == 0) {
-            Navigator.push(
-              context,
+            navigator.push(
               MaterialPageRoute(
                 builder: (_) => CreateTaskPage(authService: widget.authService),
               ),
             );
           } else if (index == 1) {
-            final user = await widget.authService?.getCurrentUser();
-            if (user == null || user.isGuest) {
-              if (context.mounted) {
-                _showAuthRequiredDialog(context);
-              }
+            if (widget.authService?.currentCachedUser?.isGuest ?? true) {
+              AuthRequiredDialog.show(context);
               return;
             }
-
-            if (context.mounted) {
-              Navigator.push(
-                context,
+            if (navigator.context.mounted) {
+              navigator.push(
                 MaterialPageRoute(
                   builder: (_) =>
                       CreateGroupTaskPage(authService: widget.authService),
@@ -113,39 +107,6 @@ class _WudiBottomBarState extends State<WudiBottomBar>
       ),
     );
     Overlay.of(context).insert(_overlayEntry!);
-  }
-
-  void _showAuthRequiredDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Authentication Required'),
-        content: const Text(
-          'Creating team projects is only available for registered users. Would you like to log in or register now?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Later'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const WelcomePage()),
-                (route) => false,
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Login / Register'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _hideOverlay() {
@@ -160,7 +121,9 @@ class _WudiBottomBarState extends State<WudiBottomBar>
         _animController.forward();
         _showOverlay();
       } else {
-        _animController.reverse().then((_) => _hideOverlay());
+        _animController.reverse().then((_) {
+          if (mounted) _hideOverlay();
+        });
       }
     });
   }
@@ -169,7 +132,9 @@ class _WudiBottomBarState extends State<WudiBottomBar>
     if (!_plusMenuOpen) return;
     setState(() {
       _plusMenuOpen = false;
-      _animController.reverse().then((_) => _hideOverlay());
+      _animController.reverse().then((_) {
+        if (mounted) _hideOverlay();
+      });
     });
   }
 
@@ -191,70 +156,98 @@ class _WudiBottomBarState extends State<WudiBottomBar>
     return CompositedTransformTarget(
       link: _layerLink,
       child: Padding(
-        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 32, top: 0),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         child: Container(
-          height: 85, // Buffered height for rising icon
+          height: 60,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
           decoration: BoxDecoration(
+            color: AppColors.primaryDark,
             borderRadius: BorderRadius.circular(100),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primaryDark.withValues(alpha: 0.4),
-                blurRadius: 20,
-                spreadRadius: 2,
-                offset: const Offset(0, 10),
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(100),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: CurvedNavigationBar(
-                    index: _internalIndex,
-                    backgroundColor: Colors.transparent,
-                    color: AppColors.primaryDark,
-                    buttonBackgroundColor: AppColors.surface,
-                    animationDuration: const Duration(milliseconds: 300),
-                    height: 65, // Thin bar look
-                    letIndexChange: (index) => true,
-                    onTap: _onItemTap,
-                    items: [
-                      Icon(
-                        Icons.home_rounded,
-                        size: 28,
-                        color: _internalIndex == 0
-                            ? AppColors.primaryDark
-                            : AppColors.surface,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final double totalWidth = constraints.maxWidth;
+              final double itemWidth = totalWidth / 4;
+              
+              // We calculate the center of the active item
+              // For index i, the center is at itemWidth * i + itemWidth / 2
+              // The indicator's left position (48px wide) would be:
+              // center - 24
+              final double indicatorLeft = (itemWidth * _internalIndex) + (itemWidth / 2) - 24;
+
+              return Stack(
+                children: [
+                  // ── Moving Indicator ──
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOutCubic,
+                    left: indicatorLeft,
+                    top: (60 - 48) / 2, // Centered vertically in 60px height
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        color: AppColors.surface,
+                        shape: BoxShape.circle,
                       ),
-                      Icon(
-                        Icons.add,
-                        size: 28,
-                        color: _internalIndex == 1
-                            ? AppColors.primaryDark
-                            : AppColors.surface,
-                      ),
-                      Icon(
-                        Icons.calendar_month_rounded,
-                        size: 28,
-                        color: _internalIndex == 2
-                            ? AppColors.primaryDark
-                            : AppColors.surface,
-                      ),
-                      Icon(
-                        Icons.group_outlined,
-                        size: 28,
-                        color: _internalIndex == 3
-                            ? AppColors.primaryDark
-                            : AppColors.surface,
-                      ),
+                    ),
+                  ),
+                  // ── Icons ──
+                  Row(
+                    children: [
+                      Expanded(child: _BottomNavItem(index: 0, icon: Icons.home_rounded)),
+                      Expanded(child: _BottomNavItem(index: 1, icon: Icons.add_rounded)),
+                      Expanded(child: _BottomNavItem(index: 2, icon: Icons.calendar_month_rounded)),
+                      Expanded(child: _BottomNavItem(index: 3, icon: Icons.group_rounded)),
                     ],
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomNavItem extends StatelessWidget {
+  final int index;
+  final IconData icon;
+
+  const _BottomNavItem({
+    required this.index,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // We access the state using findAncestorStateOfType for simplicity or just pass the logic.
+    // However, since WudiBottomBar is a StatefulWidget, we can just keep the logic in the parent
+    // but the user wants "performa agak cepat", so extracting to a separate widget is good.
+    // For this specific implementation, it's easier to keep it as a method or a local widget.
+    
+    final state = context.findAncestorStateOfType<_WudiBottomBarState>()!;
+    final bool isActive = state._internalIndex == index;
+
+    return GestureDetector(
+      onTap: () => state._onItemTap(index),
+      behavior: HitTestBehavior.opaque,
+      child: Center(
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 200),
+          scale: isActive ? 1.1 : 1.0,
+          child: Icon(
+            icon,
+            size: 28,
+            color: isActive ? AppColors.primaryDark : AppColors.surface,
           ),
         ),
       ),
@@ -280,103 +273,94 @@ class _PlusMenuOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const subBtnSize = 44.0;
-    const radius = 48.0;
+    const radius = 38.0; // Brought closer (was 48)
     final angles = [-150.0, -30.0];
 
-    return GestureDetector(
-      onTap: onClose,
-      behavior: HitTestBehavior.translucent,
-      child: Material(
-        color: Colors.transparent,
-        child: Stack(
-          children: [
-            CompositedTransformFollower(
-              link: layerLink,
-              showWhenUnlinked: false,
-              offset: const Offset(0, -75), // Perfectly above the plus button
-              child: AnimatedBuilder(
-                animation: anim,
-                builder: (context, _) {
-                  final progress = anim.value;
-                  if (progress == 0) return const SizedBox.shrink();
+    return Stack(
+      children: [
+        // Backdrop to close menu
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: onClose,
+            behavior: HitTestBehavior.opaque,
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        CompositedTransformFollower(
+          link: layerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, -115), // Adjusted for 60px height bar
+          child: AnimatedBuilder(
+            animation: anim,
+            builder: (context, _) {
+              final progress = anim.value;
+              if (progress == 0) return const SizedBox.shrink();
 
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      final barWidth = constraints.maxWidth;
-                      // Centering logic for 4 items: plus is centered at (Width / 4) * 1.5 approx? 
-                      // Actually 4 items means centers are at 1/8, 3/8, 5/8, 7/8. 
-                      // "Add" is index 1, so center is 3/8 = 0.375
-                      final plusCenterX = barWidth * 0.375;
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final barWidth = constraints.maxWidth;
+                  final plusCenterX = barWidth * 0.375;
+                  
+                  // The container for sub-buttons
+                  return SizedBox(
+                    width: barWidth,
+                    height: 120, // Tall enough to contain the buttons
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: List.generate(
+                        _WudiBottomBarState._plusSubItems.length,
+                        (i) {
+                          final rad = angles[i] * math.pi / 180;
+                          final dx = radius * math.cos(rad) * progress;
+                          final dy = radius * math.sin(rad) * progress;
 
-                      return Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          ...List.generate(
-                            _WudiBottomBarState._plusSubItems.length,
-                            (i) {
-                              final rad = angles[i] * math.pi / 180;
-                              final dx = radius * math.cos(rad) * progress;
-                              final dy = radius * math.sin(rad) * progress;
-
-                              final left =
-                                  plusCenterX + dx - (subBtnSize + 80) / 2;
-                              final top = 80.0 + dy - 60.0;
-
-                              return Positioned(
-                                left: left,
-                                top: top,
-                                width: subBtnSize + 80,
-                                child: Transform.scale(
-                                  scale: progress.clamp(0.0, 1.0),
-                                  child: Opacity(
-                                    opacity: progress.clamp(0.0, 1.0),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        GestureDetector(
-                                          onTap: () => onTapItem(i),
-                                          child: Container(
-                                            width: subBtnSize,
-                                            height: subBtnSize,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: AppColors.surface,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withValues(alpha: 0.2),
-                                                  blurRadius: 12,
-                                                  spreadRadius: 1,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Icon(
-                                              _WudiBottomBarState
-                                                  ._plusSubItems[i]
-                                                  .icon,
-                                              color: AppColors.primary,
-                                              size: 24,
-                                            ),
-                                          ),
+                          // The plus icon center is roughly at the bottom of this 120h box
+                          // So we add 110 to dy to position it relative to the top of the box
+                          return Positioned(
+                            left: plusCenterX + dx - subBtnSize / 2,
+                            top: 110 + dy - subBtnSize / 2, 
+                            child: Transform.scale(
+                              scale: progress.clamp(0.0, 1.0),
+                              child: Opacity(
+                                opacity: progress.clamp(0.0, 1.0),
+                                child: GestureDetector(
+                                  onTap: () => onTapItem(i),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Container(
+                                    width: subBtnSize,
+                                    height: subBtnSize,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppColors.surface,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.2),
+                                          blurRadius: 12,
+                                          spreadRadius: 1,
+                                          offset: const Offset(0, 4),
                                         ),
                                       ],
                                     ),
+                                    child: Icon(
+                                      _WudiBottomBarState._plusSubItems[i].icon,
+                                      color: AppColors.primary,
+                                      size: 24,
+                                    ),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
-                        ],
-                      );
-                    },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   );
                 },
-              ),
-            ),
-          ],
+              );
+            },
+          ),
         ),
-      ),
+      ],
     );
   }
 }

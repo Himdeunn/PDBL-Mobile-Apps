@@ -6,7 +6,8 @@ import '../../../../core/theme/primary_textfield.dart';
 import '../services/auth_service.dart';
 import 'register_page.dart';
 import '../../shell/pages/main_navigation.dart';
-import '../../task/services/task_repository.dart';
+import '../../../../core/utils/error_handler.dart';
+import '../../../../core/services/connection_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -16,11 +17,18 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
+
+  // Rate limiting: prevent brute-force login attempts
+  int _failedAttempts = 0;
+  DateTime? _lockoutUntil;
+  static const int _maxAttempts = 5;
+  static const Duration _lockoutDuration = Duration(seconds: 30);
 
   @override
   void dispose() {
@@ -36,27 +44,42 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _onLogin() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-
-    if (email.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in all fields');
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    setState(() {
+    // Rate limiting check
+    if (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)) {
+      final remaining = _lockoutUntil!.difference(DateTime.now()).inSeconds;
+      ErrorHandler.showErrorPopup(
+        'Too many failed attempts. Please wait $remaining seconds.',
+      );
+      return;
+    }
+
+    if (mounted) setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final authService = AuthService();
-      final user = await authService.login(email: email, password: password);
+      // Check network connection
+      if (!await ConnectionService().isConnected()) {
+        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
-      // Migrate guest tasks to user email
-      await TaskRepository().migrateGuestTasksToUser(user.email ?? '');
+      final authService = AuthService();
+      await authService.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
 
       if (!mounted) return;
+      _failedAttempts = 0;
+      _lockoutUntil = null;
+      ErrorHandler.showSuccessPopup('Successfully logged in!');
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -66,7 +89,16 @@ class _LoginPageState extends State<LoginPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.toString());
+      _failedAttempts++;
+      if (_failedAttempts >= _maxAttempts) {
+        _lockoutUntil = DateTime.now().add(_lockoutDuration);
+        _failedAttempts = 0;
+        ErrorHandler.showErrorPopup(
+          'Too many failed attempts. Please wait 30 seconds before trying again.',
+        );
+      } else {
+        ErrorHandler.handleApiError(e);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -140,28 +172,62 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
 
-                    // Email Field
-                    CustomTextField(
-                      controller: _emailController,
-                      hintText: 'Enter Your Email',
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Password Field
-                    CustomTextField(
-                      controller: _passwordController,
-                      hintText: 'Enter Your Password',
-                      obscureText: _obscurePassword,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: AppColors.textTertiary,
+                    AbsorbPointer(
+                      absorbing: _isLoading,
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          children: [
+                            // Email Field
+                            CustomTextField(
+                              controller: _emailController,
+                              label: 'Email',
+                              enabled: !_isLoading,
+                              isRequired: true,
+                              hintText: 'Enter Your Email',
+                              keyboardType: TextInputType.emailAddress,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Email is required';
+                                }
+                                if (!value.contains('@')) {
+                                  return 'Please enter a valid email';
+                                }
+                                return null;
+                              },
+                            ),
+  
+                            const SizedBox(height: 18),
+  
+                            // Password Field
+                            CustomTextField(
+                              controller: _passwordController,
+                              label: 'Password',
+                              enabled: !_isLoading,
+                              isRequired: true,
+                              hintText: 'Enter Your Password',
+                              obscureText: _obscurePassword,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Password is required';
+                                }
+                                if (value.length < 6) {
+                                  return 'Password must be at least 6 characters';
+                                }
+                                return null;
+                              },
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: AppColors.textTertiary,
+                                ),
+                                onPressed: _togglePasswordVisibility,
+                              ),
+                            ),
+                          ],
                         ),
-                        onPressed: _togglePasswordVisibility,
                       ),
                     ),
 

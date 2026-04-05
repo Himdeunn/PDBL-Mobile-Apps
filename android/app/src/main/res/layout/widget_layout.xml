@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:id="@+id/tab_personal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/tab_selected"
+            android:gravity="center"
+            android:padding="8dp"
+            android:text="Personal"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tab_team"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/tab_unselected"
+            android:gravity="center"
+            android:padding="8dp"
+            android:text="Team"
+            android:textColor="#333333" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ListView
+            android:id="@+id/widget_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@android:color/transparent"
+            android:dividerHeight="4dp" />
+
+        <!-- ListView's internal empty view -->
+        <TextView
+            android:id="@+id/widget_empty_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="All caught up! ✨"
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:visibility="gone" />
+            
+        <!-- No Team State (Manual) -->
+        <TextView
+            android:id="@+id/widget_no_team"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:padding="16dp"
+            android:text="Be the first to build a team or invite others!"
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <!-- Auth Needed State -->
+        <LinearLayout
+            android:id="@+id/widget_auth_needed"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sign in to access team tasks"
+                android:textColor="#333333"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+                
+            <TextView
+                android:id="@+id/btn_login"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/widget_button_background"
+                android:paddingHorizontal="20dp"
+                android:paddingVertical="8dp"
+                android:text="Login / Register"
+                android:textColor="#333333"
+                android:textStyle="bold"
+                android:elevation="2dp" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

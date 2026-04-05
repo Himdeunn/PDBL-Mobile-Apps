@@ -7,6 +7,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../auth/services/auth_service.dart';
 import '../../auth/pages/welcome_page.dart';
 import '../../../core/utils/error_handler.dart';
+import '../../../core/services/connection_service.dart';
+
 
 class ProfilePage extends StatefulWidget {
   final AuthService authService;
@@ -18,19 +20,28 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final ProfileService _profileService = ProfileService();
+  late final ProfileService _profileService;
   final ImagePicker _picker = ImagePicker();
   User? _user;
   bool _loggingOut = false;
   bool _updatingAvatar = false;
+  DateTime? _lastProfileUpdate;
 
   @override
   void initState() {
     super.initState();
+    _profileService = ProfileService(authService: widget.authService);
     _loadUser();
   }
 
   Future<void> _loadUser() async {
+    // 1. Get cached user first for immediate display
+    final cachedUser = await widget.authService.getCachedUser();
+    if (mounted && cachedUser != null) {
+      setState(() => _user = cachedUser);
+    }
+
+    // 2. Perform regular refresh (now faster due to AuthService caching)
     final user = await widget.authService.getCurrentUser();
     if (mounted) setState(() => _user = user);
   }
@@ -48,6 +59,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _pickAndUploadImage() async {
     try {
+      // Check network connection
+      if (!await ConnectionService().isConnected()) {
+        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+        return;
+      }
+
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 70,
@@ -55,13 +72,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
       if (image == null) return;
 
-      // Check file size (2MB = 2 * 1024 * 1024 bytes)
+      // Check file size (1MB = 1 * 1024 * 1024 bytes)
       final File file = File(image.path);
       final int sizeInBytes = await file.length();
-      if (sizeInBytes > 2 * 1024 * 1024) {
+      if (sizeInBytes > 1 * 1024 * 1024) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Image size must be less than 2MB')),
+          const SnackBar(content: Text('Image size must be less than 1MB')),
         );
         return;
       }
@@ -73,7 +90,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       ErrorHandler.showSuccessPopup('Profile picture updated successfully');
     } catch (e) {
-      ErrorHandler.handleApiError(e);
+      // Error handled by ProfileService
     } finally {
       if (mounted) setState(() => _updatingAvatar = false);
     }
@@ -87,6 +104,7 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
           title: const Text('Edit Profile Name'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -107,6 +125,20 @@ class _ProfilePageState extends State<ProfilePage> {
                   ? null
                   : () async {
                       if (nameController.text.trim().isEmpty) return;
+                      
+                      // Rate limit check (10 seconds)
+                      if (_lastProfileUpdate != null && 
+                          DateTime.now().difference(_lastProfileUpdate!).inSeconds < 10) {
+                        ErrorHandler.showErrorPopup('Please wait a moment before updating again');
+                        return;
+                      }
+
+                      // Check network connection
+                      if (!await ConnectionService().isConnected()) {
+                        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+                        return;
+                      }
+
                       setDialogState(() => loading = true);
                       try {
                         await _profileService.updateProfile(
@@ -114,10 +146,12 @@ class _ProfilePageState extends State<ProfilePage> {
                         );
                         if (!context.mounted) return;
                         Navigator.pop(context);
-                        ErrorHandler.showSuccessPopup('Profile updated successfully');
+                        _lastProfileUpdate = DateTime.now();
+                        _loadUser();
+                        ErrorHandler.showSuccessPopup(
+                            'Profile updated successfully');
                       } catch (e) {
                         setDialogState(() => loading = false);
-                        ErrorHandler.handleApiError(e);
                       }
                     },
               child: loading
@@ -144,6 +178,7 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
           title: const Text('Change Password'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -178,6 +213,29 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: loading
                   ? null
                   : () async {
+                      // Client-side validation
+                      if (currentPasswordController.text.isEmpty) {
+                        ErrorHandler.showErrorPopup('Current password is required');
+                        return;
+                      }
+                      if (newPasswordController.text.length < 6) {
+                        ErrorHandler.showErrorPopup('New password must be at least 6 characters');
+                        return;
+                      }
+                      if (newPasswordController.text != confirmPasswordController.text) {
+                        ErrorHandler.showErrorPopup('New passwords do not match');
+                        return;
+                      }
+                      if (currentPasswordController.text == newPasswordController.text) {
+                        ErrorHandler.showErrorPopup('New password must be different from current');
+                        return;
+                      }
+                      // Check network connection
+                      if (!await ConnectionService().isConnected()) {
+                        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+                        return;
+                      }
+
                       setDialogState(() => loading = true);
                       try {
                         await _profileService.updatePassword(
@@ -188,10 +246,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         );
                         if (!context.mounted) return;
                         Navigator.pop(context);
+                        _loadUser();
                         ErrorHandler.showSuccessPopup('Password updated successfully');
                       } catch (e) {
                         setDialogState(() => loading = false);
-                        ErrorHandler.handleApiError(e);
                       }
                     },
               child: loading
@@ -217,6 +275,7 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
           title: const Text('Change Email'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -243,18 +302,33 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: loading
                   ? null
                   : () async {
+                      final email = emailController.text.trim();
+                      if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
+                        ErrorHandler.showErrorPopup('Please enter a valid email address');
+                        return;
+                      }
+                      if (passwordController.text.isEmpty) {
+                        ErrorHandler.showErrorPopup('Current password is required');
+                        return;
+                      }
+                      // Check network connection
+                      if (!await ConnectionService().isConnected()) {
+                        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+                        return;
+                      }
+
                       setDialogState(() => loading = true);
                       try {
                         await _profileService.updateEmail(
-                          email: emailController.text,
+                          email: email,
                           currentPassword: passwordController.text,
                         );
                         if (!context.mounted) return;
                         Navigator.pop(context);
+                        _loadUser();
                         ErrorHandler.showSuccessPopup('Email updated successfully');
                       } catch (e) {
                         setDialogState(() => loading = false);
-                        ErrorHandler.handleApiError(e);
                       }
                     },
               child: loading
@@ -306,14 +380,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     child: _updatingAvatar
                         ? const Center(child: CircularProgressIndicator())
-                        : _user?.avatar != null
+                        : _user?.avatarUrl != null
                             ? ClipOval(
                                 child: Image.network(
-                                  _user!.avatar!,
+                                  _user!.avatarUrl!,
                                   width: 100,
                                   height: 100,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, _) => const Icon(
+                                  errorBuilder: (_, _, _) => const Icon(
                                     Icons.person,
                                     color: AppColors.primary,
                                     size: 50,
@@ -375,7 +449,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 16),
               _buildSettingTile(
                 icon: Icons.person_outline,
-                title: 'Edit Profile Info',
+                title: 'Change Name',
                 onTap: _showChangeNameDialog,
               ),
               _buildSettingTile(
@@ -388,6 +462,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: 'Change Email',
                 onTap: _showChangeEmailDialog,
               ),
+
               const SizedBox(height: 24),
             ],
             // Logout button

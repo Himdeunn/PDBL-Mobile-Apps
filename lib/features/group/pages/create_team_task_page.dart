@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/primary_button.dart';
 import '../../../../core/utils/error_handler.dart';
 import 'package:intl/intl.dart';
 import '../../task/models/task_local.dart';
@@ -61,27 +62,21 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
 
     setState(() => _isSaving = true);
     try {
-      final List<Future> futures = [];
-      
-      for (final email in _selectedMemberEmails) {
-        final task = TaskLocal();
-        task.title = _titleController.text;
-        task.description = _descriptionController.text;
-        task.dueDate = _selectedDate;
-        task.dueTime =
-            '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00';
-        task.priority = _selectedPriority.toLowerCase();
-        task.userEmail = email;
-        task.teamId = widget.teamId;
-        
-        futures.add(_taskRepository.createTask(task, email));
-      }
+      final task = TaskLocal();
+      task.title = _titleController.text;
+      task.description = _descriptionController.text;
+      task.dueDate = _selectedDate;
+      task.dueTime =
+          '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00';
+      task.priority = _selectedPriority.toLowerCase();
+      task.userEmail = widget.userEmail;
+      task.teamId = widget.teamId;
 
-      await Future.wait(futures);
+      await _taskRepository.createTeamTask(task, widget.userEmail, _selectedMemberEmails);
 
       if (mounted) {
+        ErrorHandler.showSuccessPopup('Task assigned successfully!');
         Navigator.pop(context, true);
-        ErrorHandler.showSuccessPopup('Tasks assigned successfully!');
       }
     } catch (e) {
       ErrorHandler.handleApiError(e);
@@ -103,7 +98,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
             color: AppColors.textPrimary,
             size: 32,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
         ),
         title: const Text(
           'Add Team Task',
@@ -114,163 +109,147 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildLabel('Task Title'),
-              _buildTextField(
-                _titleController,
-                'Enter task name...',
-                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-              ),
-              const SizedBox(height: 24),
-
-              _buildLabel('Assign To'),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1E6D2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: widget.members.map((m) {
-                    final email = m['email'] as String;
-                    final isSelected = _selectedMemberEmails.contains(email);
-                    return FilterChip(
-                      label: Text(m['name'] ?? email),
-                      selected: isSelected,
-                      onSelected: (_) => _toggleMember(email),
-                      selectedColor: AppColors.primary.withOpacity(0.2),
-                      checkmarkColor: AppColors.primary,
-                      backgroundColor: Colors.white.withOpacity(0.5),
-                      labelStyle: TextStyle(
-                        color: isSelected ? AppColors.primary : Colors.black87,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: isSelected ? AppColors.primary : Colors.transparent,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              _buildLabel('Description'),
-              _buildTextField(
-                _descriptionController,
-                'Task details...',
-                maxLines: 3,
-              ),
-              const SizedBox(height: 24),
-
-              Row(
+      body: SafeArea(
+        child: AbsorbPointer(
+          absorbing: _isSaving,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Due Date'),
-                        _buildPickerTile(
-                          icon: Icons.calendar_today_outlined,
-                          text: DateFormat(
-                            'MMM dd, yyyy',
-                          ).format(_selectedDate),
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: _selectedDate,
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime(2101),
-                            );
-                            if (picked != null)
-                              setState(() => _selectedDate = picked);
-                          },
-                        ),
-                      ],
-                    ),
+                  _buildLabel('Task Title'),
+                  _buildTextField(
+                    _titleController,
+                    'Enter task name...',
+                    enabled: !_isSaving,
+                    validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLabel('Time'),
-                        _buildPickerTile(
-                          icon: Icons.access_time,
-                          text: _selectedTime.format(context),
-                          onTap: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: _selectedTime,
-                            );
-                            if (picked != null)
-                              setState(() => _selectedTime = picked);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _buildLabel('Priority'),
-              _buildPriorityPicker(),
-              const SizedBox(height: 100), // Spacing for the bottom button
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: _isSaving
-            ? const SizedBox(
-                height: 56,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _handleCreate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF140E0E),
-                    shape: RoundedRectangleBorder(
+                  const SizedBox(height: 24),
+    
+                  _buildLabel('Assign To'),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Add Task',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: widget.members.map((m) {
+                        final email = m['email'] as String;
+                        final isSelected = _selectedMemberEmails.contains(email);
+                        return FilterChip(
+                          label: Text(m['name'] ?? email),
+                          selected: isSelected,
+                          onSelected: _isSaving ? null : (_) => _toggleMember(email),
+                          selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                          checkmarkColor: AppColors.primary,
+                          backgroundColor: Colors.white.withValues(alpha: 0.5),
+                          labelStyle: TextStyle(
+                            color: isSelected ? AppColors.primary : Colors.black87,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                              color: isSelected ? AppColors.primary : Colors.transparent,
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 24),
+    
+                  _buildLabel('Description'),
+                  _buildTextField(
+                    _descriptionController,
+                    'Task details...',
+                    enabled: !_isSaving,
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 24),
+    
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLabel('Due Date'),
+                            _buildPickerTile(
+                              icon: Icons.calendar_today_outlined,
+                              text: DateFormat(
+                                'MMM dd, yyyy',
+                              ).format(_selectedDate),
+                              onTap: _isSaving ? () {} : () async {
+                                final now = DateTime.now();
+                                final today = DateTime(now.year, now.month, now.day);
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
+                                  firstDate: today,
+                                  lastDate: DateTime(2101),
+                                );
+                                if (picked != null) {
+                                  setState(() => _selectedDate = picked);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildLabel('Time'),
+                            _buildPickerTile(
+                              icon: Icons.access_time,
+                              text: _selectedTime.format(context),
+                              onTap: _isSaving ? () {} : () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: _selectedTime,
+                                );
+                                if (picked != null) {
+                                  setState(() => _selectedTime = picked);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildLabel('Priority'),
+                  _buildPriorityPicker(),
+                  const SizedBox(height: 40),
+                  _isSaving
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        )
+                      : PrimaryButton(
+                          label: 'Add Task',
+                          onPressed: _handleCreate,
+                        ),
+                ],
               ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -296,12 +275,12 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
 
         return Expanded(
           child: GestureDetector(
-            onTap: () => setState(() => _selectedPriority = p),
+            onTap: _isSaving ? null : () => setState(() => _selectedPriority = p),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
               padding: const EdgeInsets.symmetric(vertical: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1E6D2),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isSelected ? const Color(0xFF8B7E74) : Colors.transparent,
@@ -333,14 +312,16 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
     String hint, {
     int maxLines = 1,
     String? Function(String?)? validator,
+    bool enabled = true,
   }) {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
       validator: validator,
+      enabled: enabled,
       decoration: InputDecoration(
         hintText: hint,
-        fillColor: const Color(0xFFF1E6D2),
+        fillColor: AppColors.surface,
         filled: true,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
@@ -360,7 +341,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1E6D2),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(

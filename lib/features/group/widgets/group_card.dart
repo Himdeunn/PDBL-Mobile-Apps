@@ -34,8 +34,15 @@ class GroupCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFFE5DDD5).withValues(alpha: 0.8),
+          color: const Color(0xFFE5DDD5),
           borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           children: [
@@ -74,10 +81,11 @@ class GroupCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  onPressed: onMoreTap,
-                  icon: const Icon(Icons.more_vert, color: Colors.grey),
-                ),
+                if (onMoreTap != null)
+                  IconButton(
+                    onPressed: onMoreTap,
+                    icon: const Icon(Icons.more_vert, color: Colors.grey),
+                  ),
               ],
             ),
             const SizedBox(height: 24),
@@ -135,6 +143,7 @@ class GroupCard extends StatelessWidget {
                     : i == 1
                     ? Colors.blue.shade200
                     : Colors.teal.shade200,
+                avatarUrl: memberAvatars.length > i ? memberAvatars[i] : null,
               ),
             ),
           if (extraCount > 0)
@@ -169,8 +178,9 @@ class GroupCard extends StatelessWidget {
 class _AvatarItem extends StatelessWidget {
   final int index;
   final Color color;
+  final String? avatarUrl;
 
-  const _AvatarItem({required this.index, required this.color});
+  const _AvatarItem({required this.index, required this.color, this.avatarUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -182,7 +192,19 @@ class _AvatarItem extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: const Color(0xFFE5DDD5), width: 2),
       ),
-      child: const Icon(Icons.person, size: 16, color: Colors.white),
+      child: ClipOval(
+        child: avatarUrl != null && avatarUrl!.isNotEmpty
+            ? Image.network(
+                avatarUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildPlaceholder(),
+              )
+            : _buildPlaceholder(),
+      ),
     );
+  }
+
+  Widget _buildPlaceholder() {
+    return const Icon(Icons.person, size: 16, color: Colors.white);
   }
 }
