@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/image_utils.dart';
+import '../../../../core/utils/time_utils.dart';
 
 import '../services/team_service.dart';
 import '../../auth/services/auth_service.dart';
@@ -91,14 +92,32 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
             _teamData = rawData['team'] is Map ? rawData['team'] : null;
             
             // Robust parsing for members
-            final membersPart = _teamData?['members'];
+            final List<dynamic> memberList = [];
+            final membersPart = rawData['members'] ?? _teamData?['members'];
             if (membersPart is List) {
-              _members = membersPart;
+              memberList.addAll(membersPart);
             } else if (membersPart is Map) {
-              _members = membersPart.values.toList();
-            } else {
-              _members = [];
+              memberList.addAll(membersPart.values);
             }
+
+            // Ensure owner/leader is in the members list
+            final owner = rawData['owner'] ?? _teamData?['owner'];
+            if (owner is Map) {
+              final ownerEmail = owner['email']?.toString().toLowerCase();
+              if (ownerEmail != null) {
+                final exists = memberList.any((m) => 
+                  m is Map && m['email']?.toString().toLowerCase() == ownerEmail
+                );
+                if (!exists) {
+                  memberList.insert(0, owner);
+                }
+              }
+            }
+
+            _members = memberList.map((m) {
+              if (m is Map) return m;
+              return {'name': m.toString(), 'email': m.toString()};
+            }).toList();
             
             // Robust parsing for tasks
             final tasksPart = rawData['tasks'];
@@ -542,6 +561,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                                         e.toLowerCase().trim() == memberEmail,
                                   );
                             }).toList(),
+                            teamMembers: _members,
                             currentUserEmail: _currentUserEmail,
                             isOwner: isOwner,
                           ),
@@ -587,101 +607,66 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 const Center(
                   child: Text(
                     'No tasks created yet.',
-                    style: TextStyle(color: AppColors.textTertiary),
-                  ),
-                )
-                  else
-                ..._tasks.map(
-                  (t) => _TaskTile(
-                    title: t['judul'] ?? '',
-                    assignedEmails:
-                        (t['assigned_emails'] as List<dynamic>?)
-                            ?.cast<String>() ??
-                        [t['user']?['email'] ?? 'Unassigned'],
-                    completedBy:
-                        (t['completed_by'] as List<dynamic>?)?.cast<String>() ??
-                        [],
-                    isDone: t['is_completed'] == true,
-                    currentUserEmail: _currentUserEmail,
-                    isOffline: _isOffline,
-                    onTap: () => _showTaskDetail(t),
-                    onToggle: () async {
-                      if (_isOffline) return;
-                      final bool isOwner =
-                          _teamData?['created_by']?.toString() ==
-                          _currentUserId?.toString();
-                      final List<String> assignedEmails =
-                          (t['assigned_emails'] as List<dynamic>?)
-                              ?.cast<String>() ??
-                          [];
-                      final String? currentUserEmailNormalized =
-                          _currentUserEmail?.toLowerCase().trim();
-
-                      final bool isAssigned =
-                          currentUserEmailNormalized != null &&
-                          assignedEmails.any(
-                            (e) =>
-                                e.toLowerCase().trim() ==
-                                currentUserEmailNormalized,
-                          );
-
-                      if (isOwner || isAssigned) {
-                        final taskIndex = _tasks.indexOf(t);
-                        if (taskIndex != -1) {
-                          setState(() {
-                            final task = Map<String, dynamic>.from(
-                              _tasks[taskIndex],
-                            );
-                            final List<String> completedBy =
-                                (task['completed_by'] as List<dynamic>?)
-                                    ?.cast<String>() ??
-                                [];
-
-                            if (currentUserEmailNormalized != null) {
-                              if (completedBy.any(
-                                (e) =>
-                                    e.toLowerCase().trim() ==
-                                    currentUserEmailNormalized,
-                              )) {
-                                completedBy.removeWhere(
-                                  (e) =>
-                                      e.toLowerCase().trim() ==
-                                      currentUserEmailNormalized,
-                                );
-                              } else {
-                                completedBy.add(_currentUserEmail!);
-                              }
-                            }
-
-                            task['completed_by'] = completedBy;
-                            final int totalAssigned = assignedEmails.isNotEmpty
-                                ? assignedEmails.length
-                                : 1;
-                            task['is_completed'] =
-                                completedBy.length >= totalAssigned;
-                            _tasks[taskIndex] = task;
-                          });
-                        }
-
-                        try {
-                          await _teamService.toggleMemberTaskStatus(t['id']);
-                          // Logic for sync with today's focus (Dashboard sync)
-                          if (_currentUserEmail != null) {
-                            _taskRepository.fetchTasksFromServer(_currentUserEmail!);
-                          }
-                          _loadData(showLoading: false);
-                        } catch (e) {
-                          _loadData(showLoading: false);
-                          ErrorHandler.handleApiError(e);
-                        }
-                      } else {
-                        ErrorHandler.showErrorPopup(
-                          'Only the owner or assigned member can toggle this task',
-                        );
-                      }
-                    },
-                  ),
+                  style: TextStyle(color: AppColors.textTertiary),
                 ),
+              )
+                else
+              ..._tasks.map(
+                (t) => _TaskTile(
+                  title: t['judul'] ?? '',
+                  priority: t['prioritas']?.toString(),
+                  assignedEmails: (t['assigned_emails'] as List<dynamic>?)?.cast<String>() ?? [t['user']?['email'] ?? 'Unassigned'],
+                  completedBy: (t['completed_by'] as List<dynamic>?)?.cast<String>() ?? [],
+                  isDone: t['is_completed'] == true,
+                  currentUserEmail: _currentUserEmail,
+                  isOffline: _isOffline,
+                  onTap: () => _showTaskDetail(t),
+                  onToggle: () async {
+                    if (_isOffline) return;
+                    final bool isOwner = _teamData?['created_by']?.toString() == _currentUserId?.toString();
+                    final List<String> assignedEmailsForToggle = (t['assigned_emails'] as List<dynamic>?)?.cast<String>() ?? [];
+                    final String? currentUserEmailNormalized = _currentUserEmail?.toLowerCase().trim();
+
+                    final bool isAssigned = currentUserEmailNormalized != null && assignedEmailsForToggle.any((e) => e.toLowerCase().trim() == currentUserEmailNormalized);
+
+                    if (isOwner || isAssigned) {
+                      final taskIndex = _tasks.indexOf(t);
+                      if (taskIndex != -1) {
+                        setState(() {
+                          final task = Map<String, dynamic>.from(_tasks[taskIndex]);
+                          final List<String> completedBy = (task['completed_by'] as List<dynamic>?)?.cast<String>() ?? [];
+
+                          if (currentUserEmailNormalized != null) {
+                            if (completedBy.any((e) => e.toLowerCase().trim() == currentUserEmailNormalized)) {
+                              completedBy.removeWhere((e) => e.toLowerCase().trim() == currentUserEmailNormalized);
+                            } else {
+                              completedBy.add(_currentUserEmail!);
+                            }
+                          }
+
+                          task['completed_by'] = completedBy;
+                          final int totalAssigned = assignedEmailsForToggle.isNotEmpty ? assignedEmailsForToggle.length : 1;
+                          task['is_completed'] = completedBy.length >= totalAssigned;
+                          _tasks[taskIndex] = task;
+                        });
+                      }
+
+                      try {
+                        await _teamService.toggleMemberTaskStatus(t['id']);
+                        if (_currentUserEmail != null) {
+                          _taskRepository.fetchTasksFromServer(_currentUserEmail!);
+                        }
+                        _loadData(showLoading: false);
+                      } catch (e) {
+                        _loadData(showLoading: false);
+                        ErrorHandler.handleApiError(e);
+                      }
+                    } else {
+                      ErrorHandler.showErrorPopup('Only the owner or assigned member can toggle this task');
+                    }
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -785,6 +770,7 @@ class _MemberTile extends StatelessWidget {
 
 class _TaskTile extends StatelessWidget {
   final String title;
+  final String? priority;
   final List<String> assignedEmails;
   final List<String> completedBy;
   final bool isDone;
@@ -795,6 +781,7 @@ class _TaskTile extends StatelessWidget {
 
   const _TaskTile({
     required this.title,
+    this.priority,
     required this.assignedEmails,
     required this.completedBy,
     required this.isDone,
@@ -837,11 +824,39 @@ class _TaskTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          title,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: priority?.toLowerCase() == 'high'
+                                    ? Colors.red[50]
+                                    : priority?.toLowerCase() == 'medium'
+                                        ? Colors.orange[50]
+                                        : Colors.green[50],
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                (priority ?? 'Low').toUpperCase(),
+                                style: TextStyle(
+                                  color: priority?.toLowerCase() == 'high'
+                                      ? Colors.red[700]
+                                      : priority?.toLowerCase() == 'medium'
+                                          ? Colors.orange[700]
+                                          : Colors.green[700],
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         ...assignedEmails.map((email) {
                           final bool memberChecked = completedBy.any(
                             (e) =>
@@ -971,12 +986,7 @@ class _TaskDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final DateTime? deadline = task['deadline'] != null
-        ? DateTime.tryParse(task['deadline'])
-        : null;
-    final String time = deadline != null
-        ? DateFormat('HH:mm').format(deadline)
-        : '--:--';
+    final String time = AppTimeUtils.extractTimeFromDeadline(task['deadline']?.toString());
 
     return Container(
       decoration: const BoxDecoration(

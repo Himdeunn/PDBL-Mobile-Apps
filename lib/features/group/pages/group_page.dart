@@ -151,14 +151,21 @@ class _GroupPageState extends State<GroupPage> {
     }
 
     try {
+      if (mounted) {
+        setState(() {
+          _invitations.removeWhere((invite) => invite['id'] == teamId);
+        });
+      }
+
       if (accept) {
         await _teamService.acceptInvitation(teamId);
       } else {
         await _teamService.declineInvitation(teamId);
       }
-      _fetchData();
+      await _fetchData();
     } catch (e) {
       ErrorHandler.handleApiError(e);
+      await _fetchData(); // Reload in case of error to restore state
     }
   }
 

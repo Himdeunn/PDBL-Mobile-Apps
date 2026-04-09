@@ -77,15 +77,18 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
       context: context,
       initialTime: _reminderTime,
       builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppColors.primary,
-              onPrimary: Colors.white,
-              onSurface: AppColors.textPrimary,
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(
+                primary: AppColors.primary,
+                onPrimary: Colors.white,
+                onSurface: AppColors.textPrimary,
+              ),
             ),
+            child: child!,
           ),
-          child: child!,
         );
       },
     );
@@ -105,7 +108,7 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Reminder time updated to ${picked.format(context)}'),
+            content: Text('Reminder time updated to ${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -422,7 +425,7 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
           child: ListTile(
             leading: const Icon(Icons.access_time, color: AppColors.primary),
             title: const Text('Reminder Time', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text('Notifications sent at ${_reminderTime.format(context)}'),
+            subtitle: Text('Notifications sent at ${_reminderTime.hour.toString().padLeft(2, '0')}:${_reminderTime.minute.toString().padLeft(2, '0')}'),
             trailing: const Icon(Icons.chevron_right),
             onTap: _selectTime,
           ),

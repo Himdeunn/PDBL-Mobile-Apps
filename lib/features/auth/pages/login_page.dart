@@ -190,7 +190,7 @@ class _LoginPageState extends State<LoginPage> {
                                 if (value == null || value.isEmpty) {
                                   return 'Email is required';
                                 }
-                                if (!value.contains('@')) {
+                                if (!value.contains('@gmail.com')) {
                                   return 'Please enter a valid email';
                                 }
                                 return null;
@@ -211,8 +211,11 @@ class _LoginPageState extends State<LoginPage> {
                                 if (value == null || value.isEmpty) {
                                   return 'Password is required';
                                 }
-                                if (value.length < 6) {
-                                  return 'Password must be at least 6 characters';
+                                if (value.contains(' ')) {
+                                  return 'Password cannot contain spaces';
+                                }
+                                if (value.length < 8) {
+                                  return 'Password must be at least 8 characters';
                                 }
                                 return null;
                               },

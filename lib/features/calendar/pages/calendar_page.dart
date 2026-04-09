@@ -518,6 +518,19 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 }
 
+String _getFormattedTime(String? timeStr) {
+  if (timeStr == null || timeStr.isEmpty) return 'All day';
+  try {
+    final parts = timeStr.split(':');
+    if (parts.length >= 2) {
+      final hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1]);
+      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    }
+  } catch (_) {}
+  return timeStr;
+}
+
 class _TaskTile extends StatelessWidget {
   final TaskLocal task;
   final String? currentUserEmail;
@@ -596,7 +609,7 @@ class _TaskTile extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        task.dueTime ?? 'All day',
+                        _getFormattedTime(task.dueTime),
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -763,19 +776,7 @@ class _TaskDetailSheet extends StatelessWidget {
   }
 
   String _formatTime() {
-    if (task.dueTime == null) return 'No time set';
-    try {
-      final parts = task.dueTime!.split(':');
-      if (parts.length >= 2) {
-        int hour = int.parse(parts[0]);
-        final minute = parts[1];
-        final period = hour >= 12 ? 'PM' : 'AM';
-        if (hour > 12) hour -= 12;
-        if (hour == 0) hour = 12;
-        return '$hour:$minute $period';
-      }
-    } catch (_) {}
-    return task.dueTime!;
+    return _getFormattedTime(task.dueTime);
   }
 
   @override

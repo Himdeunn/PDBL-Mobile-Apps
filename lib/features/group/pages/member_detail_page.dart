@@ -4,8 +4,8 @@ import '../services/team_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/image_utils.dart';
-
 import 'package:intl/intl.dart';
+import '../../../../core/utils/time_utils.dart';
 
 class MemberDetailPage extends StatefulWidget {
   final int teamId;
@@ -276,6 +276,7 @@ class _MemberTaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isCompleted = task['is_completed'] == true;
+    final String priority = task['prioritas']?.toString() ?? 'low';
     final DateTime? dueDate = task['deadline'] != null
         ? DateTime.tryParse(task['deadline'])
         : null;
@@ -325,12 +326,44 @@ class _MemberTaskCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Text(
-                          task['judul'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              task['judul'] ?? '',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _getPriorityBgColor(priority),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _getPriorityIcon(priority),
+                                    size: 10,
+                                    color: _getPriorityColor(priority),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _getPriorityLabel(priority),
+                                    style: TextStyle(
+                                      color: _getPriorityColor(priority),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       Container(
@@ -362,6 +395,17 @@ class _MemberTaskCard extends StatelessWidget {
                           DateFormat('MMM dd, yyyy').format(dueDate),
                           style: const TextStyle(color: Colors.grey, fontSize: 13),
                         ),
+                        if (task['due_time'] != null) ...[
+                          const SizedBox(width: 12),
+                          const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(
+                            AppTimeUtils.formatTo24h(task['due_time']) != '--:--'
+                                ? AppTimeUtils.formatTo24h(task['due_time'])
+                                : AppTimeUtils.extractTimeFromDeadline(task['deadline']?.toString()),
+                            style: const TextStyle(color: Colors.grey, fontSize: 13),
+                          ),
+                        ]
                       ],
                     ),
                   const SizedBox(height: 12),
@@ -482,7 +526,10 @@ class _TaskDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String time = task['due_time'] ?? '--:--';
+    final String time = AppTimeUtils.formatTo24h(task['due_time']) != '--:--'
+        ? AppTimeUtils.formatTo24h(task['due_time'])
+        : AppTimeUtils.extractTimeFromDeadline(task['deadline']?.toString());
+    final String priority = task['prioritas']?.toString() ?? 'low';
 
     return Container(
       decoration: const BoxDecoration(
@@ -511,6 +558,33 @@ class _TaskDetailSheet extends StatelessWidget {
           Text(
             task['judul'] ?? '',
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: _getPriorityBgColor(priority),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _getPriorityIcon(priority),
+                  size: 16,
+                  color: _getPriorityColor(priority),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _getPriorityLabel(priority),
+                  style: TextStyle(
+                    color: _getPriorityColor(priority),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Row(
@@ -569,7 +643,6 @@ class _TaskDetailSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
-          // Allow all members to manage group tasks
           Row(
             children: [
               Expanded(
@@ -670,5 +743,53 @@ class _TaskDetailSheet extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+Color _getPriorityColor(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'high':
+      return const Color(0xFFFF0000); // Pure Red
+    case 'medium':
+      return const Color(0xFFA49C00); // Deep Olive
+    case 'low':
+      return const Color(0xFF16A34A); // Forest Green
+    default:
+      return const Color(0xFF8E8E93);
+  }
+}
+
+Color _getPriorityBgColor(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'medium':
+      return const Color(0xFFD4EA0C).withValues(alpha: 0.15); // Light Yellow/Lime Tint
+    default:
+      return _getPriorityColor(priority).withValues(alpha: 0.15);
+  }
+}
+
+String _getPriorityLabel(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'high':
+      return 'High Priority';
+    case 'medium':
+      return 'Medium Priority';
+    case 'low':
+      return 'Low Priority';
+    default:
+      return priority.substring(0, 1).toUpperCase() + priority.substring(1);
+  }
+}
+
+IconData _getPriorityIcon(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'high':
+      return Icons.error;
+    case 'medium':
+      return Icons.priority_high;
+    case 'low':
+      return Icons.low_priority;
+    default:
+      return Icons.info_outline;
   }
 }

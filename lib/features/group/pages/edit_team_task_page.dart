@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/primary_button.dart';
 import '../../../../core/utils/error_handler.dart';
+import '../../../../core/utils/time_utils.dart';
 import 'package:intl/intl.dart';
 import '../services/team_service.dart';
 
@@ -152,33 +153,41 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: widget.members.map((m) {
-                        final email = m['email'] as String;
-                        final isSelected = _selectedMemberEmails.contains(email);
-                        return FilterChip(
-                          label: Text(m['name'] ?? email),
-                          selected: isSelected,
-                          onSelected: _isSaving ? null : (_) => _toggleMember(email),
-                          selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                          checkmarkColor: AppColors.primary,
-                          backgroundColor: Colors.white.withValues(alpha: 0.5),
-                          labelStyle: TextStyle(
-                            color: isSelected ? AppColors.primary : Colors.black87,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            side: BorderSide(
-                              color: isSelected ? AppColors.primary : Colors.transparent,
+                    child: widget.members.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              'No members available to assign',
+                              style: TextStyle(color: AppColors.textTertiary, fontSize: 13),
                             ),
+                          )
+                        : Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: widget.members.map((m) {
+                              final email = m['email']?.toString() ?? 'unknown';
+                              final isSelected = _selectedMemberEmails.contains(email);
+                              return FilterChip(
+                                label: Text(m['name']?.toString() ?? email),
+                                selected: isSelected,
+                                onSelected: _isSaving ? null : (_) => _toggleMember(email),
+                                selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                                checkmarkColor: AppColors.primary,
+                                backgroundColor: Colors.white.withValues(alpha: 0.5),
+                                labelStyle: TextStyle(
+                                  color: isSelected ? AppColors.primary : Colors.black87,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: BorderSide(
+                                    color: isSelected ? AppColors.primary : Colors.transparent,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                           ),
-                        );
-                      }).toList(),
-                    ),
                   ),
                   const SizedBox(height: 24),
 
@@ -226,13 +235,29 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                             _buildLabel('Time'),
                             _buildPickerTile(
                               icon: Icons.access_time,
-                              text: _selectedTime.format(context),
+                              text: AppTimeUtils.formatTo24h("${_selectedTime.hour}:${_selectedTime.minute}"),
                               onTap: _isSaving ? () {} : () async {
                                 final picked = await showTimePicker(
                                   context: context,
                                   initialTime: _selectedTime,
+                                  builder: (BuildContext context, Widget? child) {
+                                    return MediaQuery(
+                                      data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                      child: child!,
+                                    );
+                                  },
                                 );
                                 if (picked != null) {
+                                  final now = DateTime.now();
+                                  final today = DateTime(now.year, now.month, now.day);
+                                  if (_selectedDate.year == today.year && _selectedDate.month == today.month && _selectedDate.day == today.day) {
+                                    if (picked.hour < now.hour || (picked.hour == now.hour && picked.minute < now.minute)) {
+                                      if (mounted) {
+                                        ErrorHandler.showErrorPopup('Time cannot be in the past');
+                                      }
+                                      return;
+                                    }
+                                  }
                                   setState(() => _selectedTime = picked);
                                 }
                               },

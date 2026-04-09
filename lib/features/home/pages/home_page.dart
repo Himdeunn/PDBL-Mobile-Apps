@@ -3,6 +3,7 @@ import '../../../../core/theme/app_theme.dart';
 
 import '../../../../core/utils/image_utils.dart';
 import '../../../../core/utils/debouncer.dart';
+import '../../../../core/utils/time_utils.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/models/user.dart';
 import '../../auth/services/auth_service.dart';
@@ -347,8 +348,8 @@ class _HomePageState extends State<HomePage> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFFF1E6D2),
-            const Color(0xFF8E848F).withValues(alpha: 0.8),
+            const Color(0xFFEADBC8).withValues(alpha: 0.75),
+            const Color(0xFF2F2235).withValues(alpha: 0.8),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -374,15 +375,15 @@ class _HomePageState extends State<HomePage> {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.red[100]?.withValues(alpha: 0.5),
+                  color: _getPriorityBgColor(task.priority),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${task.priority} Priority',
+                  _getPriorityLabel(task.priority),
                   style: TextStyle(
-                    color: Colors.red[700],
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                    color: _getPriorityColor(task.priority),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
@@ -391,7 +392,7 @@ class _HomePageState extends State<HomePage> {
                 height: 36,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black87, width: 1.5),
+                  border: Border.all(color: const Color(0xFF4A453C), width: 1.5),
                 ),
                 child: _user?.avatarUrl != null
                     ? ClipOval(
@@ -400,7 +401,7 @@ class _HomePageState extends State<HomePage> {
                           key: ValueKey(_user!.avatarUrl),
                           fit: BoxFit.cover,
                           errorBuilder: (_, error, __) {
-                            return const Icon(Icons.person, size: 24, color: Colors.black54);
+                            return const Icon(Icons.person, size: 24, color: Color(0xFF4A453C));
                           },
                         ),
                       )
@@ -416,7 +417,7 @@ class _HomePageState extends State<HomePage> {
           Text(
             task.title,
             style: const TextStyle(
-              color: Color(0xFF45424B),
+              color: Color(0xFF4A453C),
               fontSize: 22,
               fontWeight: FontWeight.w900,
             ),
@@ -428,18 +429,18 @@ class _HomePageState extends State<HomePage> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Color(0xFF6A6770),
+                color: Color(0xFF6D685E),
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                height: 1.4,
+                height: 1.5,
               ),
             ),
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(14),
+              color: const Color(0xFF4A453C).withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -452,7 +453,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(width: 8),
                 Text(
                   task.dueTime != null
-                      ? _formatTime(task.dueTime!, context)
+                      ? AppTimeUtils.formatTo24h(task.dueTime!)
                       : '08:00 - 10:00',
                   style: const TextStyle(
                     color: Colors.white,
@@ -468,16 +469,42 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  String _formatTime(String timeStr, BuildContext context) {
-    try {
-      final parts = timeStr.split(':');
-      final tod = TimeOfDay(
-        hour: int.parse(parts[0]),
-        minute: int.parse(parts[1]),
-      );
-      return tod.format(context);
-    } catch (e) {
-      return timeStr;
+  String _getPriorityLabel(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return 'High Priority';
+      case 'medium':
+        return 'Medium Priority';
+      case 'low':
+        return 'Low Priority';
+      default:
+        return priority.substring(0, 1).toUpperCase() + priority.substring(1) + ' Priority';
     }
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return const Color(0xFFFF0000); // Pure Red
+      case 'medium':
+        return const Color(0xFFA49C00); // Dark Olive (Text)
+      case 'low':
+        return const Color(0xFF16A34A); // Forest Green
+      default:
+        return const Color(0xFF8E8E93);
+    }
+  }
+
+  Color _getPriorityBgColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'medium':
+        return const Color(0xFFD4EA0C).withValues(alpha: 0.15); // Lime/Yellow Tint
+      default:
+        return _getPriorityColor(priority).withValues(alpha: 0.15);
+    }
+  }
+
+  String _formatTime(String timeStr, BuildContext context) {
+    return AppTimeUtils.formatTo24h(timeStr);
   }
 }

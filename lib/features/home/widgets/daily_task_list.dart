@@ -42,6 +42,38 @@ class _DailyTaskListState extends State<DailyTaskList> {
   }
 
   Future<void> _deleteTask(TaskLocal task) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Delete Task'),
+          content: const Text('Are you sure you want to delete this task?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      return;
+    }
+
     await _taskRepository.deleteTask(task);
     ErrorHandler.showSuccessPopup('Task deleted successfully');
     widget.onRefresh();
@@ -237,27 +269,27 @@ class _TaskItem extends StatelessWidget {
   Color _getPriorityColor() {
     switch (task.priority.toLowerCase()) {
       case 'high':
-        return Colors.red[100]!;
+        return const Color(0xFFFF0000); // Pure Red
       case 'medium':
-        return Colors.yellow[100]!;
+        return const Color(0xFFA49C00); // Deep Olive/Yellow (Text)
       case 'low':
-        return Colors.green[100]!;
+        return const Color(0xFF16A34A); // Forest Green
       default:
-        return Colors.grey[100]!;
+        return const Color(0xFF8E8E93);
+    }
+  }
+
+  Color _getPriorityBgColor() {
+    switch (task.priority.toLowerCase()) {
+      case 'medium':
+        return const Color(0xFFD4EA0C).withValues(alpha: 0.15); // Light Yellow/Lime Tint
+      default:
+        return _getPriorityColor().withValues(alpha: 0.15);
     }
   }
 
   Color _getPriorityTextColor() {
-    switch (task.priority.toLowerCase()) {
-      case 'high':
-        return Colors.red[800]!;
-      case 'medium':
-        return Colors.orange[800]!;
-      case 'low':
-        return Colors.green[800]!;
-      default:
-        return Colors.grey[800]!;
-    }
+    return _getPriorityColor();
   }
 
   String _getPriorityLabel() {
@@ -265,11 +297,24 @@ class _TaskItem extends StatelessWidget {
       case 'high':
         return 'High Priority';
       case 'medium':
-        return 'Medium';
+        return 'Medium Priority';
       case 'low':
-        return 'Low';
+        return 'Low Priority';
       default:
         return task.priority;
+    }
+  }
+
+  IconData _getPriorityIcon() {
+    switch (task.priority.toLowerCase()) {
+      case 'high':
+        return Icons.error;
+      case 'medium':
+        return Icons.priority_high;
+      case 'low':
+        return Icons.low_priority;
+      default:
+        return Icons.info_outline;
     }
   }
 
@@ -353,16 +398,27 @@ class _TaskItem extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: _getPriorityColor(),
-                                borderRadius: BorderRadius.circular(4),
+                                color: _getPriorityBgColor(),
+                                borderRadius: BorderRadius.circular(20),
                               ),
-                              child: Text(
-                                _getPriorityLabel(),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: _getPriorityTextColor(),
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _getPriorityIcon(),
+                                    size: 12,
+                                    color: _getPriorityTextColor(),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _getPriorityLabel(),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: _getPriorityTextColor(),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -430,11 +486,9 @@ class _TaskItem extends StatelessWidget {
   String _formatTime(String timeStr, BuildContext context) {
     try {
       final parts = timeStr.split(':');
-      final tod = TimeOfDay(
-        hour: int.parse(parts[0]),
-        minute: int.parse(parts[1]),
-      );
-      return tod.format(context);
+      final hour = parts[0].padLeft(2, '0');
+      final minute = parts[1].padLeft(2, '0');
+      return '$hour:$minute';
     } catch (e) {
       return timeStr;
     }

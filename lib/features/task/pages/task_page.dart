@@ -8,6 +8,7 @@ import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
 import 'dart:async';
 import 'dart:ui';
+import '../../../../core/utils/time_utils.dart';
 import 'create_task_page.dart';
 
 class TaskPage extends StatefulWidget {
@@ -94,9 +95,36 @@ class _TaskPageState extends State<TaskPage> {
   }
 
   Future<void> _deleteTask(TaskLocal task) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Delete Task'),
+        content: const Text('Are you sure you want to delete this task?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red[400],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     await _repository.deleteTask(task);
-    ErrorHandler.showSuccessPopup('Task deleted successfully');
-    _loadTasks();
+    if (mounted) {
+      ErrorHandler.showSuccessPopup('Task deleted successfully');
+      _loadTasks();
+    }
   }
 
   void _showTaskDetails(TaskLocal task) {
@@ -302,19 +330,7 @@ class _TodayTaskCard extends StatelessWidget {
   }
 
   String _formatTime() {
-    if (task.dueTime == null) return 'No time';
-    try {
-      final parts = task.dueTime!.split(':');
-      if (parts.length >= 2) {
-        int hour = int.parse(parts[0]);
-        final minute = parts[1];
-        final period = hour >= 12 ? 'PM' : 'AM';
-        if (hour > 12) hour -= 12;
-        if (hour == 0) hour = 12;
-        return '$hour:$minute $period';
-      }
-    } catch (_) {}
-    return task.dueTime!;
+    return AppTimeUtils.formatTo24h(task.dueTime);
   }
 
   @override
@@ -568,19 +584,7 @@ class _TaskDetailSheet extends StatelessWidget {
   }
 
   String _formatTime() {
-    if (task.dueTime == null) return 'No time set';
-    try {
-      final parts = task.dueTime!.split(':');
-      if (parts.length >= 2) {
-        int hour = int.parse(parts[0]);
-        final minute = parts[1];
-        final period = hour >= 12 ? 'PM' : 'AM';
-        if (hour > 12) hour -= 12;
-        if (hour == 0) hour = 12;
-        return '$hour:$minute $period';
-      }
-    } catch (_) {}
-    return task.dueTime!;
+    return AppTimeUtils.formatTo24h(task.dueTime);
   }
 
   @override
@@ -762,7 +766,38 @@ class _TaskDetailSheet extends StatelessWidget {
               // Delete Button
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: onDelete,
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete Task'),
+                        content: const Text('Are you sure you want to delete this task?'),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context); // Close dialog
+                              onDelete(); // Then perform original onDelete
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red[400],
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                   icon: const Icon(Icons.delete_outline_rounded, size: 20),
                   label: const Text('Delete'),
                   style: OutlinedButton.styleFrom(

@@ -131,8 +131,26 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
+      builder: (BuildContext context, Widget? child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
     );
-    if (picked != null) setState(() => _selectedTime = picked);
+    if (picked != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      if (_selectedDate.year == today.year && _selectedDate.month == today.month && _selectedDate.day == today.day) {
+        if (picked.hour < now.hour || (picked.hour == now.hour && picked.minute < now.minute)) {
+          if (mounted) {
+            ErrorHandler.showErrorPopup('Time cannot be in the past');
+          }
+          return;
+        }
+      }
+      setState(() => _selectedTime = picked);
+    }
   }
 
   Future<void> _handleCreate() async {
@@ -392,7 +410,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
                             _buildLabel('Time'),
                             _buildPickerTile(
                               icon: Icons.access_time,
-                              text: _selectedTime.format(context),
+                              text: "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}",
                               onTap: _isSaving
                                   ? () {}
                                   : () => _selectTime(context),

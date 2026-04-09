@@ -70,8 +70,25 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
+      builder: (BuildContext context, Widget? child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
     );
     if (picked != null && picked != _selectedTime) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      if (_selectedDate == today) {
+        if (picked.hour < now.hour ||
+            (picked.hour == now.hour && picked.minute < now.minute)) {
+          if (mounted) {
+            ErrorHandler.showErrorPopup('Time cannot be in the past');
+          }
+          return;
+        }
+      }
       setState(() {
         _selectedTime = picked;
       });
@@ -273,7 +290,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                                     color: Colors.grey,
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(_selectedTime.format(context)),
+                                  Text("${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}"),
                                 ],
                               ),
                             ),
