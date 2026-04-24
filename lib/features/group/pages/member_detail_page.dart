@@ -120,17 +120,16 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
                 radius: 60,
                 backgroundColor: const Color(0xFFF1E6D2),
                 backgroundImage:
-                    widget.member['avatar'] != null &&
-                        widget.member['avatar'].toString().isNotEmpty
+                    widget.member['avatar_url'] != null || (widget.member['avatar'] != null && widget.member['avatar'].toString().isNotEmpty)
                     ? CachedNetworkImageProvider(
-                        ImageUtils.getAvatarUrl(widget.member['avatar']),
-                        headers: getNetworkImageHeaders(ImageUtils.getAvatarUrl(widget.member['avatar'])),
+                        ImageUtils.getAvatarUrl(widget.member['avatar_url'] ?? widget.member['avatar']),
+                        headers: getNetworkImageHeaders(ImageUtils.getAvatarUrl(widget.member['avatar_url'] ?? widget.member['avatar'])),
                         cacheManager: WudiCacheManager(),
                       )
                     : null,
                 child:
-                    widget.member['avatar'] == null ||
-                        widget.member['avatar'].toString().isEmpty
+                    (widget.member['avatar_url'] == null && widget.member['avatar'] == null) ||
+                        (widget.member['avatar_url'] == null && widget.member['avatar'].toString().isEmpty)
                     ? const Icon(Icons.person, size: 60, color: Colors.grey)
                     : null,
               ),

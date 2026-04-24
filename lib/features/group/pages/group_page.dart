@@ -528,7 +528,7 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
                           progress: (team['progress'] ?? 0).toDouble() / 100.0,
                           memberCount: (team['members'] as List?)?.length ?? 0,
                           memberAvatars: ((team['members'] as List?) ?? [])
-                              .map((m) => ImageUtils.getAvatarUrl(m['avatar']))
+                              .map((m) => ImageUtils.getAvatarUrl(m['avatar_url'] ?? m['avatar']))
                               .toList(),
                           teamAvatarUrl: team['avatar_url'] as String?,
                           onTap: () {

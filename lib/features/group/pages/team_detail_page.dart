@@ -818,7 +818,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       return _MemberTile(
                         name: m['name'] ?? '',
                         role: m['role'] ?? 'Member',
-                        avatarUrl: ImageUtils.getAvatarUrl(m['avatar']),
+                        avatarUrl: ImageUtils.getAvatarUrl(m['avatar_url'] ?? m['avatar']),
                         onTap: () {
                           Navigator.push(
                             context,
