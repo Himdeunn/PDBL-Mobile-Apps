@@ -7,8 +7,12 @@ class User {
   bool isGuest = false;
   DateTime? loginAt;
   int todayTarget = 0;
+  DateTime? emailVerifiedAt;
+  String? googleId;
 
   User();
+
+  bool get isEmailVerified => isGuest || emailVerifiedAt != null || googleId != null;
 
   User.fromJson(Map<String, dynamic> json)
     : id = json['id'],
@@ -20,7 +24,11 @@ class User {
       todayTarget = (json['today_target'] as num?)?.toInt() ?? 0,
       loginAt = json['loginAt'] != null
           ? DateTime.parse(json['loginAt'])
-          : null;
+          : null,
+      emailVerifiedAt = json['email_verified_at'] != null
+          ? DateTime.tryParse(json['email_verified_at'])
+          : null,
+      googleId = json['google_id'] as String?;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -31,5 +39,7 @@ class User {
     'isGuest': isGuest,
     'today_target': todayTarget,
     'loginAt': loginAt?.toIso8601String(),
+    'email_verified_at': emailVerifiedAt?.toIso8601String(),
+    'google_id': googleId,
   };
 }

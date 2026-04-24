@@ -1,15 +1,64 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/primary_button.dart';
 import '../../../../core/theme/secondary_button.dart';
 import '../../../../core/theme/logo.dart';
+import '../../../../core/utils/error_handler.dart';
+import '../../../../core/services/connection_service.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
 import 'register_page.dart';
 import '../../shell/pages/main_navigation.dart';
 
-class WelcomePage extends StatelessWidget {
+class WelcomePage extends StatefulWidget {
   const WelcomePage({super.key});
+
+  @override
+  State<WelcomePage> createState() => _WelcomePageState();
+}
+
+class _WelcomePageState extends State<WelcomePage> {
+  bool _isGoogleLoading = false;
+
+  Future<void> _onGoogleSignIn() async {
+    if (!await ConnectionService().isConnected()) {
+      ErrorHandler.showErrorPopup('No internet connection.');
+      return;
+    }
+    setState(() => _isGoogleLoading = true);
+    try {
+      final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+      final account = await googleSignIn.signIn();
+      if (account == null) return; // user cancelled
+      if (!mounted) return;
+      final authService = AuthService();
+      await authService.googleLogin(
+        googleId: account.id,
+        email: account.email,
+        name: account.displayName ?? account.email,
+        avatarUrl: account.photoUrl,
+      );
+      if (!mounted) return;
+      if (authService.lastGoogleLoginConverted) {
+        ErrorHandler.showSuccessPopup(
+          'Your account has been linked to Google Sign-In. From now on, please use "Continue with Google" to log in.',
+          title: 'Account Linked to Google',
+        );
+      } else {
+        ErrorHandler.showSuccessPopup('Successfully logged in!');
+      }
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => MainNavigation(authService: authService)),
+        (_) => false,
+      );
+    } catch (e) {
+      ErrorHandler.handleApiError(e);
+    } finally {
+      if (mounted) setState(() => _isGoogleLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +115,7 @@ class WelcomePage extends StatelessWidget {
 
                         const Spacer(flex: 3),
 
-                        // Buttons row
+                        // Login / Register row
                         Row(
                           children: [
                             Expanded(
@@ -90,8 +139,7 @@ class WelcomePage extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) =>
-                                          const RegisterPage(),
+                                      builder: (context) => const RegisterPage(),
                                     ),
                                   );
                                 },
@@ -101,6 +149,52 @@ class WelcomePage extends StatelessWidget {
                         ),
 
                         const SizedBox(height: 16),
+
+                        // Google Sign-In button
+                        _isGoogleLoading
+                            ? const SizedBox(
+                                height: 54,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                      color: AppColors.primary),
+                                ),
+                              )
+                            : SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: OutlinedButton.icon(
+                                  onPressed: _onGoogleSignIn,
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(
+                                        color: AppColors.textTertiary),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
+                                    backgroundColor: Colors.white,
+                                  ),
+                                  icon: Image.network(
+                                    'https://www.google.com/favicon.ico',
+                                    width: 20,
+                                    height: 20,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.g_mobiledata_rounded,
+                                      size: 24,
+                                      color: Colors.red,
+                                    ),
+                                  ),
+                                  label: const Text(
+                                    'Continue with Google',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                        const SizedBox(height: 8),
+
                         // Guest button
                         TextButton(
                           onPressed: () async {

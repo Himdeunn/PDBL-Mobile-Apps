@@ -1,13 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/image_utils.dart';
+import '../../../../core/utils/notification_helper.dart';
 import '../widgets/invitation_card.dart';
 import '../widgets/group_card.dart';
 import '../services/team_service.dart';
 import '../../auth/services/auth_service.dart';
 import 'team_detail_page.dart';
+import 'create_team_page.dart';
 import '../../../../core/services/connection_service.dart';
 
 class GroupPage extends StatefulWidget {
@@ -18,34 +22,110 @@ class GroupPage extends StatefulWidget {
   State<GroupPage> createState() => _GroupPageState();
 }
 
-class _GroupPageState extends State<GroupPage> {
+class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
   final TeamService _teamService = TeamService();
   late final AuthService _authService;
   List<dynamic> _teams = [];
   List<dynamic> _invitations = [];
   bool _isLoading = true;
   Timer? _refreshTimer;
+  StreamSubscription<void>? _teamEventSub;
   final ConnectionService _connectionService = ConnectionService();
   int? _currentUserId;
   bool _isOffline = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  static const _cacheKey = 'group_page_cache';
+  static const _cacheTtl = Duration(minutes: 5);
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _authService = widget.authService ?? AuthService();
     _searchController.addListener(() {
+      if (mounted) setState(() => _searchQuery = _searchController.text.toLowerCase());
+    });
+    _teamEventSub = NotificationHelper.onTeamEvent.listen((_) {
       if (mounted) {
-        setState(() => _searchQuery = _searchController.text.toLowerCase());
+        _clearCache();
+        _fetchData(silent: true);
       }
     });
-    _fetchData();
+    _initWithCache();
     _startRefreshTimer();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _fetchData(silent: true);
+    }
+  }
+
+  Future<void> _initWithCache() async {
+    final isFresh = await _loadFromCache();
+    // If cache is fresh, just do a silent background refresh
+    // If cache is stale or empty, show spinner and fetch
+    _fetchData(silent: isFresh);
+  }
+
+  /// Loads cached team data into state. Returns true if cache is fresh (< TTL).
+  Future<bool> _loadFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey);
+      if (raw == null) return false;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+
+      // Discard cache if it belongs to a different user
+      final user = await _authService.getCurrentUser();
+      final currentEmail = user?.email;
+      final cachedEmail = data['user_email'] as String?;
+      if (currentEmail != null && cachedEmail != null && currentEmail != cachedEmail) {
+        await _clearCache();
+        return false;
+      }
+
+      final cachedAt = data['cached_at'] as int? ?? 0;
+      final age = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(cachedAt));
+      if (mounted) {
+        setState(() {
+          _teams = (data['teams'] as List?) ?? [];
+          _invitations = (data['invitations'] as List?) ?? [];
+          _isLoading = false;
+        });
+      }
+      return age < _cacheTtl;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _saveToCache(List<dynamic> teams, List<dynamic> invitations, {String? userEmail}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheKey, jsonEncode({
+        'teams': teams,
+        'invitations': invitations,
+        'cached_at': DateTime.now().millisecondsSinceEpoch,
+        'user_email': userEmail,
+      }));
+    } catch (_) {}
+  }
+
+  Future<void> _clearCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cacheKey);
+    } catch (_) {}
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _teamEventSub?.cancel();
     _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -53,10 +133,9 @@ class _GroupPageState extends State<GroupPage> {
 
   void _startRefreshTimer() {
     _refreshTimer?.cancel();
-    // Don't start timer for guests to avoid 401 spam
     _authService.isGuest().then((isGuest) {
       if (!isGuest && mounted) {
-        _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+        _refreshTimer = Timer.periodic(_cacheTtl, (timer) {
           if (mounted) _fetchData(silent: true);
         });
       }
@@ -66,30 +145,21 @@ class _GroupPageState extends State<GroupPage> {
   Future<void> _fetchData({bool silent = false}) async {
     final isGuest = await _authService.isGuest();
     if (isGuest) {
-      if (mounted) {
-        setState(() {
-          _teams = [];
-          _invitations = [];
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() { _teams = []; _invitations = []; _isLoading = false; });
       return;
     }
 
-    if (!silent && mounted) setState(() => _isLoading = true);
-    
-    // Check connection
+    // Only show spinner when there's nothing cached to display
+    if (!silent && _teams.isEmpty && mounted) setState(() => _isLoading = true);
+
     final isOnline = await _connectionService.isConnected();
     if (!isOnline) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _isOffline = true;
-        });
-        if (!silent) {
+        setState(() { _isLoading = false; _isOffline = true; });
+        if (!silent && _teams.isEmpty) {
           ErrorHandler.showErrorPopup(
-            "Sorry, you don't have internet. Please connect to internet to create or see the team.",
-            title: "No Internet Connection"
+            "No internet connection. Showing cached data if available.",
+            title: "Offline",
           );
         }
       }
@@ -101,42 +171,43 @@ class _GroupPageState extends State<GroupPage> {
       _currentUserId = user?.id;
 
       final rawData = await _teamService.getDashboardData();
+
+      List<dynamic> newTeams = [];
+      List<dynamic> newInvitations = [];
+
+      final teamsPart = rawData is Map ? rawData['teams'] : null;
+      if (teamsPart is List) {
+        newTeams = teamsPart;
+      } else if (teamsPart is Map && teamsPart['data'] is List) {
+        newTeams = teamsPart['data'];
+      } else if (teamsPart is Map) {
+        newTeams = teamsPart.values.toList();
+      }
+
+      final invitesPart = rawData is Map ? rawData['invitations'] : null;
+      if (invitesPart is List) {
+        newInvitations = invitesPart;
+      } else if (invitesPart is Map && invitesPart['data'] is List) {
+        newInvitations = invitesPart['data'];
+      } else if (invitesPart is Map) {
+        newInvitations = invitesPart.values.toList();
+      }
+
+      await _saveToCache(newTeams, newInvitations, userEmail: user?.email);
+
       if (mounted) {
         setState(() {
           _isOffline = false;
-          // Robust parsing for teams
-          final teamsPart = rawData is Map ? rawData['teams'] : null;
-          if (teamsPart is List) {
-            _teams = teamsPart;
-          } else if (teamsPart is Map && teamsPart['data'] is List) {
-            _teams = teamsPart['data'];
-          } else if (teamsPart is Map) {
-            // Handle associative map from PHP
-            _teams = teamsPart.values.toList();
-          } else {
-            _teams = [];
-          }
-          
-          // Robust parsing for invitations
-          final invitesPart = rawData is Map ? rawData['invitations'] : null;
-          if (invitesPart is List) {
-            _invitations = invitesPart;
-          } else if (invitesPart is Map && invitesPart['data'] is List) {
-            _invitations = invitesPart['data'];
-          } else if (invitesPart is Map) {
-            _invitations = invitesPart.values.toList();
-          } else {
-            _invitations = [];
-          }
-          
+          _teams = newTeams;
+          _invitations = newInvitations;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        ErrorHandler.handleApiError(e);
+        if (!silent) ErrorHandler.handleApiError(e);
+        setState(() => _isLoading = false);
       }
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -194,6 +265,7 @@ class _GroupPageState extends State<GroupPage> {
     if (confirmed == true) {
       try {
         await _teamService.deleteTeam(teamId);
+        await _clearCache();
         _fetchData();
         ErrorHandler.showSuccessPopup('Team deleted successfully');
       } catch (e) {
@@ -458,6 +530,7 @@ class _GroupPageState extends State<GroupPage> {
                           memberAvatars: ((team['members'] as List?) ?? [])
                               .map((m) => ImageUtils.getAvatarUrl(m['avatar']))
                               .toList(),
+                          teamAvatarUrl: team['avatar_url'] as String?,
                           onTap: () {
                             Navigator.push(
                               context,
@@ -511,7 +584,32 @@ class _GroupPageState extends State<GroupPage> {
               ],
             ),
           ),
-        ),
+),
+      ),
+      floatingActionButton: FutureBuilder<bool>(
+        future: _authService.isGuest(),
+        builder: (context, snapshot) {
+          if (snapshot.data == true) {
+            return const SizedBox.shrink(
+    );
+          }
+          return FloatingActionButton(
+            backgroundColor: AppColors.primary,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.add, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CreateTeamPage(
+                    authService: widget.authService,
+                    onSuccess: () => _fetchData(),
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

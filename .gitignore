@@ -42,6 +42,9 @@ android/key.properties
 android/app/key.properties
 android/app/google-services.json
 android/app/src/main/res/raw/google_services.json
+*.jks
+*.keystore
+upload-keystore.jks
 android/hs_err_pid*.log
 android/replay_pid*.log
 

@@ -20,7 +20,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  DateTime _selectedDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  DateTime _selectedDate = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    DateTime.now().day,
+  );
   TimeOfDay _selectedTime = TimeOfDay.now();
   String _selectedPriority = 'High';
   final TaskRepository _repository = TaskRepository();
@@ -58,6 +62,17 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
       firstDate: today,
       lastDate: DateTime(2101),
+      builder: (ctx, child) => Theme(
+        data: ThemeData.light().copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: AppColors.primary,
+            onPrimary: Colors.white,
+            surface: AppColors.surface,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      ),
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
@@ -71,9 +86,19 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       context: context,
       initialTime: _selectedTime,
       builder: (BuildContext context, Widget? child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: child!,
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: AppColors.surface,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+            child: child!,
+          ),
         );
       },
     );
@@ -110,7 +135,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         final task = widget.task ?? TaskLocal();
         task.title = _titleController.text.trim();
         task.description = _descriptionController.text.trim();
-        task.dueDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+        task.dueDate = DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+        );
         task.dueTime =
             '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00';
         task.priority = _selectedPriority.toLowerCase();
@@ -125,7 +154,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
         if (mounted) {
           ErrorHandler.showSuccessPopup(
-            widget.task == null ? 'Task created successfully' : 'Task updated successfully'
+            widget.task == null
+                ? 'Task created successfully'
+                : 'Task updated successfully',
           );
           Navigator.pop(context, true);
         }
@@ -170,7 +201,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Task Title',
+                  'Task Title *',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -199,7 +230,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'Description',
+                  'Description (optional)',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -226,12 +257,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Due Date',
+                            'Due Date *',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
                           GestureDetector(
-                            onTap: _isSaving ? null : () => _selectDate(context),
+                            onTap: _isSaving
+                                ? null
+                                : () => _selectDate(context),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -267,12 +300,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Time',
+                            'Time *',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
                           GestureDetector(
-                            onTap: _isSaving ? null : () => _selectTime(context),
+                            onTap: _isSaving
+                                ? null
+                                : () => _selectTime(context),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -290,7 +325,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                                     color: Colors.grey,
                                   ),
                                   const SizedBox(width: 8),
-                                  Text("${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}"),
+                                  Text(
+                                    "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}",
+                                  ),
                                 ],
                               ),
                             ),
@@ -302,7 +339,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'Priority',
+                  'Priority *',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
@@ -311,7 +348,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   children: ['High', 'Medium', 'Low'].map((p) {
                     final isSelected = _selectedPriority == p;
                     return GestureDetector(
-                      onTap: _isSaving ? null : () => setState(() => _selectedPriority = p),
+                      onTap: _isSaving
+                          ? null
+                          : () => setState(() => _selectedPriority = p),
                       child: Container(
                         width: MediaQuery.of(context).size.width * 0.25,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -320,7 +359,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                               ? Colors.transparent
                               : AppColors.surface,
                           border: Border.all(
-                            color: isSelected ? Colors.brown : Colors.transparent,
+                            color: isSelected
+                                ? Colors.brown
+                                : Colors.transparent,
                           ),
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -347,23 +388,23 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   }).toList(),
                 ),
                 const SizedBox(height: 40),
-              _isSaving
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: CircularProgressIndicator(
-                          color: AppColors.primary,
+                _isSaving
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
                         ),
+                      )
+                    : PrimaryButton(
+                        label: widget.task == null
+                            ? 'Create Task'
+                            : 'Update Task',
+                        onPressed: _saveTask,
                       ),
-                    )
-                  : PrimaryButton(
-                      label: widget.task == null
-                          ? 'Create Task'
-                          : 'Update Task',
-                      onPressed: _saveTask,
-                    ),
-            ],
-          ),
+              ],
+            ),
           ),
         ),
       ),

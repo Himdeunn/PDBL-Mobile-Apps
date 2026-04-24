@@ -123,6 +123,17 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
       initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
       firstDate: today,
       lastDate: DateTime(2101),
+      builder: (ctx, child) => Theme(
+        data: ThemeData.light().copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: AppColors.primary,
+            onPrimary: Colors.white,
+            surface: AppColors.surface,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      ),
     );
     if (picked != null) setState(() => _selectedDate = picked);
   }
@@ -132,9 +143,19 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
       context: context,
       initialTime: _selectedTime,
       builder: (BuildContext context, Widget? child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: child!,
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: AppColors.surface,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+            child: child!,
+          ),
         );
       },
     );
@@ -317,7 +338,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildLabel('Task Title'),
+                  _buildLabel('Task Title *'),
                   _buildTextField(
                     _titleController,
                     'Enter task name...',
@@ -331,7 +352,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
                   ),
 
                   const SizedBox(height: 24),
-                  _buildLabel('Description'),
+                  _buildLabel('Description (optional)'),
                   _buildTextField(
                     _descriptionController,
                     'Write details about your task here...',
@@ -341,7 +362,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
                   ),
 
                   const SizedBox(height: 24),
-                  _buildLabel('Add Member'),
+                  _buildLabel('Add Member (optional)'),
                   TextField(
                     controller: _emailController,
                     onSubmitted: (_) => _isSaving ? null : _addEmail(),
@@ -389,7 +410,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildLabel('Due Date'),
+                            _buildLabel('Due Date *'),
                             _buildPickerTile(
                               icon: Icons.calendar_today_outlined,
                               text: DateFormat(
@@ -407,7 +428,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildLabel('Time'),
+                            _buildLabel('Time *'),
                             _buildPickerTile(
                               icon: Icons.access_time,
                               text: "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}",

@@ -15,6 +15,14 @@ class TaskRepository {
   // Track pending syncs to avoid race conditions during background refreshes
   static final Map<int, int> _pendingSyncsCount = {};
   static final Map<int, Timer> _debounceTimers = {};
+  // Debounce timers specifically for team task toggle (prevent rapid-click spam to server)
+  static final Map<int, Timer> _toggleDebounceTimers = {};
+  // Track the LAST intended toggle state while debouncing, so only 1 request fires
+  static final Map<int, bool> _pendingToggleTarget = {};
+
+  // Prevent redundant server fetches during a session (persists across instances)
+  static DateTime? _lastServerFetch;
+  static const _fetchCooldown = Duration(minutes: 2);
 
   Future<List<TaskLocal>> getAllTasks(String userEmail) async {
     return await _isar.taskLocals
@@ -32,6 +40,8 @@ class TaskRepository {
     return await _isar.taskLocals
         .filter()
         .userEmailEqualTo(userEmail)
+        .and()
+        .teamIdIsNull()
         .and()
         .dueDateBetween(
           startOfDay,
@@ -176,43 +186,95 @@ class TaskRepository {
     // WidgetService.fullSync();
   }
 
-  /// Specialized method to toggle completion status.
-  /// For team tasks, it hits the individual /toggle-member endpoint.
-  /// For personal tasks, it uses the standard update/sync flow.
+  /// Toggle completion status for a task.
+  /// - Personal task: flip immediately, sync with debounce.
+  /// - Team task: debounce rapid taps (800ms), then send ONE request to server.
+  ///   Optimistic UI is applied immediately, but corrected from server truth after sync.
   Future<void> toggleTaskStatus(TaskLocal task, String userEmail) async {
-    // 1. Toggle locally first for instant UI feedback
-    bool newStatus = !task.isCompleted;
-    await _isar.writeTxn(() async {
-      task.isCompleted = newStatus;
-      task.isSynced = false;
-      task.lastLocalUpdate = DateTime.now().millisecondsSinceEpoch;
-      await _isar.taskLocals.put(task);
-    });
-
-    // 2. Perform server sync
     if (task.teamId != null && task.apiId != null) {
-      // Team task: use specialized toggle endpoint
-      try {
-        final response = await _api.post('todos/${task.apiId}/toggle-member');
-        if (response.data['status'] == 'success' || response.data['message'] != null) {
+      // ── TEAM TASK ──────────────────────────────────────────────────────────
+      // Determine what the new intended state should be.
+      // If the user is tapping rapidly, we track the LAST intended state
+      // and only fire ONE request to server after they stop tapping.
+      final taskId = task.id;
+      final currentTarget = _pendingToggleTarget[taskId];
+
+      // Each tap flips the intended target:
+      // If no pending target yet → flip from current DB state
+      // If already have a pending target → flip that target
+      final bool newTarget = currentTarget != null ? !currentTarget : !task.isCompleted;
+      _pendingToggleTarget[taskId] = newTarget;
+
+      // 1. Optimistic local update for instant UI feedback
+      await _isar.writeTxn(() async {
+        final fresh = await _isar.taskLocals.get(taskId);
+        if (fresh != null) {
+          fresh.isCompleted = newTarget;
+          fresh.isSynced = false;
+          await _isar.taskLocals.put(fresh);
+        }
+      });
+
+      // 2. Cancel any previous pending server call — debounce 800ms
+      _toggleDebounceTimers[taskId]?.cancel();
+      _toggleDebounceTimers[taskId] = Timer(const Duration(milliseconds: 800), () async {
+        _toggleDebounceTimers.remove(taskId);
+        final intendedState = _pendingToggleTarget.remove(taskId);
+        if (intendedState == null) return;
+
+        try {
+          final response = await _api.post('todos/${task.apiId}/toggle-member');
           final todoData = response.data['todo'];
           if (todoData != null) {
+            // Server is always the source of truth.
+            // isCompleted for THIS user = email ada di completedBy ATAU task sudah fully complete
+            // Ini memastikan kalau owner check (is_completed=true), semua member ikut ter-checked
+            final List<dynamic> completedByRaw = todoData['completed_by'] ?? [];
+            final completedByStr = completedByRaw
+                .map((e) => e.toString().toLowerCase().trim())
+                .join(',');
+            final assignedEmailsRaw = todoData['assigned_emails'];
+            final int totalAssigned = assignedEmailsRaw is List ? assignedEmailsRaw.length : 0;
+            final bool isFullyCompleted = todoData['is_completed'] == true;
+            final bool myEmailChecked = completedByRaw.any(
+              (e) => e.toString().toLowerCase().trim() == userEmail.toLowerCase().trim(),
+            );
+            // If task is fully completed (e.g. owner checked), everyone sees it as checked
+            final bool newIsCompleted = isFullyCompleted || myEmailChecked;
+
             await _isar.writeTxn(() async {
-              // Update local state with latest from server (e.g. global is_completed)
-              final List<dynamic> completedBy = todoData['completed_by'] ?? [];
-              task.isCompleted = completedBy.any((e) => 
-                e.toString().toLowerCase().trim() == userEmail.toLowerCase().trim()
-              );
-              task.isSynced = true;
-              await _isar.taskLocals.put(task);
+              final fresh = await _isar.taskLocals.get(taskId);
+              if (fresh != null) {
+                fresh.isCompleted = newIsCompleted;
+                fresh.leaderChecked = isFullyCompleted && !myEmailChecked;
+                fresh.completedBy = completedByStr.isEmpty ? null : completedByStr;
+                fresh.totalAssigned = totalAssigned;
+                fresh.isSynced = true;
+                await _isar.taskLocals.put(fresh);
+              }
             });
           }
+        } catch (_) {
+          // Server call failed: revert optimistic update to previous known state
+          await _isar.writeTxn(() async {
+            final fresh = await _isar.taskLocals.get(taskId);
+            if (fresh != null) {
+              fresh.isCompleted = !intendedState; // revert
+              fresh.isSynced = false;
+              await _isar.taskLocals.put(fresh);
+            }
+          });
         }
-      } catch (e) {
-        // Fallback or silent failure
-      }
+      });
     } else {
-      // Personal task or unsynced task: use standard sync
+      // ── PERSONAL TASK ──────────────────────────────────────────────────────
+      // For personal tasks: flip immediately, debounce sync to avoid server spam
+      await _isar.writeTxn(() async {
+        task.isCompleted = !task.isCompleted;
+        task.isSynced = false;
+        task.lastLocalUpdate = DateTime.now().millisecondsSinceEpoch;
+        await _isar.taskLocals.put(task);
+      });
       await _syncSingleTask(task);
     }
   }
@@ -244,9 +306,13 @@ class TaskRepository {
     // WidgetService.fullSync();
   }
 
-  Future<void> fetchTasksFromServer(String userEmail) async {
-    // Enable fetching for both registered users and guests (via device_id)
-    
+  Future<void> fetchTasksFromServer(String userEmail, {bool force = false}) async {
+    final now = DateTime.now();
+    if (!force && _lastServerFetch != null && now.difference(_lastServerFetch!) < _fetchCooldown) {
+      return;
+    }
+    _lastServerFetch = now;
+
     int currentPage = 1;
     bool hasNextPage = true;
 
@@ -302,18 +368,39 @@ class TaskRepository {
             // Map individual completion for team tasks
             if (todo['team_id'] != null && todo['completed_by'] != null) {
               final List<dynamic> completedBy = todo['completed_by'] as List;
-              task.isCompleted = completedBy.any((e) => 
+              final bool isFullyCompleted = todo['is_completed'] == true;
+              final bool myEmailChecked = completedBy.any((e) =>
                 e.toString().toLowerCase().trim() == userEmail.toLowerCase().trim()
               );
+              // If owner checked (is_completed=true), semua member ikut ter-checked di lokal
+              task.isCompleted = isFullyCompleted || myEmailChecked;
+              // leader checked = fully completed but current user didn't check themselves
+              task.leaderChecked = isFullyCompleted && !myEmailChecked;
+              // Save completedBy and totalAssigned so progress selalu visible
+              task.completedBy = completedBy
+                  .map((e) => e.toString().toLowerCase().trim())
+                  .join(',');
+              final assignedEmailsRaw = todo['assigned_emails'];
+              task.totalAssigned = assignedEmailsRaw is List ? assignedEmailsRaw.length : 0;
             } else {
               task.isCompleted = todo['is_completed'] ?? false;
+              task.leaderChecked = false;
             }
-            
+
             task.isSynced = true;
             task.teamId = todo['team_id'];
 
             if (todo['assigned_emails'] != null && todo['assigned_emails'] is List) {
-              task.assignedEmails = (todo['assigned_emails'] as List).join(',');
+              final List<dynamic> assignedList = todo['assigned_emails'] as List;
+              task.assignedEmails = assignedList.join(',');
+              // Build display names: prefer name from user object if available,
+              // otherwise extract the part before '@' from the email
+              final assignedNames = assignedList.map((e) {
+                final emailStr = e.toString().trim();
+                // email prefix as fallback username
+                return emailStr.contains('@') ? emailStr.split('@').first : emailStr;
+              }).toList();
+              task.assignedUsernames = assignedNames.join(',');
             }
 
             if (todo['deadline'] != null) {
@@ -366,22 +453,36 @@ class TaskRepository {
     // Enable syncing for both registered users and guests (via device_id)
     _pendingSyncsCount[task.id] = (_pendingSyncsCount[task.id] ?? 0) + 1;
     try {
+      final isNewTask = task.apiId == null;
+
+      final validPriorities = ['high', 'medium', 'low'];
+      final safePriority = validPriorities.contains(task.priority.toLowerCase())
+          ? task.priority.toLowerCase()
+          : 'medium';
+
+      final assignedList = task.assignedEmails
+          ?.split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
       final payload = {
-        'judul': task.title,
-        if (task.description != null) 'deskripsi': task.description,
+        'judul': (task.title.isNotEmpty) ? task.title : 'Untitled',
+        if (task.description != null && task.description!.isNotEmpty)
+          'deskripsi': task.description,
         if (task.dueDate != null)
           'deadline':
               '${DateFormat('yyyy-MM-dd').format(task.dueDate!)} ${task.dueTime ?? '23:59:00'}',
-        'priority': task.priority,
+        'priority': safePriority,
         'is_completed': task.isCompleted,
-        'created_at': DateTime.now().toIso8601String(),
         'device_id': await SecureStorage.getDeviceId(),
-        if (task.teamId != null) 'team_id': task.teamId,
-        if (task.assignedEmails != null && task.assignedEmails!.isNotEmpty)
-          'assigned_emails': task.assignedEmails!.split(','),
+        // team_id only sent on creation — immutable after that, avoids exists:teams,id 422 on PUT
+        if (isNewTask && task.teamId != null) 'team_id': task.teamId,
+        if (assignedList != null && assignedList.isNotEmpty)
+          'assigned_emails': assignedList,
       };
 
-      if (task.apiId == null) {
+      if (isNewTask) {
         // Create (POST)
         final response = await _api.post('todos', data: payload);
         final data = response.data['todo'];
@@ -417,7 +518,7 @@ class TaskRepository {
     }
   }
 
-  // Reactive stream for tasks
+  // Reactive stream for tasks — includes both personal and team tasks
   Stream<List<TaskLocal>> watchTasksForDate(DateTime date, String userEmail) {
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
@@ -451,26 +552,29 @@ class TaskRepository {
 
     if (guestTasks.isEmpty) return;
 
+    // Separate tasks that were already synced (have apiId) from truly local ones
+    final List<TaskLocal> unsynced = [];
+
     await _isar.writeTxn(() async {
       for (var task in guestTasks) {
         task.userEmail = newEmail;
-        task.apiId = null; // Ensure they are created as new records for the real user
-        task.isSynced = false; // Mark for re-sync with new user email/token
         task.lastLocalUpdate = DateTime.now().millisecondsSinceEpoch;
+
+        if (task.apiId != null) {
+          // Already synced to server — just reassign email, keep apiId to avoid duplicates
+          task.isSynced = true;
+        } else {
+          // Never synced — mark for creation on server
+          task.isSynced = false;
+          unsynced.add(task);
+        }
+
         await _isar.taskLocals.put(task);
       }
     });
 
-    // Use bulk sync instead of sequential sync for performance if upgrading from guest
-    // Gather all newly assigned tasks that need to be pushed to the server
-    final tasksToSync = await _isar.taskLocals
-        .filter()
-        .userEmailEqualTo(newEmail)
-        .apiIdIsNull()
-        .findAll();
-
-    if (tasksToSync.isNotEmpty) {
-      await syncTasksInBulk(tasksToSync);
+    if (unsynced.isNotEmpty) {
+      await syncTasksInBulk(unsynced);
     }
   }
 

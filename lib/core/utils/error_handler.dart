@@ -72,24 +72,37 @@ class ErrorHandler {
   static void handleApiError(dynamic error) {
     String title = 'Error';
     String message = '';
-    
-    // 1. Try to extract message from DioException specific format
+
     try {
       final errorStr = error.toString();
       if (errorStr.contains('DioException')) {
         final response = (error as dynamic).response;
-        if (response != null && response.data is Map && response.data['message'] != null) {
-          message = response.data['message'].toString();
+        if (response != null && response.data is Map) {
+          message = response.data['message']?.toString() ?? '';
+          // Extract first validation error from Laravel's nested errors format
+          if (message == 'The given data was invalid.' || message.isEmpty) {
+            final errors = response.data['errors'];
+            if (errors is Map && errors.isNotEmpty) {
+              final firstErrors = errors.values.first;
+              if (firstErrors is List && firstErrors.isNotEmpty) {
+                message = firstErrors.first.toString();
+              }
+            }
+          }
         }
+        // Non-JSON responses (HTML proxy pages, etc.) are intentionally ignored here
+        // and fall through to the generic fallback below
       }
-      
-      // 2. Fallback to generic message property if still empty
+
+      // Fallback: try the .message property on the error object
       if (message.isEmpty) {
         final msg = (error as dynamic).message;
-        message = (msg is String && msg.isNotEmpty) ? msg : error.toString();
+        if (msg is String && msg.isNotEmpty) {
+          message = msg;
+        }
       }
     } catch (_) {
-      message = error.toString();
+      // Ignore — fallback to generic message below
     }
 
     // Remove "Exception: " prefix from generic Dart exceptions
@@ -97,29 +110,28 @@ class ErrorHandler {
       message = message.substring(11);
     }
 
-    // Sanitize: ONLY if it's truly technical or empty, replace with safe message
-    // We EXCLUDE valid Indonesian/English messages from the server
+    // Replace any technical/sensitive content with a safe user-facing message
     final isTechnical = message.isEmpty ||
         message == 'null' ||
         message.contains('http://') ||
         message.contains('https://') ||
         message.contains('HandshakeException') ||
+        message.contains('SocketException') ||
         message.contains('uri:') ||
-        (message.contains('Error:') && !message.contains(' ')); // Only if it's a single word error code
-
+        message.contains('<!') ||
+        message.contains('ERR_') ||
+        RegExp(r'^[A-Z_]+$').hasMatch(message);
 
     if (isTechnical) {
-      message = 'Sorry, something went wrong. Please try again later.';
+      message = 'Something went wrong. Please try again.';
     }
 
-    // Adjust title based on keywords for better context
     final msgLower = message.toLowerCase();
-    if (msgLower.contains('socket') || 
-        msgLower.contains('connection') || 
+    if (msgLower.contains('socket') ||
+        msgLower.contains('connection') ||
         msgLower.contains('network') ||
         msgLower.contains('host lookup') ||
         msgLower.contains('is not reachable')) {
-      // Silently ignore connection errors to avoid showing red popups when offline
       return;
     } else if (msgLower.contains('expired') || msgLower.contains('unauthorized')) {
       title = 'Session Expired';
@@ -127,14 +139,12 @@ class ErrorHandler {
     } else if (msgLower.contains('permission') || msgLower.contains('access denied')) {
       title = 'Access Denied';
       message = 'You do not have permission to perform this action.';
-    } else if (msgLower.contains('not found')) {
-      title = 'Not Found';
-      message = 'The requested resource was not found.';
+    } else if (msgLower.contains('too many') || msgLower.contains('rate limit')) {
+      title = 'Too Many Attempts';
     } else if (msgLower.contains('internal error') || msgLower.contains('server error')) {
-      // Suppress server error popups as well (as requested: "server mati mendadak jangan munculin popup")
       return;
     }
-    
+
     showErrorPopup(message, title: title);
   }
 }

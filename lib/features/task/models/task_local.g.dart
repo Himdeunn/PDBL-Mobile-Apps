@@ -23,37 +23,47 @@ const TaskLocalSchema = CollectionSchema(
       name: r'assignedEmails',
       type: IsarType.string,
     ),
-    r'description': PropertySchema(
+    r'completedBy': PropertySchema(
       id: 2,
+      name: r'completedBy',
+      type: IsarType.string,
+    ),
+    r'description': PropertySchema(
+      id: 3,
       name: r'description',
       type: IsarType.string,
     ),
     r'dueDate': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'dueDate',
       type: IsarType.dateTime,
     ),
-    r'dueTime': PropertySchema(id: 4, name: r'dueTime', type: IsarType.string),
+    r'dueTime': PropertySchema(id: 5, name: r'dueTime', type: IsarType.string),
     r'isCompleted': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'isCompleted',
       type: IsarType.bool,
     ),
-    r'isSynced': PropertySchema(id: 6, name: r'isSynced', type: IsarType.bool),
+    r'isSynced': PropertySchema(id: 7, name: r'isSynced', type: IsarType.bool),
     r'lastLocalUpdate': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'lastLocalUpdate',
       type: IsarType.long,
     ),
     r'priority': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'priority',
       type: IsarType.string,
     ),
-    r'teamId': PropertySchema(id: 9, name: r'teamId', type: IsarType.long),
-    r'title': PropertySchema(id: 10, name: r'title', type: IsarType.string),
+    r'teamId': PropertySchema(id: 10, name: r'teamId', type: IsarType.long),
+    r'title': PropertySchema(id: 11, name: r'title', type: IsarType.string),
+    r'totalAssigned': PropertySchema(
+      id: 12,
+      name: r'totalAssigned',
+      type: IsarType.long,
+    ),
     r'userEmail': PropertySchema(
-      id: 11,
+      id: 13,
       name: r'userEmail',
       type: IsarType.string,
     ),
@@ -82,6 +92,12 @@ int _taskLocalEstimateSize(
   var bytesCount = offsets.last;
   {
     final value = object.assignedEmails;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.completedBy;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
     }
@@ -117,16 +133,18 @@ void _taskLocalSerialize(
 ) {
   writer.writeLong(offsets[0], object.apiId);
   writer.writeString(offsets[1], object.assignedEmails);
-  writer.writeString(offsets[2], object.description);
-  writer.writeDateTime(offsets[3], object.dueDate);
-  writer.writeString(offsets[4], object.dueTime);
-  writer.writeBool(offsets[5], object.isCompleted);
-  writer.writeBool(offsets[6], object.isSynced);
-  writer.writeLong(offsets[7], object.lastLocalUpdate);
-  writer.writeString(offsets[8], object.priority);
-  writer.writeLong(offsets[9], object.teamId);
-  writer.writeString(offsets[10], object.title);
-  writer.writeString(offsets[11], object.userEmail);
+  writer.writeString(offsets[2], object.completedBy);
+  writer.writeString(offsets[3], object.description);
+  writer.writeDateTime(offsets[4], object.dueDate);
+  writer.writeString(offsets[5], object.dueTime);
+  writer.writeBool(offsets[6], object.isCompleted);
+  writer.writeBool(offsets[7], object.isSynced);
+  writer.writeLong(offsets[8], object.lastLocalUpdate);
+  writer.writeString(offsets[9], object.priority);
+  writer.writeLong(offsets[10], object.teamId);
+  writer.writeString(offsets[11], object.title);
+  writer.writeLong(offsets[12], object.totalAssigned);
+  writer.writeString(offsets[13], object.userEmail);
 }
 
 TaskLocal _taskLocalDeserialize(
@@ -138,17 +156,19 @@ TaskLocal _taskLocalDeserialize(
   final object = TaskLocal();
   object.apiId = reader.readLongOrNull(offsets[0]);
   object.assignedEmails = reader.readStringOrNull(offsets[1]);
-  object.description = reader.readStringOrNull(offsets[2]);
-  object.dueDate = reader.readDateTimeOrNull(offsets[3]);
-  object.dueTime = reader.readStringOrNull(offsets[4]);
+  object.completedBy = reader.readStringOrNull(offsets[2]);
+  object.description = reader.readStringOrNull(offsets[3]);
+  object.dueDate = reader.readDateTimeOrNull(offsets[4]);
+  object.dueTime = reader.readStringOrNull(offsets[5]);
   object.id = id;
-  object.isCompleted = reader.readBool(offsets[5]);
-  object.isSynced = reader.readBool(offsets[6]);
-  object.lastLocalUpdate = reader.readLong(offsets[7]);
-  object.priority = reader.readString(offsets[8]);
-  object.teamId = reader.readLongOrNull(offsets[9]);
-  object.title = reader.readString(offsets[10]);
-  object.userEmail = reader.readStringOrNull(offsets[11]);
+  object.isCompleted = reader.readBool(offsets[6]);
+  object.isSynced = reader.readBool(offsets[7]);
+  object.lastLocalUpdate = reader.readLong(offsets[8]);
+  object.priority = reader.readString(offsets[9]);
+  object.teamId = reader.readLongOrNull(offsets[10]);
+  object.title = reader.readString(offsets[11]);
+  object.totalAssigned = reader.readLong(offsets[12]);
+  object.userEmail = reader.readStringOrNull(offsets[13]);
   return object;
 }
 
@@ -166,22 +186,26 @@ P _taskLocalDeserializeProp<P>(
     case 2:
       return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readDateTimeOrNull(offset)) as P;
-    case 4:
       return (reader.readStringOrNull(offset)) as P;
+    case 4:
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 5:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 6:
       return (reader.readBool(offset)) as P;
     case 7:
-      return (reader.readLong(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 8:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 9:
-      return (reader.readLongOrNull(offset)) as P;
-    case 10:
       return (reader.readString(offset)) as P;
+    case 10:
+      return (reader.readLongOrNull(offset)) as P;
     case 11:
+      return (reader.readString(offset)) as P;
+    case 12:
+      return (reader.readLong(offset)) as P;
+    case 13:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -512,6 +536,171 @@ extension TaskLocalQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
         FilterCondition.greaterThan(property: r'assignedEmails', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  completedByIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        const FilterCondition.isNull(property: r'completedBy'),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  completedByIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'completedBy'),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition> completedByEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'completedBy',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  completedByGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'completedBy',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition> completedByLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'completedBy',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition> completedByBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'completedBy',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  completedByStartsWith(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'completedBy',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition> completedByEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'completedBy',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition> completedByContains(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'completedBy',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition> completedByMatches(
+    String pattern, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'completedBy',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  completedByIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'completedBy', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  completedByIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'completedBy', value: ''),
       );
     });
   }
@@ -1421,6 +1610,61 @@ extension TaskLocalQueryFilter
     });
   }
 
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  totalAssignedEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'totalAssigned', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  totalAssignedGreaterThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'totalAssigned',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  totalAssignedLessThan(int value, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'totalAssigned',
+          value: value,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition>
+  totalAssignedBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'totalAssigned',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
+    });
+  }
+
   QueryBuilder<TaskLocal, TaskLocal, QAfterFilterCondition> userEmailIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
@@ -1618,6 +1862,18 @@ extension TaskLocalQuerySortBy on QueryBuilder<TaskLocal, TaskLocal, QSortBy> {
     });
   }
 
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> sortByCompletedBy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'completedBy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> sortByCompletedByDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'completedBy', Sort.desc);
+    });
+  }
+
   QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> sortByDescription() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'description', Sort.asc);
@@ -1726,6 +1982,18 @@ extension TaskLocalQuerySortBy on QueryBuilder<TaskLocal, TaskLocal, QSortBy> {
     });
   }
 
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> sortByTotalAssigned() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalAssigned', Sort.asc);
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> sortByTotalAssignedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalAssigned', Sort.desc);
+    });
+  }
+
   QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> sortByUserEmail() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'userEmail', Sort.asc);
@@ -1762,6 +2030,18 @@ extension TaskLocalQuerySortThenBy
   QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> thenByAssignedEmailsDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'assignedEmails', Sort.desc);
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> thenByCompletedBy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'completedBy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> thenByCompletedByDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'completedBy', Sort.desc);
     });
   }
 
@@ -1885,6 +2165,18 @@ extension TaskLocalQuerySortThenBy
     });
   }
 
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> thenByTotalAssigned() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalAssigned', Sort.asc);
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> thenByTotalAssignedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'totalAssigned', Sort.desc);
+    });
+  }
+
   QueryBuilder<TaskLocal, TaskLocal, QAfterSortBy> thenByUserEmail() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'userEmail', Sort.asc);
@@ -1914,6 +2206,14 @@ extension TaskLocalQueryWhereDistinct
         r'assignedEmails',
         caseSensitive: caseSensitive,
       );
+    });
+  }
+
+  QueryBuilder<TaskLocal, TaskLocal, QDistinct> distinctByCompletedBy({
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'completedBy', caseSensitive: caseSensitive);
     });
   }
 
@@ -1979,6 +2279,12 @@ extension TaskLocalQueryWhereDistinct
     });
   }
 
+  QueryBuilder<TaskLocal, TaskLocal, QDistinct> distinctByTotalAssigned() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'totalAssigned');
+    });
+  }
+
   QueryBuilder<TaskLocal, TaskLocal, QDistinct> distinctByUserEmail({
     bool caseSensitive = true,
   }) {
@@ -2005,6 +2311,12 @@ extension TaskLocalQueryProperty
   QueryBuilder<TaskLocal, String?, QQueryOperations> assignedEmailsProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'assignedEmails');
+    });
+  }
+
+  QueryBuilder<TaskLocal, String?, QQueryOperations> completedByProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'completedBy');
     });
   }
 
@@ -2059,6 +2371,12 @@ extension TaskLocalQueryProperty
   QueryBuilder<TaskLocal, String, QQueryOperations> titleProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'title');
+    });
+  }
+
+  QueryBuilder<TaskLocal, int, QQueryOperations> totalAssignedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'totalAssigned');
     });
   }
 

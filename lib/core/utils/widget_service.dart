@@ -14,6 +14,9 @@ class WidgetService {
   static const String _androidWidgetName = 'WidgetProvider';
 
   static Future<void> init() async {
+    // Pastikan Flutter menggunakan group yang sama dengan Android agar data sinkron
+    await HomeWidget.setAppGroupId('HomeWidgetPreferences');
+
     // Handle clicks when app is already running
     HomeWidget.widgetClicked.listen((Uri? uri) {
       _handleWidgetClick(uri);
@@ -32,7 +35,7 @@ class WidgetService {
     final taskId = uri.queryParameters['id'];
     final type = uri.queryParameters['type']; // 'personal' or 'team'
     final teamId = uri.queryParameters['team_id'];
-    
+
     // Handle Login Redirection
     if (uri.host == 'login') {
       NavigatorService.navigatorKey.currentState?.push(
@@ -84,22 +87,28 @@ class WidgetService {
         'time': t.dueTime ?? '',
         'priority': t.priority,
       }).toList();
-      await HomeWidget.saveWidgetData<String>('personal_tasks', jsonEncode(tasksJson));
+      final jsonStr = jsonEncode(tasksJson);
+      debugPrint("WUDI_WIDGET_FLUTTER: Saving personal_tasks: ${jsonStr}");
+      await HomeWidget.saveWidgetData<String>('personal_tasks', jsonStr);
     }
 
     if (teamTasks != null) {
+      debugPrint("WUDI_WIDGET_FLUTTER: teamTasks input length: ${teamTasks.length}");
       final tasksJson = teamTasks.map((t) => {
         'id': t['id'].toString(),
-        'team_id': t['team_id']?.toString() ?? '', // Important for redirection
+        'team_id': t['team_id']?.toString() ?? '',
         'title': t['judul'] ?? t['title'] ?? '',
         'description': t['deskripsi'] ?? t['description'] ?? '',
         'date': t['deadline'] != null ? t['deadline'].toString().split(' ')[0] : '',
-        'time': t['deadline'] != null && t['deadline'].toString().contains(' ') 
-            ? t['deadline'].toString().split(' ')[1] 
+        'time': t['deadline'] != null && t['deadline'].toString().contains(' ')
+            ? t['deadline'].toString().split(' ')[1]
             : '',
         'priority': t['priority'] ?? 'low',
+        'assign_to': t['assign_to'] ?? '',
       }).toList();
-      await HomeWidget.saveWidgetData<String>('team_tasks', jsonEncode(tasksJson));
+      final jsonStr = jsonEncode(tasksJson);
+      debugPrint("WUDI_WIDGET_FLUTTER: Saving team_tasks: ${jsonStr}");
+      await HomeWidget.saveWidgetData<String>('team_tasks', jsonStr);
     }
 
     await HomeWidget.updateWidget(
@@ -118,13 +127,12 @@ class WidgetService {
        _syncCount++;
        return;
     }
-    
+
     _syncing = true;
     try {
       final user = await SecureStorage.getUser();
-      // ... (rest of the logic)
       final isLoggedIn = user != null && !user.isGuest;
-      
+
       List<TaskLocal>? personalTasks;
       List<dynamic> allTeamTasks = [];
       bool hasTeam = false;
@@ -132,7 +140,16 @@ class WidgetService {
       // Fetch personal tasks
       if (user != null) {
         final repository = TaskRepository();
-        personalTasks = await repository.getAllTasks(user.isGuest ? 'guest' : user.email ?? '');
+        final email = user.isGuest ? 'guest' : (user.email ?? '');
+        personalTasks = await repository.getAllTasks(email);
+
+        // Fallback: If no tasks found for email, check if there are tasks marked as 'guest'
+        if ((personalTasks == null || personalTasks.isEmpty) && email != 'guest') {
+           final guestTasks = await repository.getAllTasks('guest');
+           if (guestTasks.isNotEmpty) {
+             personalTasks = guestTasks;
+           }
+        }
       }
 
       // Fetch team tasks if logged in
@@ -140,26 +157,31 @@ class WidgetService {
         try {
           final teamService = TeamService();
           final dashboardData = await teamService.getDashboardData();
-          final teams = dashboardData['teams'] as List?;
+          final teams = dashboardData['teams'] as List? ?? dashboardData['data']?['teams'] as List?;
           hasTeam = teams != null && teams.isNotEmpty;
-          
+
           if (hasTeam) {
-              for (var team in teams) {
+              for (var team in teams!) {
                   try {
                       final teamId = int.tryParse(team['id'].toString());
                       if (teamId == null) continue;
-                      
+
                       final details = await teamService.getTeamDetails(teamId);
-                      final tasks = details['tasks'] as List? ?? [];
+                      final tasks = details['tasks'] as List? ?? details['data']?['tasks'] as List? ?? [];
+
                       // Inject team_id if missing for redirection
                       for (var task in tasks) {
                         task['team_id'] = teamId;
                       }
                       allTeamTasks.addAll(tasks);
-                  } catch (_) {}
+                  } catch (e) {
+                      debugPrint("WUDI_WIDGET_ERROR (Team Loop): $e");
+                  }
               }
           }
-        } catch (e) {}
+        } catch (e) {
+            debugPrint("WUDI_WIDGET_ERROR (Team Fetch): $e");
+        }
       }
 
       // Final consolidated update

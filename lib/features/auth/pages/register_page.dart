@@ -4,10 +4,10 @@ import '../../../../core/theme/logo.dart';
 import '../../../../core/theme/secondary_button.dart';
 import '../../../../core/theme/secondary_textfield.dart';
 import '../services/auth_service.dart';
-import '../../shell/pages/main_navigation.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
 import 'login_page.dart';
+import 'verify_email_page.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -83,13 +83,14 @@ class _RegisterPageState extends State<RegisterPage> {
       if (!mounted) return;
       _failedAttempts = 0;
       _lockoutUntil = null;
-      ErrorHandler.showSuccessPopup('Account successfully registered!');
-      Navigator.pushAndRemoveUntil(
+      Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => MainNavigation(authService: authService),
+          builder: (_) => VerifyEmailPage(
+            email: _emailController.text.trim(),
+            canSkip: true,
+          ),
         ),
-        (_) => false,
       );
     } catch (e) {
       if (!mounted) return;
@@ -124,202 +125,190 @@ class _RegisterPageState extends State<RegisterPage> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    SizedBox(height: isSmallScreen ? 40 : 60),
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(height: isSmallScreen ? 32 : 52),
 
-                    // Logo
-                    const WudiLogo(),
+                  const WudiLogo(),
 
-                    SizedBox(height: isSmallScreen ? 60 : 100),
+                  SizedBox(height: isSmallScreen ? 40 : 60),
 
-                    // Subtitle
-                    const Text(
-                      'Start your journey to better productivity\nwith FocusFlow.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: AppColors.textSecondary,
-                        height: 1.6,
+                  const Text(
+                    'Start your journey to better productivity\nwith FocusFlow.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: AppColors.textSecondary,
+                      height: 1.6,
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  if (_errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.errorBg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.errorText,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
 
-                    SizedBox(height: isSmallScreen ? 24 : 36),
-
-                    // Error message
-                    if (_errorMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.errorBg,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _errorMessage!,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.errorText,
+                  AbsorbPointer(
+                    absorbing: _isLoading,
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          DarkTextField(
+                            controller: _fullnameController,
+                            label: 'Full Name',
+                            enabled: !_isLoading,
+                            isRequired: true,
+                            hintText: 'Enter Your Fullname',
+                            prefixIcon: const Icon(
+                              Icons.person_outline,
+                              color: AppColors.iconAccent,
                             ),
-                            textAlign: TextAlign.center,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Full name is required';
+                              }
+                              return null;
+                            },
                           ),
-                        ),
+
+                          const SizedBox(height: 16),
+
+                          DarkTextField(
+                            controller: _emailController,
+                            label: 'Email',
+                            enabled: !_isLoading,
+                            isRequired: true,
+                            hintText: 'Enter Your Email',
+                            keyboardType: TextInputType.emailAddress,
+                            prefixIcon: const Icon(
+                              Icons.mail_outline,
+                              color: AppColors.iconAccent,
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Email is required';
+                              }
+                              final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                              if (!emailRegex.hasMatch(value)) {
+                                return 'Please enter a valid email address';
+                              }
+                              return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          DarkTextField(
+                            controller: _passwordController,
+                            label: 'Password',
+                            enabled: !_isLoading,
+                            isRequired: true,
+                            hintText: 'Create Your Password',
+                            obscureText: _obscurePassword,
+                            prefixIcon: const Icon(
+                              Icons.lock_outline,
+                              color: AppColors.iconAccent,
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Password is required';
+                              }
+                              if (value.contains(' ')) {
+                                return 'Password cannot contain spaces';
+                              }
+                              if (value.length < 8) {
+                                return 'Password must be at least 8 characters';
+                              }
+                              return null;
+                            },
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                color: AppColors.iconAccent,
+                              ),
+                              onPressed: _togglePasswordVisibility,
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
+                  ),
 
-                    AbsorbPointer(
-                      absorbing: _isLoading,
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
+                  const SizedBox(height: 28),
+
+                  _isLoading
+                      ? const SizedBox(
+                          height: 52,
+                          child: Center(
+                            child: CircularProgressIndicator(color: AppColors.primary),
+                          ),
+                        )
+                      : SecondaryButton(label: 'Sign up', onPressed: _onRegister),
+
+                  const SizedBox(height: 16),
+
+                  AbsorbPointer(
+                    absorbing: _isLoading,
+                    child: GestureDetector(
+                      onTap: _onLogin,
+                      child: RichText(
+                        text: const TextSpan(
+                          text: 'Already Have An Account? ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                            fontStyle: FontStyle.italic,
+                          ),
                           children: [
-                            // Fullname Field
-                            DarkTextField(
-                              controller: _fullnameController,
-                              label: 'Full Name',
-                              enabled: !_isLoading,
-                              isRequired: true,
-                              hintText: 'Enter Your Fullname',
-                              prefixIcon: const Icon(
-                                Icons.person_outline,
-                                color: AppColors.iconAccent,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Full name is required';
-                                }
-                                return null;
-                              },
-                            ),
-  
-                            const SizedBox(height: 18),
-  
-                            // Email Field
-                            DarkTextField(
-                              controller: _emailController,
-                              label: 'Email',
-                              enabled: !_isLoading,
-                              isRequired: true,
-                              hintText: 'Enter Your Email',
-                              keyboardType: TextInputType.emailAddress,
-                              prefixIcon: const Icon(
-                                Icons.mail_outline,
-                                color: AppColors.iconAccent,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Email is required';
-                                }
-                                if (!value.contains('@gmail.com')) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
-                            ),
-  
-                            const SizedBox(height: 18),
-  
-                            // Password Field
-                            DarkTextField(
-                              controller: _passwordController,
-                              label: 'Password',
-                              enabled: !_isLoading,
-                              isRequired: true,
-                              hintText: 'Create Your Password',
-                              obscureText: _obscurePassword,
-                              prefixIcon: const Icon(
-                                Icons.lock_outline,
-                                color: AppColors.iconAccent,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Password is required';
-                                }
-                                if (value.contains(' ')) {
-                                  return 'Password cannot contain spaces';
-                                }
-                                if (value.length < 8) {
-                                  return 'Password must be at least 8 characters';
-                                }
-                                return null;
-                              },
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  color: AppColors.iconAccent,
-                                ),
-                                onPressed: _togglePasswordVisibility,
+                            TextSpan(
+                              text: 'Login',
+                              style: TextStyle(
+                                fontStyle: FontStyle.italic,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ],
                         ),
                       ),
                     ),
+                  ),
 
-                    SizedBox(height: isSmallScreen ? 24 : 32),
-
-                    // Register Button
-                    _isLoading
-                        ? const SizedBox(
-                            height: 52,
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                color: AppColors.primary,
-                              ),
-                            ),
-                          )
-                        : SecondaryButton(
-                            label: 'Sign up',
-                            onPressed: _onRegister,
-                          ),
-
-                    const SizedBox(height: 20),
-
-                    // Login Link
-                    AbsorbPointer(
-                      absorbing: _isLoading,
-                      child: GestureDetector(
-                        onTap: _onLogin,
-                        child: RichText(
-                          text: const TextSpan(
-                            text: 'Already Have An Account? ',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                              fontStyle: FontStyle.italic,
-                            ),
-                            children: [
-                              TextSpan(
-                                text: 'Login',
-                                style: TextStyle(
-                                  fontStyle: FontStyle.italic,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 40),
-                  ],
-                ),
+                  const SizedBox(height: 40),
+                ],
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );

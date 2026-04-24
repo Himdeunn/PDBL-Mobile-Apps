@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:ui';
 import '../../../../core/utils/time_utils.dart';
 import 'create_task_page.dart';
+import '../services/reminder_service.dart';
 
 class TaskPage extends StatefulWidget {
   final AuthService? authService;
@@ -121,6 +122,7 @@ class _TaskPageState extends State<TaskPage> {
     if (confirmed != true) return;
 
     await _repository.deleteTask(task);
+    await ReminderService.deleteRemindersForTask(task.id);
     if (mounted) {
       ErrorHandler.showSuccessPopup('Task deleted successfully');
       _loadTasks();
@@ -264,7 +266,7 @@ class _TaskPageState extends State<TaskPage> {
 
 // ─── Task Card ──────────────────────────────────────────────────────────────────
 
-class _TodayTaskCard extends StatelessWidget {
+class _TodayTaskCard extends StatefulWidget {
   final TaskLocal task;
   final VoidCallback onToggle;
   final VoidCallback onTap;
@@ -277,8 +279,40 @@ class _TodayTaskCard extends StatelessWidget {
     this.isOffline = false,
   });
 
+  @override
+  State<_TodayTaskCard> createState() => _TodayTaskCardState();
+}
+
+class _TodayTaskCardState extends State<_TodayTaskCard> {
+  late bool _localCompleted;
+  bool _isToggling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _localCompleted = widget.task.isCompleted;
+  }
+
+  @override
+  void didUpdateWidget(_TodayTaskCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isToggling) {
+      _localCompleted = widget.task.isCompleted;
+    }
+  }
+
+  void _handleToggle() {
+    if (_isToggling) return;
+    _isToggling = true;
+    setState(() => _localCompleted = !_localCompleted);
+    widget.onToggle();
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) _isToggling = false;
+    });
+  }
+
   Color _getPriorityBgColor() {
-    switch (task.priority.toLowerCase()) {
+    switch (widget.task.priority.toLowerCase()) {
       case 'high':
         return Colors.red[50]!;
       case 'medium':
@@ -291,7 +325,7 @@ class _TodayTaskCard extends StatelessWidget {
   }
 
   Color _getPriorityTextColor() {
-    switch (task.priority.toLowerCase()) {
+    switch (widget.task.priority.toLowerCase()) {
       case 'high':
         return Colors.red[700]!;
       case 'medium':
@@ -303,21 +337,37 @@ class _TodayTaskCard extends StatelessWidget {
     }
   }
 
-  IconData _getPriorityIcon() {
-    switch (task.priority.toLowerCase()) {
+  Widget _buildPriorityIcon() {
+    switch (widget.task.priority.toLowerCase()) {
       case 'high':
-        return Icons.error_rounded;
-      case 'medium':
-        return Icons.warning_amber_rounded;
+        return Image.asset(
+          'assets/images/icon high priority.png',
+          width: 12,
+          height: 12,
+        );
       case 'low':
-        return Icons.check_circle_outline_rounded;
+        return Image.asset(
+          'assets/images/lowprio.png',
+          width: 12,
+          height: 12,
+        );
+      case 'medium':
+        return Icon(
+          Icons.warning_amber_rounded,
+          size: 12,
+          color: _getPriorityTextColor(),
+        );
       default:
-        return Icons.circle_outlined;
+        return Icon(
+          Icons.circle_outlined,
+          size: 12,
+          color: _getPriorityTextColor(),
+        );
     }
   }
 
   String _getPriorityLabel() {
-    switch (task.priority.toLowerCase()) {
+    switch (widget.task.priority.toLowerCase()) {
       case 'high':
         return 'High Priority';
       case 'medium':
@@ -325,26 +375,25 @@ class _TodayTaskCard extends StatelessWidget {
       case 'low':
         return 'Low';
       default:
-        return task.priority;
+        return widget.task.priority;
     }
   }
 
   String _formatTime() {
-    return AppTimeUtils.formatTo24h(task.dueTime);
+    return AppTimeUtils.formatTo24h(widget.task.dueTime);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isCompleted = task.isCompleted;
-    final bool isTeamOffline = task.teamId != null && isOffline;
+    final bool isTeamOffline = widget.task.teamId != null && widget.isOffline;
 
     return AbsorbPointer(
       absorbing: isTeamOffline,
       child: GestureDetector(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 300),
-          opacity: isCompleted ? 0.55 : 1.0,
+          opacity: _localCompleted ? 0.55 : 1.0,
           child: Stack(
             children: [
               Container(
@@ -358,7 +407,7 @@ class _TodayTaskCard extends StatelessWidget {
                   children: [
                     // ── Checkbox ──
                     GestureDetector(
-                      onTap: onToggle,
+                      onTap: _handleToggle,
                       child: Container(
                         width: 30,
                         height: 30,
@@ -369,11 +418,11 @@ class _TodayTaskCard extends StatelessWidget {
                             color: AppColors.calendarSelected,
                             width: 2,
                           ),
-                          color: isCompleted
+                          color: _localCompleted
                               ? AppColors.calendarSelected
                               : Colors.transparent,
                         ),
-                        child: isCompleted
+                        child: _localCompleted
                             ? const Icon(Icons.check, color: Colors.white, size: 18)
                             : null,
                       ),
@@ -385,14 +434,14 @@ class _TodayTaskCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            task.title,
+                            widget.task.title,
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.bold,
-                              color: isCompleted
+                              color: _localCompleted
                                   ? AppColors.textTertiary
                                   : AppColors.textPrimary,
-                              decoration: isCompleted
+                              decoration: _localCompleted
                                   ? TextDecoration.lineThrough
                                   : null,
                             ),
@@ -413,11 +462,7 @@ class _TodayTaskCard extends StatelessWidget {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      _getPriorityIcon(),
-                                      size: 12,
-                                      color: _getPriorityTextColor(),
-                                    ),
+                                    _buildPriorityIcon(),
                                     const SizedBox(width: 4),
                                     Text(
                                       _getPriorityLabel(),
@@ -432,16 +477,16 @@ class _TodayTaskCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 10),
                               // Date if exists
-                              if (task.dueDate != null)
+                              if (widget.task.dueDate != null)
                                 Padding(
                                   padding: const EdgeInsets.only(right: 10),
                                   child: Text(
                                     DateFormat('d MMM yyyy')
-                                        .format(task.dueDate!),
+                                        .format(widget.task.dueDate!),
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: isCompleted
+                                      color: _localCompleted
                                           ? AppColors.textTertiary
                                           : AppColors.textSecondary,
                                     ),
@@ -452,23 +497,23 @@ class _TodayTaskCard extends StatelessWidget {
                                 _formatTime(),
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isCompleted
+                                  color: _localCompleted
                                       ? AppColors.textTertiary
                                       : AppColors.textSecondary,
                                 ),
                               ),
                             ],
                           ),
-                          if (task.description != null &&
-                              task.description!.isNotEmpty) ...[
+                          if (widget.task.description != null &&
+                              widget.task.description!.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Text(
-                              'Description: ${task.description}',
+                              'Description: ${widget.task.description}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isCompleted
+                                color: _localCompleted
                                     ? AppColors.textTertiary
                                     : AppColors.textSecondary,
                               ),

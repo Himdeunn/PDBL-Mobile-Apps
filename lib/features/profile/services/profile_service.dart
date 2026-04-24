@@ -10,10 +10,12 @@ class ProfileService {
 
   ProfileService({AuthService? authService}) : _authService = authService;
 
-  Future<void> updateAvatar(String filePath) async {
+  Future<void> updateAvatar(String filePath, {String? oldAvatarUrl}) async {
     try {
       final formData = FormData.fromMap({
         'avatar': await MultipartFile.fromFile(filePath),
+        if (oldAvatarUrl != null && oldAvatarUrl.isNotEmpty)
+          'old_avatar': oldAvatarUrl,
       });
 
       final response = await _api.post('profile/avatar', data: formData);

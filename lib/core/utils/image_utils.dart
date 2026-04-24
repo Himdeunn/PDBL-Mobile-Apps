@@ -4,22 +4,26 @@ class ImageUtils {
   static String getAvatarUrl(String? avatarPath) {
     if (avatarPath == null || avatarPath.isEmpty) return '';
     
-    // If it's already a full URL
+    // If it's already a full URL, just ensure security
     if (avatarPath.startsWith('http')) {
-      // Force HTTPS for security and potential server-side blocks
-      return avatarPath.replaceAll('http://', 'https://');
+      return avatarPath.replaceFirst('http://', 'https://');
     }
     
-    // Construct storage URL from API base URL
-    // API_URL = https://.../api -> Storage URL = https://.../storage
-    final baseStorageUrl = ApiClient.baseUrl.replaceAll('/api', '/storage');
+    // Construct storage URL intelligently
+    String apiBase = ApiClient.baseUrl;
     
-    // Ensure clean path concatenation
-    final cleanBase = baseStorageUrl.endsWith('/') 
-        ? baseStorageUrl.substring(0, baseStorageUrl.length - 1) 
-        : baseStorageUrl;
-    final cleanPath = avatarPath.startsWith('/') ? avatarPath : '/$avatarPath';
+    // Remove trailing slash for consistent manipulation
+    if (apiBase.endsWith('/')) {
+      apiBase = apiBase.substring(0, apiBase.length - 1);
+    }
     
-    return '$cleanBase$cleanPath';
+    // Replace /api with /storage at the end of the URL
+    final String storageBase = apiBase.endsWith('/api') 
+        ? apiBase.substring(0, apiBase.length - 4) + '/storage'
+        : apiBase + '/storage';
+    
+    final String cleanPath = avatarPath.startsWith('/') ? avatarPath : '/$avatarPath';
+    
+    return '$storageBase$cleanPath';
   }
 }

@@ -65,6 +65,11 @@ class AuthService {
         existingUser.email = userData['email'] as String? ?? existingUser.email;
         existingUser.avatar = userData['avatar_url'] as String? ?? existingUser.avatar;
         existingUser.avatarUrl = (userData['avatar_url'] as String?) ?? existingUser.avatarUrl;
+        existingUser.todayTarget = (userData['today_target'] as num?)?.toInt() ?? existingUser.todayTarget;
+        existingUser.emailVerifiedAt = userData['email_verified_at'] != null
+            ? DateTime.tryParse(userData['email_verified_at'] as String)
+            : null;
+        existingUser.googleId = userData['google_id'] as String?;
         existingUser.isGuest = false;
         
         _cachedUser = existingUser;
@@ -89,14 +94,14 @@ class AuthService {
     return _cachedUser;
   }
 
-  Future<User?> register({
+  Future<void> register({
     required String name,
     required String email,
     required String password,
     required String passwordConfirmation,
   }) async {
     final deviceId = await SecureStorage.getDeviceId();
-    final response = await _api.post(
+    await _api.post(
       'register',
       data: {
         'name': name,
@@ -106,8 +111,7 @@ class AuthService {
         'device_id': deviceId,
       },
     );
-
-    return await _handleAuthSuccess(response.data);
+    // Registration only creates the account — no token issued until email is verified.
   }
 
   Future<User?> login({required String email, required String password}) async {
@@ -133,6 +137,10 @@ class AuthService {
       ..email = userData?['email'] as String? ?? ''
       ..avatar = userData?['avatar_url'] as String?
       ..avatarUrl = userData?['avatar_url'] as String?
+      ..googleId = userData?['google_id'] as String?
+      ..emailVerifiedAt = userData?['email_verified_at'] != null
+          ? DateTime.tryParse(userData!['email_verified_at'] as String)
+          : null
       ..isGuest = false
       ..loginAt = DateTime.now();
 
@@ -273,6 +281,71 @@ class AuthService {
   Future<void> updateUserCache(User user) async {
     _cachedUser = user;
     await SecureStorage.saveUser(user);
+  }
+  /// True if the last googleLogin call converted a regular account to Google-only.
+  bool _lastGoogleLoginConverted = false;
+  bool get lastGoogleLoginConverted => _lastGoogleLoginConverted;
+
+  Future<User?> googleLogin({
+    required String googleId,
+    required String email,
+    required String name,
+    String? avatarUrl,
+  }) async {
+    final deviceId = await SecureStorage.getDeviceId();
+    final response = await _api.post(
+      'auth/google',
+      data: {
+        'google_id': googleId,
+        'email': email,
+        'name': name,
+        'avatar_url': avatarUrl,
+        'device_id': deviceId,
+      },
+    );
+    _lastGoogleLoginConverted = response.data['account_converted'] == true;
+    return await _handleAuthSuccess(response.data);
+  }
+
+  Future<String> verifyEmail(String email, String otp) async {
+    final response = await _api.post(
+      'auth/verify-email',
+      data: {'email': email, 'otp': otp},
+    );
+    return await _handleAuthSuccess(response.data) != null
+        ? response.data['token'] as String
+        : '';
+  }
+
+  Future<void> resendVerification(String email) async {
+    await _api.post('auth/resend-verification', data: {'email': email});
+  }
+
+  /// Returns response data including `retry_after` seconds.
+  Future<Map<String, dynamic>> resendVerificationWithCooldown(String email) async {
+    final response = await _api.post('auth/resend-verification', data: {'email': email});
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> forgotPassword(String email) async {
+    await _api.post('auth/forgot-password', data: {'email': email});
+  }
+
+  Future<void> verifyOtp(String email, String otp) async {
+    await _api.post('auth/verify-otp', data: {'email': email, 'otp': otp});
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String password,
+  }) async {
+    await _api.post('auth/reset-password', data: {
+      'email': email,
+      'otp': otp,
+      'password': password,
+      'password_confirmation': password,
+    });
   }
 
   /// Clears the in-memory cache.

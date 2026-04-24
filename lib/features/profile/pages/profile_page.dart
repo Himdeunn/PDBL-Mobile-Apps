@@ -1,3 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/utils/image_cache_manager.dart';
+import '../../../core/utils/network_utils.dart';
+import 'notification_settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -8,6 +12,7 @@ import '../../auth/services/auth_service.dart';
 import '../../auth/pages/welcome_page.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/connection_service.dart';
+import '../../../core/storage/secure_storage.dart';
 
 
 class ProfilePage extends StatefulWidget {
@@ -23,27 +28,47 @@ class _ProfilePageState extends State<ProfilePage> {
   late final ProfileService _profileService;
   final ImagePicker _picker = ImagePicker();
   User? _user;
+  // Cached Google-user flag — set once when googleId is first known,
+  // never reset to avoid flicker during reload.
+  bool? _isGoogleUser;
   bool _loggingOut = false;
   bool _updatingAvatar = false;
+  bool _isPickingImage = false;
   DateTime? _lastProfileUpdate;
+  String? _authToken;
 
   @override
   void initState() {
     super.initState();
     _profileService = ProfileService(authService: widget.authService);
+    // Set user synchronously from in-memory cache so first frame shows correct data
+    _user = widget.authService.currentCachedUser;
+    // Initialise flag immediately from in-memory cache if available
+    if (_user?.googleId != null) _isGoogleUser = true;
     _loadUser();
   }
-
   Future<void> _loadUser() async {
     // 1. Get cached user first for immediate display
     final cachedUser = await widget.authService.getCachedUser();
     if (mounted && cachedUser != null) {
-      setState(() => _user = cachedUser);
+      setState(() {
+        _user = cachedUser;
+        // Only set — never unset — the Google flag
+        if (cachedUser.googleId != null) _isGoogleUser = true;
+      });
     }
 
-    // 2. Perform regular refresh (now faster due to AuthService caching)
-    final user = await widget.authService.getCurrentUser();
-    if (mounted) setState(() => _user = user);
+    // 2. Force-refresh from API to get latest data
+    final user = await widget.authService.getCurrentUser(forceRefresh: true);
+    final token = await SecureStorage.getToken();
+    if (mounted && user != null) {
+      setState(() {
+        _user = user;
+        _authToken = token;
+        // Only set — never unset — the Google flag
+        if (user.googleId != null) _isGoogleUser = true;
+      });
+    }
   }
 
   Future<void> _logout() async {
@@ -57,35 +82,110 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Future<void> _pickAndUploadImage() async {
-    try {
-      // Check network connection
-      if (!await ConnectionService().isConnected()) {
-        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
-        return;
-      }
+  Future<void> _showImageSourcePicker() async {
+    if (_isPickingImage) return;
 
+    if (!await ConnectionService().isConnected()) {
+      if (!mounted) return;
+      ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() => _isPickingImage = true);
+
+    try {
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Change Profile Photo',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFEDE9FE),
+                  child: Icon(Icons.camera_alt, color: AppColors.primary),
+                ),
+                title: const Text('Take Photo'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFEDE9FE),
+                  child: Icon(Icons.photo_library, color: AppColors.primary),
+                ),
+                title: const Text('Choose from Gallery'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+
+      if (source == null || !mounted) return;
+      await _pickAndUploadImage(source);
+    } finally {
+      if (mounted) setState(() => _isPickingImage = false);
+    }
+  }
+
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    try {
       final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
+        source: source,
+        imageQuality: source == ImageSource.camera ? 80 : null,
       );
 
       if (image == null) return;
 
-      // Check file size (1MB = 1 * 1024 * 1024 bytes)
+      // Check file size (Image max 1MB, GIF max 2MB)
       final File file = File(image.path);
       final int sizeInBytes = await file.length();
-      if (sizeInBytes > 1 * 1024 * 1024) {
+      final bool isGif = image.path.toLowerCase().endsWith('.gif');
+      final int maxSize = isGif ? 2 * 1024 * 1024 : 1 * 1024 * 1024;
+
+      if (sizeInBytes > maxSize) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Image size must be less than 1MB')),
+          const SnackBar(content: Text('File too large (Image max 1MB, GIF max 2MB)')),
         );
         return;
       }
 
-      setState(() => _updatingAvatar = true);
-      await _profileService.updateAvatar(image.path);
-      await _loadUser();
+      if (mounted) setState(() => _updatingAvatar = true);
+      // Pass old avatar URL so backend can delete the previous file
+      await _profileService.updateAvatar(image.path, oldAvatarUrl: _user?.avatarUrl);
+      // Refresh only the avatar URL from cache — avoid full _loadUser() which
+      // causes 2x setState and flickers the Change Email / Password tiles.
+      final updatedUser = await widget.authService.getCachedUser();
+      if (mounted && updatedUser != null) {
+        setState(() {
+          _user = updatedUser;
+          // Never unset the Google flag — only set it
+          if (updatedUser.googleId != null) _isGoogleUser = true;
+        });
+      }
 
       if (!mounted) return;
       ErrorHandler.showSuccessPopup('Profile picture updated successfully');
@@ -111,17 +211,11 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               TextField(
                 controller: nameController,
+                maxLength: 50,
                 decoration: const InputDecoration(labelText: 'Full Name'),
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: loading
+              ElevatedButton(
+                onPressed: loading
                   ? null
                   : () async {
                       if (nameController.text.trim().isEmpty) return;
@@ -162,7 +256,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     )
                   : const Text('Save'),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -282,14 +377,13 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               TextField(
                 controller: emailController,
+                maxLength: 60,
                 decoration: const InputDecoration(labelText: 'New Email'),
               ),
               TextField(
                 controller: passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Current Password',
-                ),
+                decoration: const InputDecoration(labelText: 'Current Password'),
               ),
             ],
           ),
@@ -350,6 +444,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final displayName = _user?.name ?? 'User';
     final email = _user?.email ?? '';
     final isGuest = _user?.isGuest ?? false;
+    final isGoogleUser = _isGoogleUser == true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -366,11 +461,11 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               const SizedBox(height: 20),
               // Avatar
-            Stack(
+            GestureDetector(
+              onTap: _updatingAvatar ? null : _showImageSourcePicker,
+              child: Stack(
               children: [
-                GestureDetector(
-                  onTap: _updatingAvatar ? null : _pickAndUploadImage,
-                  child: Container(
+                Container(
                     width: 100,
                     height: 100,
                     decoration: BoxDecoration(
@@ -382,12 +477,17 @@ class _ProfilePageState extends State<ProfilePage> {
                         ? const Center(child: CircularProgressIndicator())
                         : _user?.avatarUrl != null
                             ? ClipOval(
-                                child: Image.network(
-                                  _user!.avatarUrl!,
+                                child: CachedNetworkImage(
+                                  imageUrl: _user!.avatarUrl!,
                                   width: 100,
                                   height: 100,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => const Icon(
+                                  cacheManager: WudiCacheManager(),
+                                  httpHeaders: {
+                                    ...getNetworkImageHeaders(_user!.avatarUrl!),
+                                    if (_authToken != null) 'Authorization': 'Bearer $_authToken',
+                                  },
+                                  errorWidget: (_, _, _) => const Icon(
                                     Icons.person,
                                     color: AppColors.primary,
                                     size: 50,
@@ -400,7 +500,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                 size: 50,
                               ),
                   ),
-                ),
                 Positioned(
                   bottom: 0,
                   right: 0,
@@ -419,7 +518,17 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Tips: Image max 1MB, GIF max 2MB',
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
             Text(
               displayName,
               style: const TextStyle(
@@ -452,17 +561,28 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: 'Change Name',
                 onTap: _showChangeNameDialog,
               ),
+              if (!isGoogleUser) ...[
+                _buildSettingTile(
+                  icon: Icons.lock_outline,
+                  title: 'Change Password',
+                  onTap: _showChangePasswordDialog,
+                ),
+                _buildSettingTile(
+                  icon: Icons.email_outlined,
+                  title: 'Change Email',
+                  onTap: _showChangeEmailDialog,
+                ),
+              ],
               _buildSettingTile(
-                icon: Icons.lock_outline,
-                title: 'Change Password',
-                onTap: _showChangePasswordDialog,
+                icon: Icons.notifications_none_outlined,
+                title: 'Notification Settings',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const NotificationSettingsPage()),
+                  );
+                },
               ),
-              _buildSettingTile(
-                icon: Icons.email_outlined,
-                title: 'Change Email',
-                onTap: _showChangeEmailDialog,
-              ),
-
               const SizedBox(height: 24),
             ],
             // Logout button

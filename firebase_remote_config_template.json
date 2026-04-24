@@ -1,0 +1,75 @@
+{
+  "conditions": [],
+  "parameterGroups": {
+    "🔧 Maintenance": {
+      "description": "Control app maintenance mode. Set maintenance_enabled to true to block all users.",
+      "parameters": {
+        "maintenance_enabled": {
+          "defaultValue": { "value": "false" },
+          "description": "Set to true to show the maintenance screen to all users. Set back to false when done.",
+          "valueType": "BOOLEAN"
+        },
+        "maintenance_title": {
+          "defaultValue": { "value": "We'll Be Right Back" },
+          "description": "Title shown on the maintenance popup.",
+          "valueType": "STRING"
+        },
+        "maintenance_message": {
+          "defaultValue": { "value": "We're doing some maintenance to improve Wudi for you. We'll be back online shortly!" },
+          "description": "Body message shown on the maintenance popup.",
+          "valueType": "STRING"
+        },
+        "maintenance_estimated_end": {
+          "defaultValue": { "value": "" },
+          "description": "Estimated time maintenance will end (e.g. '3:00 PM UTC'). Leave empty to hide.",
+          "valueType": "STRING"
+        }
+      }
+    },
+    "🚀 App Update": {
+      "description": "Control app update prompts. Use force_update_enabled + min_version for required updates, or just latest_version for optional prompts.",
+      "parameters": {
+        "force_update_enabled": {
+          "defaultValue": { "value": "false" },
+          "description": "Set to true to force users below min_version to update before using the app.",
+          "valueType": "BOOLEAN"
+        },
+        "min_version": {
+          "defaultValue": { "value": "1.0.0" },
+          "description": "Minimum required app version (semver x.y.z). Users below this AND force_update_enabled=true will be forced to update.",
+          "valueType": "STRING"
+        },
+        "latest_version": {
+          "defaultValue": { "value": "1.0.2" },
+          "description": "Latest available version (semver x.y.z). Users below this (but above min_version) will see an optional update prompt.",
+          "valueType": "STRING"
+        },
+        "update_url_android": {
+          "defaultValue": { "value": "" },
+          "description": "Direct APK download URL or Google Play Store URL for Android. Leave empty to disable the Update Now button.",
+          "valueType": "STRING"
+        },
+        "update_title": {
+          "defaultValue": { "value": "Update Available" },
+          "description": "Title shown on the update popup.",
+          "valueType": "STRING"
+        },
+        "update_message": {
+          "defaultValue": { "value": "A new version of Wudi is ready! Update now to get the latest features and improvements." },
+          "description": "Body message shown on the update popup.",
+          "valueType": "STRING"
+        },
+        "update_changelog": {
+          "defaultValue": { "value": "" },
+          "description": "Optional changelog / release notes shown in the update popup (e.g. '• Bug fixes\\n• Performance improvements'). Leave empty to hide.",
+          "valueType": "STRING"
+        }
+      }
+    }
+  },
+  "version": {
+    "versionNumber": "1",
+    "updateOrigin": "CONSOLE",
+    "updateType": "INCREMENTAL_UPDATE"
+  }
+}

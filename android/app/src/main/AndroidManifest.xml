@@ -52,7 +52,7 @@
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/launcher_icon" />
 
-        <!-- <receiver android:name=".WidgetProvider" android:exported="true">
+        <receiver android:name=".WidgetProvider" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -61,7 +61,7 @@
         </receiver>
 
         <service android:name=".ListWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS" /> -->
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
 
         <!-- Flutter Local Notifications Receivers -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
@@ -84,6 +84,15 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- url_launcher: open https links (e.g. update URL) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
         </intent>
     </queries>
 </manifest>

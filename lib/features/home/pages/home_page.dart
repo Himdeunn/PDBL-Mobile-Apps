@@ -1,7 +1,6 @@
 import 'dart:async';
 import '../../../../core/theme/app_theme.dart';
 
-import '../../../../core/utils/image_utils.dart';
 import '../../../../core/utils/debouncer.dart';
 import '../../../../core/utils/time_utils.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +14,7 @@ import '../widgets/search_bar.dart';
 import '../widgets/week_strip.dart';
 import '../widgets/daily_task_list.dart';
 import '../../task/models/task_local.dart';
+import '../../task/pages/task_page.dart';
 import '../../task/services/task_repository.dart';
 import '../../../../core/services/connection_service.dart';
 import '../../profile/pages/profile_page.dart';
@@ -22,8 +22,13 @@ import '../../profile/pages/notification_page.dart';
 
 class HomePage extends StatefulWidget {
   final AuthService authService;
+  final VoidCallback? onProfileClick;
 
-  const HomePage({super.key, required this.authService});
+  const HomePage({
+    super.key,
+    required this.authService,
+    this.onProfileClick,
+  });
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -40,11 +45,15 @@ class _HomePageState extends State<HomePage> {
   bool _isLoading = true;
   String _searchQuery = '';
   bool _isOffline = false;
+  int _taskTab = 0; // 0 = Individu, 1 = Team
+  int _prevTaskTab = 0;
   StreamSubscription? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
+    // Set user synchronously from in-memory cache so first frame shows correct data
+    _user = widget.authService.currentCachedUser;
     _checkInitialConnection();
     _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
       if (mounted) {
@@ -68,24 +77,21 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _loadData([DateTime? targetDate]) async {
+  Future<void> _loadData([DateTime? targetDate, bool forceSync = false]) async {
     final dateToLoad = targetDate ?? _selectedDate;
-    
-    // 1. Get cached user immediately for fast UI response
+
+    // Show cached user immediately for fast first frame
     final cachedUser = await widget.authService.getCachedUser();
     if (cachedUser != null && mounted) {
-      setState(() {
-        _user = cachedUser;
-      });
+      setState(() => _user = cachedUser);
     }
 
-    // 2. Perform regular fetch (now faster due to AuthService caching)
     final user = await widget.authService.getCurrentUser();
     final userEmail = user?.email ?? 'guest';
 
     if (mounted) {
       setState(() {
-        _user = user;
+        if (user != null) _user = user;
         _isLoading = true;
         _tasksStream = _taskRepository.watchTasksForDate(dateToLoad, userEmail);
       });
@@ -96,10 +102,11 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    _taskRepository.fetchTasksFromServer(userEmail).then((_) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+    // fetchTasksFromServer respects a 2-minute cooldown unless force=true (pull-to-refresh)
+    _taskRepository.fetchTasksFromServer(userEmail, force: forceSync).then((_) {
+      if (mounted) setState(() => _isLoading = false);
+    }).catchError((_) {
+      if (mounted) setState(() => _isLoading = false);
     });
   }
 
@@ -120,6 +127,37 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Sign Out',
+          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to sign out of your account?',
+          style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Sign Out',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -152,11 +190,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _goToProfile() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ProfilePage(authService: widget.authService)),
-    );
-    _loadData();
+    if (widget.onProfileClick != null) {
+      widget.onProfileClick!();
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ProfilePage(authService: widget.authService)),
+      );
+      // Re-subscribe stream in case user changed, but don't force a server sync
+      _loadData(_selectedDate, false);
+    }
   }
 
   void _goToNotifications() {
@@ -185,7 +228,7 @@ class _HomePageState extends State<HomePage> {
         : 20.0;
 
     return RefreshIndicator(
-      onRefresh: _loadData,
+      onRefresh: () => _loadData(_selectedDate, true),
       color: AppColors.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -193,7 +236,7 @@ class _HomePageState extends State<HomePage> {
           horizontalPadding,
           MediaQuery.of(context).padding.top + 16.0,
           horizontalPadding,
-          120,
+          120 + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,11 +246,8 @@ class _HomePageState extends State<HomePage> {
               avatarUrl: _user?.avatarUrl,
               isGuest: isGuest,
               todayTarget: _user?.todayTarget ?? 0,
-              onAvatarTap: _goToProfile,
               onNotificationTap: _goToNotifications,
-              onLogoutTap: _logout,
-              onLoginTap: _goToLogin,
-              onRegisterTap: _goToRegister,
+              onProfileTap: _goToProfile,
             ),
             const SizedBox(height: 16),
             WudiSearchBar(
@@ -244,45 +284,52 @@ class _HomePageState extends State<HomePage> {
                                 false);
                       }).toList();
 
-                final uncompletedTasks = tasks
-                    .where((t) => !t.isCompleted)
-                    .toList();
-
-                uncompletedTasks.sort((a, b) {
-                  if (a.dueTime != null && b.dueTime != null) {
-                    final timeCompare = a.dueTime!.compareTo(b.dueTime!);
-                    if (timeCompare != 0) return timeCompare;
-                  } else if (a.dueTime != null) {
-                    return -1;
-                  } else if (b.dueTime != null) {
-                    return 1;
+                int getWeight(String p) {
+                  switch (p.toLowerCase()) {
+                    case 'high': return 3;
+                    case 'medium': return 2;
+                    case 'low': return 1;
+                    default: return 0;
                   }
+                }
 
-                  int getWeight(String p) {
-                    switch (p.toLowerCase()) {
-                      case 'high':
-                        return 3;
-                      case 'medium':
-                        return 2;
-                      case 'low':
-                        return 1;
-                      default:
-                        return 0;
+                List<TaskLocal> sortUncompleted(List<TaskLocal> list) {
+                  final sorted = list.where((t) => !t.isCompleted).toList();
+                  sorted.sort((a, b) {
+                    if (a.dueTime != null && b.dueTime != null) {
+                      final c = a.dueTime!.compareTo(b.dueTime!);
+                      if (c != 0) return c;
+                    } else if (a.dueTime != null) {
+                      return -1;
+                    } else if (b.dueTime != null) {
+                      return 1;
                     }
-                  }
+                    return getWeight(b.priority).compareTo(getWeight(a.priority));
+                  });
+                  return sorted;
+                }
 
-                  final weightA = getWeight(a.priority);
-                  final weightB = getWeight(b.priority);
-                  return weightB.compareTo(weightA);
-                });
+                final uncompletedPersonal = sortUncompleted(tasks.where((t) => t.teamId == null).toList());
+                final uncompletedTeam    = sortUncompleted(tasks.where((t) => t.teamId != null).toList());
 
-                final focusTask = uncompletedTasks.firstOrNull;
+                // Focus Today: based on selected tab, auto-fallback to other if tab is empty
+                TaskLocal? focusTask;
+                if (_taskTab == 0) {
+                  focusTask = uncompletedPersonal.firstOrNull ?? uncompletedTeam.firstOrNull;
+                } else {
+                  focusTask = uncompletedTeam.firstOrNull ?? uncompletedPersonal.firstOrNull;
+                }
+
+                // Tab filter: individu = no teamId, team = has teamId
+final tabFilteredTasks = _taskTab == 0
+? filteredTasks.where((t) => t.teamId == null).toList()
+: filteredTasks.where((t) => t.teamId != null).toList();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Today\'s Focus',
+                      'Focus Today',
                       style: TextStyle(
                         fontSize: MediaQuery.of(context).size.width > 400
                             ? 18
@@ -309,30 +356,143 @@ class _HomePageState extends State<HomePage> {
                           horizontal: 16,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceDark,
+                          color: AppColors.surface,
                           borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.black.withValues(alpha: 0.06),
+                          ),
                         ),
-                        child: const Center(
-                          child: Text(
-                            'No focus for today yet.',
+child: Center(
+child: Text(
+'No focus for today yet.',
+style: TextStyle(
+color: AppColors.textSecondary,
+fontSize: 14,
+),
+),
+                        ),
+                      ),
+const SizedBox(height: 32),
+                    // Today Task header + SEE ALL
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Today Task',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TaskPage(
+                                authService: widget.authService,
+                                filterDate: _selectedDate,
+                              ),
+                            ),
+                          ),
+                          child: const Text(
+                            'SEE ALL',
                             style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
+                              fontSize: 13,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                      ),
-                    const SizedBox(height: 32),
-                    DailyTaskList(
-                      tasks: filteredTasks,
-                      onRefresh: _loadData,
-                      authService: widget.authService,
-                      isLoading: _isLoading,
-                      filterDate: _selectedDate,
-                      isOffline: _isOffline,
+                      ],
                     ),
-                  ],
-                );
+                    const SizedBox(height: 12),
+                    // Individu / Team tab — sliding pill
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        const double pillH = 38.0;
+                        const double padding = 4.0;
+                        final double pillW = (constraints.maxWidth - padding * 2) / 2;
+                        return Container(
+                          height: pillH + padding * 2,
+                          padding: const EdgeInsets.all(padding),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Stack(
+                            children: [
+                              // Sliding active pill
+                              AnimatedPositioned(
+                                duration: const Duration(milliseconds: 240),
+                                curve: Curves.easeInOut,
+                                left: _taskTab == 0 ? 0 : pillW,
+                                top: 0,
+                                bottom: 0,
+                                width: pillW,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    borderRadius: BorderRadius.circular(26),
+                                  ),
+                                ),
+                              ),
+                              // Labels
+                              Row(
+                                children: [
+                                  _buildTab('Individu', 0, pillW, pillH),
+                                  _buildTab('Team', 1, pillW, pillH),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    ClipRect(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        transitionBuilder: (child, animation) {
+                          final isForward = _taskTab >= _prevTaskTab;
+                          final begin = isForward
+                              ? const Offset(1.0, 0.0)
+                              : const Offset(-1.0, 0.0);
+                          final slide = Tween<Offset>(
+                                  begin: begin, end: Offset.zero)
+                              .animate(CurvedAnimation(
+                                  parent: animation,
+                                  curve: Curves.easeOutCubic));
+                          return SlideTransition(
+                            position: slide,
+                            child: FadeTransition(
+                                opacity: animation, child: child),
+                          );
+                        },
+                        layoutBuilder: (currentChild, previousChildren) =>
+                            Stack(
+                          alignment: Alignment.topCenter,
+                          children: [
+                            ...previousChildren,
+                            if (currentChild != null) currentChild,
+                          ],
+                        ),
+                        child: KeyedSubtree(
+                          key: ValueKey<int>(_taskTab),
+                          child: DailyTaskList(
+                            tasks: tabFilteredTasks,
+                            onRefresh: _loadData,
+                            authService: widget.authService,
+                            isLoading: _isLoading,
+                            filterDate: _selectedDate,
+                            isOffline: _isOffline,
+                            showHeader: false,
+                          ),
+                        ),
+                      ),
+                    ),
+],
+);
               },
             ),
           ],
@@ -341,25 +501,47 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildTab(String label, int index, double width, double height) {
+    final isActive = _taskTab == index;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _prevTaskTab = _taskTab;
+        _taskTab = index;
+      }),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isActive ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFocusCard(TaskLocal task) {
+    final priorityColor = _getPriorityColor(task.priority);
+    final priorityBgColor = _getPriorityBgColor(task.priority);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFEADBC8).withValues(alpha: 0.75),
-            const Color(0xFF2F2235).withValues(alpha: 0.8),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.07)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -367,102 +549,84 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _getPriorityBgColor(task.priority),
-                  borderRadius: BorderRadius.circular(12),
+                  color: priorityBgColor,
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   _getPriorityLabel(task.priority),
                   style: TextStyle(
-                    color: _getPriorityColor(task.priority),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
+                    color: priorityColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF4A453C), width: 1.5),
+              if (task.teamId != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0E7FF),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Team',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6366F1),
+                    ),
+                  ),
                 ),
-                child: _user?.avatarUrl != null
-                    ? ClipOval(
-                        child: Image.network(
-                          ImageUtils.getAvatarUrl(_user!.avatarUrl!),
-                          key: ValueKey(_user!.avatarUrl),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, error, __) {
-                            return const Icon(Icons.person, size: 24, color: Color(0xFF4A453C));
-                          },
-                        ),
-                      )
-                    : CircleAvatar(
-                        key: const ValueKey('default_avatar'),
-                        backgroundColor: const Color(0xFFC4D7D6),
-                        child: const Icon(Icons.person, size: 24, color: Colors.black54),
-                      ),
-              ),
+              ],
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Text(
             task.title,
             style: const TextStyle(
-              color: Color(0xFF4A453C),
+              color: AppColors.textPrimary,
               fontSize: 22,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 6),
-          if (task.description != null && task.description!.isNotEmpty)
+          if (task.description != null && task.description!.isNotEmpty) ...[
+            const SizedBox(height: 6),
             Text(
               task.description!,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Color(0xFF6D685E),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+                fontSize: 13,
                 height: 1.5,
               ),
             ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF4A453C).withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.access_time_rounded,
-                  color: Colors.white,
-                  size: 18,
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(
+                Icons.access_time_rounded,
+                color: AppColors.textSecondary,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                task.dueTime != null
+                    ? AppTimeUtils.formatTo24h(task.dueTime!)
+                    : '08:00 - 10:00',
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  task.dueTime != null
-                      ? AppTimeUtils.formatTo24h(task.dueTime!)
-                      : '08:00 - 10:00',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -478,18 +642,18 @@ class _HomePageState extends State<HomePage> {
       case 'low':
         return 'Low Priority';
       default:
-        return priority.substring(0, 1).toUpperCase() + priority.substring(1) + ' Priority';
+        return '${priority.substring(0, 1).toUpperCase()}${priority.substring(1)} Priority';
     }
   }
 
   Color _getPriorityColor(String priority) {
     switch (priority.toLowerCase()) {
       case 'high':
-        return const Color(0xFFFF0000); // Pure Red
+        return const Color(0xFFE24B4A);
       case 'medium':
-        return const Color(0xFFA49C00); // Dark Olive (Text)
+        return const Color(0xFFBA7517);
       case 'low':
-        return const Color(0xFF16A34A); // Forest Green
+        return const Color(0xFF3B6D11);
       default:
         return const Color(0xFF8E8E93);
     }
@@ -497,14 +661,15 @@ class _HomePageState extends State<HomePage> {
 
   Color _getPriorityBgColor(String priority) {
     switch (priority.toLowerCase()) {
+      case 'high':
+        return const Color(0xFFE24B4A).withValues(alpha: 0.25);
       case 'medium':
-        return const Color(0xFFD4EA0C).withValues(alpha: 0.15); // Lime/Yellow Tint
+        return const Color(0xFFBA7517).withValues(alpha: 0.25);
+      case 'low':
+        return const Color(0xFF3B6D11).withValues(alpha: 0.15);
       default:
         return _getPriorityColor(priority).withValues(alpha: 0.15);
     }
   }
 
-  String _formatTime(String timeStr, BuildContext context) {
-    return AppTimeUtils.formatTo24h(timeStr);
-  }
 }

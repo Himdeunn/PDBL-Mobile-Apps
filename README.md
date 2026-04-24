@@ -52,6 +52,13 @@ Cross-platform task management application built with Flutter. Designed for dail
 - **Client-Side Rate Limiting** -- Login and registration forms enforce cooldown periods after repeated failed attempts.
 - **Automatic Token Refresh** -- Dio interceptor handles JWT expiration with concurrent request deduplication to prevent 401 storms.
 - **Connection Monitoring** -- Real-time connectivity detection with automatic sync when connection is restored.
+- **Email Verification** -- New registrations are gated behind a 6-digit OTP sent to the user's email. Resend is supported with cooldown.
+- **Forgot Password Flow** -- Request OTP by email, verify the code on a dedicated screen, then set a new password.
+- **Google Sign-In** -- One-tap sign in or register with a Google account.
+- **Notification Tap Navigation** -- Tapping a push notification navigates the app to the correct tab: team/invite/kick events go to the Group tab, task events go to the Home tab. Handled for all three app states: killed (getInitialMessage), backgrounded (onMessageOpenedApp), and local notification tap.
+- **Bounded Image Cache** -- All network images are routed through a custom cache manager (WudiCacheManager) limited to 100 objects with a 7-day TTL, capping disk usage at approximately 50-100 MB regardless of usage volume.
+- **Maintenance Mode** -- Firebase Remote Config controls a kill-switch that shows a maintenance dialog when the app is under scheduled downtime.
+- **Force Update** -- Remote Config minimum version check prompts users to update when the installed build is too old.
 
 ---
 
@@ -72,10 +79,13 @@ Cross-platform task management application built with Flutter. Designed for dail
 | Connectivity         | connectivity_plus 6.1.1               |
 | Environment          | flutter_dotenv 6.0.0                  |
 | Image Picker         | image_picker 1.1.2                    |
+| Network Images       | cached_network_image 3.4.1            |
+| Image Cache          | flutter_cache_manager 3.4.1           |
 | UUID Generation      | uuid 4.5.3                            |
 | Home Widget          | home_widget 0.7.0+1                   |
 | Timezone             | flutter_timezone 5.0.1 + timezone 0.11 |
 | Encryption           | crypto 3.0.3                          |
+| Remote Config        | firebase_remote_config (feature flags, maintenance mode) |
 
 ---
 
@@ -137,24 +147,34 @@ lib/
 |   |   |-- primary_textfield.dart       # Reusable primary text field component
 |   |   |-- secondary_button.dart        # Reusable secondary button component
 |   |   |-- secondary_textfield.dart     # Reusable secondary text field component
+|   |-- services/
+|   |   |-- remote_config_service.dart   # Firebase Remote Config: maintenance mode, force update flags
 |   |-- utils/
 |   |   |-- debouncer.dart               # Input debouncing utility for search
 |   |   |-- error_handler.dart           # Centralized error handling and user-friendly messages
+|   |   |-- image_cache_manager.dart     # WudiCacheManager: 100 object / 7-day TTL disk cache
 |   |   |-- image_utils.dart             # Image processing and compression utilities
 |   |   |-- navigator_service.dart       # Global navigation key and navigator access
-|   |   |-- notification_helper.dart     # Local notification scheduling and channel setup
+|   |   |-- network_utils.dart           # HTTP headers builder (Origin, Referer, ngrok bypass)
+|   |   |-- notification_helper.dart     # Local notification scheduling, FCM tap event streams
 |   |   |-- widget_service.dart          # Home widget update service
 |   |-- widgets/
 |       |-- auth_required_dialog.dart    # Dialog shown when auth-only feature accessed in guest mode
+|       |-- maintenance_dialog.dart      # Full-screen dialog shown during maintenance mode
+|       |-- update_dialog.dart           # Force-update prompt with Play Store deep link
 |
 |-- features/
 |   |-- auth/
 |   |   |-- pages/
 |   |   |   |-- welcome_page.dart        # Onboarding/welcome screen
-|   |   |   |-- login_page.dart          # Login form with rate limiting
+|   |   |   |-- login_page.dart          # Login form with rate limiting and Google Sign-In
 |   |   |   |-- register_page.dart       # Registration form with rate limiting
+|   |   |   |-- verify_email_page.dart   # OTP input for new account email verification
+|   |   |   |-- forgot_password_page.dart # Email input for password reset OTP request
+|   |   |   |-- verify_otp_page.dart     # OTP input for password reset verification
+|   |   |   |-- reset_password_page.dart # New password form after OTP verified
 |   |   |-- services/
-|   |       |-- auth_service.dart        # JWT auth, token storage, session management, device ID
+|   |       |-- auth_service.dart        # JWT auth, Google login, token storage, session management
 |   |
 |   |-- home/
 |   |   |-- pages/
@@ -201,12 +221,16 @@ lib/
 |   |   |-- pages/
 |   |   |   |-- profile_page.dart        # User profile with settings tabs
 |   |   |   |-- notification_page.dart   # Notification center with read/unread management
+|   |   |   |-- notification_settings_page.dart # Reminder days, time, vibration, remote alerts
 |   |   |-- services/
 |   |   |   |-- profile_service.dart     # Avatar upload, name/email/password update
 |   |   |   |-- notification_service.dart # Notification CRUD and sync
 |   |   |   |-- notification_settings_service.dart # Reminder configuration
+|   |   |   |-- global_reminder_service.dart # Per-task reminder scheduling bridge
 |   |   |-- widgets/
 |   |       |-- task_alert_item.dart     # Individual notification list item
+|   |       |-- global_reminder_card.dart # Card displaying active global reminder schedule
+|   |       |-- global_reminder_sheet.dart # Bottom sheet for editing reminder interval
 |   |
 |   |-- shell/
 |   |   |-- pages/
@@ -328,7 +352,10 @@ dart run flutter_launcher_icons
 
 - Welcome screen with onboarding introduction
 - Login with email/password and client-side rate limiting (cooldown after repeated failures)
+- Google Sign-In: one-tap authentication that creates or links an account by email
 - Registration with name, email, password confirmation, and input validation
+- Email verification: new accounts are held at a verification screen until a 6-digit OTP sent to the registered email is confirmed
+- Forgot password flow: email entry, OTP verification, and new password submission across three dedicated screens
 - Automatic guest data migration: tasks created without an account are linked to the new account on registration or login
 - JWT token stored in FlutterSecureStorage with automatic refresh via Dio interceptor
 - Concurrent refresh request deduplication prevents token race conditions
@@ -427,6 +454,14 @@ dart run flutter_launcher_icons
 - Foreground, background, and terminated state message handling
 - High-priority Android notification channel (high_importance_channel_v2)
 - FLUTTER_NOTIFICATION_CLICK intent filter for tap handling
+
+### Image Cache
+
+**WudiCacheManager** (`core/utils/image_cache_manager.dart`):
+- Custom `CacheManager` instance shared by all `CachedNetworkImage` and `CachedNetworkImageProvider` widgets in the app
+- Limit: 100 cached objects, 7-day stale period -- caps disk usage at approximately 50-100 MB under normal use
+- Prevents unbounded cache growth that would otherwise reach hundreds of megabytes with GIF-heavy content
+- Applied to: home header avatar, profile avatar, team avatars, group card team and member avatars, team detail member list
 
 ### Connection Service
 

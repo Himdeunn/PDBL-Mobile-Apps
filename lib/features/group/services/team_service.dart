@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 
 class TeamService {
@@ -6,11 +7,14 @@ class TeamService {
   Future<Map<String, dynamic>> createTeam(
     String name, {
     String? description,
+    int? maxMembers,
   }) async {
-    final response = await _api.post(
-      '/teams',
-      data: {'name': name, 'description': description},
-    );
+    final data = <String, dynamic>{
+      'name': name,
+      'description': description,
+      if (maxMembers != null) 'max_members': maxMembers,
+    };
+    final response = await _api.post('/teams', data: data);
     return response.data;
   }
 
@@ -23,10 +27,14 @@ class TeamService {
     return response.data;
   }
 
-  Future<void> updateTeam(int teamId, String name, String? description) async {
+  Future<void> updateTeam(int teamId, String name, String? description, {int? maxMembers}) async {
     await _api.put(
       '/teams/$teamId',
-      data: {'name': name, 'description': description},
+      data: {
+        'name': name,
+        'description': description,
+        if (maxMembers != null) 'max_members': maxMembers,
+      },
     );
   }
 
@@ -92,9 +100,23 @@ class TeamService {
     await _api.put('/todos/$taskId', data: data);
   }
 
-  Future<Map<String, dynamic>> toggleMemberTaskStatus(int taskId) async {
-    final response = await _api.post('/todos/$taskId/toggle-member');
+  Future<Map<String, dynamic>> toggleMemberTaskStatus(int taskId, {bool force = false}) async {
+    final response = await _api.post(
+      '/todos/$taskId/toggle-member',
+      data: force ? {'force': true} : null,
+    );
     return response.data;
+  }
+
+  Future<void> uploadTeamAvatar(int teamId, String filePath, {String? oldAvatarUrl}) async {
+    final fields = <String, dynamic>{
+      'avatar': await MultipartFile.fromFile(filePath),
+    };
+    if (oldAvatarUrl != null && oldAvatarUrl.isNotEmpty) {
+      fields['old_avatar'] = oldAvatarUrl;
+    }
+    final formData = FormData.fromMap(fields);
+    await _api.post('/teams/$teamId/avatar', data: formData);
   }
 
   Future<Map<String, dynamic>> checkEmail(String email) async {

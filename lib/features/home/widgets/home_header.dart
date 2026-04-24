@@ -1,3 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../../core/utils/network_utils.dart';
+import '../../../../core/utils/image_cache_manager.dart';
 import '../../../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
@@ -7,10 +10,7 @@ class HomeHeader extends StatelessWidget {
   final bool isLoading;
   final bool isGuest;
   final VoidCallback? onNotificationTap;
-  final VoidCallback? onAvatarTap;
-  final VoidCallback? onLogoutTap;
-  final VoidCallback? onLoginTap;
-  final VoidCallback? onRegisterTap;
+  final VoidCallback? onProfileTap;
   final int todayTarget;
 
   const HomeHeader({
@@ -20,10 +20,7 @@ class HomeHeader extends StatelessWidget {
     this.isLoading = false,
     this.isGuest = false,
     this.onNotificationTap,
-    this.onAvatarTap,
-    this.onLogoutTap,
-    this.onLoginTap,
-    this.onRegisterTap,
+    this.onProfileTap,
     this.todayTarget = 0,
   });
 
@@ -59,140 +56,21 @@ class HomeHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        Material(
-          color: Colors.transparent,
-          child: PopupMenuButton<String>(
-            offset: const Offset(0, 50),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            color: Colors.white,
-            onSelected: (value) {
-              // Handle menu selection
-              if (value == 'profile') {
-                onAvatarTap?.call();
-              } else if (value == 'notifications') {
-                onNotificationTap?.call();
-              } else if (value == 'logout') {
-                onLogoutTap?.call();
-              } else if (value == 'login') {
-                onLoginTap?.call();
-              } else if (value == 'register') {
-                onRegisterTap?.call();
-              }
-            },
-            itemBuilder: (BuildContext context) {
-              if (isGuest) {
-                return <PopupMenuEntry<String>>[
-                  const PopupMenuItem<String>(
-                    value: 'login',
-                    child: ListTile(
-                      leading: Icon(Icons.login, color: AppColors.primary),
-                      title: Text(
-                        'Login',
-                        style: TextStyle(color: AppColors.textPrimary),
-                      ),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem<String>(
-                    value: 'register',
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.person_add_outlined,
-                        color: AppColors.textPrimary,
-                      ),
-                      title: Text(
-                        'Register',
-                        style: TextStyle(color: AppColors.textPrimary),
-                      ),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ];
-              }
-
-              return <PopupMenuEntry<String>>[
-                const PopupMenuItem<String>(
-                  value: 'profile',
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.person_outline,
-                      color: AppColors.textPrimary,
-                    ),
-                    title: Text(
-                      'Edit Profile',
-                      style: TextStyle(color: AppColors.textPrimary),
-                    ),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                const PopupMenuDivider(),
-                const PopupMenuItem<String>(
-                  value: 'notifications',
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.notifications_none,
-                      color: AppColors.textPrimary,
-                    ),
-                    title: Text(
-                      'Notifications',
-                      style: TextStyle(color: AppColors.textPrimary),
-                    ),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                const PopupMenuDivider(),
-                const PopupMenuItem<String>(
-                  value: 'logout',
-                  child: ListTile(
-                    leading: Icon(Icons.logout, color: AppColors.errorText),
-                    title: Text(
-                      'Logout',
-                      style: TextStyle(color: AppColors.errorText),
-                    ),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ];
-            },
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.surface,
-                border: Border.all(color: AppColors.primary, width: 2),
-              ),
-              child: isLoading
-                  ? const Padding(
-                      padding: EdgeInsets.all(10),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.primary,
-                      ),
-                    )
-                  : avatarUrl != null
-                      ? ClipOval(
-                          child: Image.network(
-                            avatarUrl!,
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const Icon(
-                              Icons.person,
-                              color: AppColors.primary,
-                              size: 24,
-                            ),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.person,
-                          color: AppColors.primary,
-                          size: 24,
-                        ),
-            ),
+        IconButton(
+          icon: const Icon(Icons.notifications_none_rounded, color: AppColors.textPrimary, size: 28),
+          onPressed: onNotificationTap,
+        ),
+        const SizedBox(width: 4),
+        // Avatar Profile
+        GestureDetector(
+          onTap: onProfileTap,
+          child: CircleAvatar(
+            radius: 20,
+            backgroundColor: AppColors.surface,
+            backgroundImage: avatarUrl != null ? CachedNetworkImageProvider(avatarUrl!, headers: getNetworkImageHeaders(avatarUrl!), cacheManager: WudiCacheManager()) : null,
+            child: avatarUrl == null 
+                ? const Icon(Icons.person, color: AppColors.primary) 
+                : null,
           ),
         ),
       ],

@@ -57,8 +57,12 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
     }
 
     // Initial priority
-    final rawPriority = widget.task['priority']?.toString().toLowerCase() ?? 'medium';
-    _selectedPriority = rawPriority[0].toUpperCase() + rawPriority.substring(1);
+    final rawPriority = widget.task['priority']?.toString().toLowerCase().trim();
+    final safePriority = (rawPriority == null || rawPriority.isEmpty ||
+            !['high', 'medium', 'low'].contains(rawPriority))
+        ? 'medium'
+        : rawPriority;
+    _selectedPriority = safePriority[0].toUpperCase() + safePriority.substring(1);
   }
 
   void _toggleMember(String email) {
@@ -94,7 +98,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
         _titleController.text,
         _descriptionController.text,
         deadline: deadline,
-        priority: _selectedPriority,
+        priority: _selectedPriority.toLowerCase(),
         assignedEmails: _selectedMemberEmails,
       );
 
@@ -136,7 +140,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildLabel('Task Title'),
+                  _buildLabel('Task Title *'),
                   _buildTextField(
                     _titleController,
                     'Enter task name...',
@@ -145,7 +149,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  _buildLabel('Assign To'),
+                  _buildLabel('Assign To *'),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
@@ -191,7 +195,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  _buildLabel('Description'),
+                  _buildLabel('Description (optional)'),
                   _buildTextField(
                     _descriptionController,
                     'Task details...',
@@ -206,7 +210,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildLabel('Due Date'),
+                            _buildLabel('Due Date *'),
                             _buildPickerTile(
                               icon: Icons.calendar_today_outlined,
                               text: DateFormat('MMM dd, yyyy').format(_selectedDate),
@@ -218,6 +222,17 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                                   initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
                                   firstDate: today,
                                   lastDate: DateTime(2101),
+                                  builder: (ctx, child) => Theme(
+                                    data: ThemeData.light().copyWith(
+                                      colorScheme: const ColorScheme.light(
+                                        primary: AppColors.primary,
+                                        onPrimary: Colors.white,
+                                        surface: AppColors.surface,
+                                        onSurface: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    child: child!,
+                                  ),
                                 );
                                 if (picked != null) {
                                   setState(() => _selectedDate = picked);
@@ -232,7 +247,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildLabel('Time'),
+                            _buildLabel('Time *'),
                             _buildPickerTile(
                               icon: Icons.access_time,
                               text: AppTimeUtils.formatTo24h("${_selectedTime.hour}:${_selectedTime.minute}"),
@@ -241,9 +256,19 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                                   context: context,
                                   initialTime: _selectedTime,
                                   builder: (BuildContext context, Widget? child) {
-                                    return MediaQuery(
-                                      data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-                                      child: child!,
+                                    return Theme(
+                                      data: ThemeData.light().copyWith(
+                                        colorScheme: const ColorScheme.light(
+                                          primary: AppColors.primary,
+                                          onPrimary: Colors.white,
+                                          surface: AppColors.surface,
+                                          onSurface: AppColors.textPrimary,
+                                        ),
+                                      ),
+                                      child: MediaQuery(
+                                        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                        child: child!,
+                                      ),
                                     );
                                   },
                                 );
@@ -268,7 +293,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  _buildLabel('Priority'),
+                  _buildLabel('Priority *'),
                   _buildPriorityPicker(),
                   const SizedBox(height: 40),
                   _isSaving

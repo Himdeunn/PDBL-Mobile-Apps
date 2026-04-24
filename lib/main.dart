@@ -10,6 +10,7 @@ import 'package:wudi/core/utils/notification_helper.dart';
 import 'package:wudi/features/task/services/task_repository.dart';
 import 'package:wudi/features/splash/pages/splash_page.dart';
 import 'package:wudi/core/utils/navigator_service.dart';
+import 'package:wudi/core/utils/widget_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -37,10 +38,26 @@ void main() async {
   );
 
   // Initialize all remaining services in parallel
-  await Future.wait([NotificationHelper.initialize(), LocalDatabase.init()]);
+  await Future.wait([NotificationHelper.initialize(), LocalDatabase.init(), WidgetService.init()]);
+
+  // Sync widget data
+  WidgetService.fullSync();
 
   // Listen for push notifications in foreground
   NotificationHelper.listenToForegroundMessages();
+
+  // Handle notification tap when app was killed (cold start)
+  final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null && initialMessage.data.isNotEmpty) {
+    NotificationHelper.setInitialTap(initialMessage.data);
+  }
+
+  // Handle notification tap when app was in background
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    if (message.data.isNotEmpty) {
+      NotificationHelper.emitTap(message.data);
+    }
+  });
 
   // Re-schedule all task reminders on startup.
   // This ensures notifications survive device reboots and app updates.
@@ -70,7 +87,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'EduPlan PDBL',
+      title: 'WUDI',
       navigatorKey: NavigatorService.navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

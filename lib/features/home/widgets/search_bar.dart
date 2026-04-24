@@ -26,6 +26,7 @@ class WudiSearchBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: TextField(
           onChanged: onChanged,
+          textAlignVertical: TextAlignVertical.center,
           decoration: const InputDecoration(
             hintText: 'Search',
             hintStyle: TextStyle(
@@ -34,7 +35,7 @@ class WudiSearchBar extends StatelessWidget {
             ),
             suffixIcon: Icon(Icons.search, color: AppColors.textPlaceholder),
             border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            contentPadding: EdgeInsets.symmetric(horizontal: 16),
           ),
         ),
       ),

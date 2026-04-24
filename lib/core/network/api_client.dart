@@ -8,22 +8,31 @@ import '../utils/error_handler.dart';
 
 class ApiClient {
   static String get baseUrl {
-    var url = dotenv.env['API_URL'] ?? 'https://localhost/api';
+    var url = dotenv.env['API_URL'] ?? '';
     
-    // Ensure trailing slash
+    if (url.isEmpty) {
+      // Return a dummy but valid looking URL to avoid crashes before env is loaded, 
+      // but it will fail network calls predictably.
+      return 'http://invalid-url-check-env-file/';
+    }
+    
+    // 1. Ensure it has /api prefix
+    if (!url.contains('/api')) {
+      url = url.endsWith('/') ? '${url}api' : '$url/api';
+    }
+
+    // 2. Ensure it EXACTLY ends with /api/ (with trailing slash)
+    // Dio joins baseUrl + path. If baseUrl is .../api and path is user, result is .../apiuser (ERROR 404)
     if (!url.endsWith('/')) {
       url = '$url/';
     }
-    
-    // Auto-fix if /api suffix is missing
-    if (!url.contains('/api/')) {
-      url = '${url.substring(0, url.length - 1)}/api/';
+
+    // 3. Adaptive Security & Environment
+    final bool isLocal = url.contains('localhost') || url.contains('10.0.2.2') || url.contains('127.0.0.1');
+    if (!isLocal && !url.startsWith('https://')) {
+      url = url.replaceFirst('http://', 'https://');
     }
 
-    // SECURITY: Force HTTPS in production — reject plain HTTP
-    if (!url.startsWith('https://') && !url.contains('localhost') && !url.contains('10.0.2.2')) {
-      return url.replaceFirst('http://', 'https://');
-    }
     return url;
   }
 

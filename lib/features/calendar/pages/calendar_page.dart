@@ -33,8 +33,9 @@ class _CalendarPageState extends State<CalendarPage> {
   String? _currentUserEmail;
   StreamSubscription<List<TaskLocal>>? _tasksSubscription;
   bool _isOffline = false;
+  int _taskTab = 0; // 0 = Individu, 1 = Team
+  int _prevTaskTab = 0;
   StreamSubscription? _connectivitySubscription;
-
   static const _monthNames = [
     'January',
     'February',
@@ -55,14 +56,7 @@ class _CalendarPageState extends State<CalendarPage> {
     super.initState();
     _checkInitialConnection();
     _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
-      if (mounted) {
-        setState(() {
-          _isOffline = !connected;
-        });
-        if (connected) {
-          _loadTasks();
-        }
-      }
+      if (mounted) setState(() => _isOffline = !connected);
     });
     _initTaskSubscription();
   }
@@ -102,13 +96,13 @@ class _CalendarPageState extends State<CalendarPage> {
     super.dispose();
   }
 
-  Future<void> _loadTasks() async {
+  Future<void> _loadTasks({bool force = false}) async {
     final auth = widget.authService ?? AuthService();
     if (await auth.isGuest()) return;
 
     final user = await auth.getCurrentUser();
     final userEmail = user?.email ?? 'guest';
-    await _taskRepository.fetchTasksFromServer(userEmail);
+    await _taskRepository.fetchTasksFromServer(userEmail, force: force);
   }
 
   void _filterSelectedDayTasks() {
@@ -121,17 +115,128 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   void _previousMonth() {
+    final newMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
     setState(() {
       _isNext = false;
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
+      _currentMonth = newMonth;
+      _selectedDate = newMonth;
+      _filterSelectedDayTasks();
     });
   }
 
   void _nextMonth() {
+    final newMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
     setState(() {
       _isNext = true;
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
+      _currentMonth = newMonth;
+      _selectedDate = newMonth;
+      _filterSelectedDayTasks();
     });
+  }
+
+  Future<void> _showMonthYearPicker() async {
+    int pickerYear = _currentMonth.year;
+    int pickerMonth = _currentMonth.month;
+
+    // Controller created once outside the builder so StatefulBuilder rebuilds
+    // don't create duplicate controllers, and it's disposed after the dialog closes.
+    final yearController = TextEditingController(text: '$pickerYear');
+
+    final result = await showDialog<DateTime>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          contentPadding: const EdgeInsets.all(20),
+          content: SizedBox(
+            width: 280,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Year text input
+                TextField(
+                  controller: yearController,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Year',
+                    hintStyle: const TextStyle(color: AppColors.textSecondary),
+                    filled: true,
+                    fillColor: AppColors.background,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  onChanged: (v) {
+                    final y = int.tryParse(v);
+                    if (y != null && y >= 1900 && y <= 2100) {
+                      setDialogState(() => pickerYear = y);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 2,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  children: List.generate(12, (i) {
+                    final selected = pickerMonth == i + 1;
+                    return GestureDetector(
+                      onTap: () => setDialogState(() => pickerMonth = i + 1),
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: selected ? AppColors.primary : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _monthNames[i].substring(0, 3),
+                          style: TextStyle(
+                            color: selected ? Colors.white : AppColors.textPrimary,
+                            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, DateTime(pickerYear, pickerMonth, 1)),
+              child: const Text('OK', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _isNext = result.isAfter(_currentMonth);
+        _currentMonth = result;
+        _selectedDate = result;
+        _filterSelectedDayTasks();
+      });
+    }
   }
 
   List<DateTime> _getDaysInMonth(DateTime month) {
@@ -163,12 +268,10 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: _loadTasks,
+        onRefresh: () => _loadTasks(force: true),
         triggerMode: RefreshIndicatorTriggerMode.anywhere,
         child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
+          physics: const ClampingScrollPhysics(),
           slivers: [
             // Header & Calendar Grid
             SliverToBoxAdapter(
@@ -217,9 +320,55 @@ class _CalendarPageState extends State<CalendarPage> {
             
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
             
+            // Individu / Team tab — sliding pill
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    const double pillH = 38.0;
+                    const double padding = 4.0;
+                    final double pillW = (constraints.maxWidth - padding * 2) / 2;
+                    return Container(
+                      height: pillH + padding * 2,
+                      padding: const EdgeInsets.all(padding),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Stack(
+                        children: [
+                          AnimatedPositioned(
+                            duration: const Duration(milliseconds: 240),
+                            curve: Curves.easeInOut,
+                            left: _taskTab == 0 ? 0 : pillW,
+                            top: 0,
+                            bottom: 0,
+                            width: pillW,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(26),
+                              ),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              _buildTab('Individu', 0, pillW, pillH),
+                              _buildTab('Team', 1, pillW, pillH),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            
             // Todo List Section
             _buildSliverTodoList(),
-            
             // Bottom Spacing
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
@@ -235,27 +384,37 @@ class _CalendarPageState extends State<CalendarPage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _buildNavButton(Icons.chevron_left_rounded, _previousMonth),
-          Column(
-            children: [
-              Text(
-                _monthNames[_currentMonth.month - 1],
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                  letterSpacing: -0.5,
+          GestureDetector(
+            onTap: _showMonthYearPicker,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _monthNames[_currentMonth.month - 1],
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.expand_more, color: AppColors.textSecondary, size: 20),
+                  ],
                 ),
-              ),
-              Text(
-                '${_currentMonth.year}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 1.2,
+                Text(
+                  '${_currentMonth.year}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           _buildNavButton(Icons.chevron_right_rounded, _nextMonth),
         ],
@@ -426,64 +585,112 @@ class _CalendarPageState extends State<CalendarPage> {
       );
     }
 
-    if (_selectedDayTasks.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.event_busy_outlined,
-                size: 48,
-                color: Color(0xFFB0A495),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'No tasks for this day',
-                style: TextStyle(
-                  color: Color(0xFF8B7E6F),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    final tabFilteredTasks = _taskTab == 0
+        ? _selectedDayTasks.where((t) => t.teamId == null).toList()
+        : _selectedDayTasks.where((t) => t.teamId != null).toList();
 
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final task = _selectedDayTasks[index];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _TaskTile(
-                task: task,
-                currentUserEmail: _currentUserEmail,
-                onEdit: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CreateTaskPage(
-                        task: task,
-                        authService: widget.authService,
+      sliver: SliverToBoxAdapter(
+        child: ClipRect(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            transitionBuilder: (child, animation) {
+              final isForward = _taskTab >= _prevTaskTab;
+              final begin = isForward
+                  ? const Offset(1.0, 0.0)
+                  : const Offset(-1.0, 0.0);
+
+              return SlideTransition(
+                position: Tween<Offset>(begin: begin, end: Offset.zero)
+                    .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                child: FadeTransition(
+                  opacity: animation,
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey<int>(_taskTab),
+              child: tabFilteredTasks.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 40),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.event_busy_outlined,
+                            size: 48,
+                            color: Color(0xFFB0A495),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _taskTab == 0
+                                ? 'No individual tasks for this day'
+                                : 'No team tasks for this day',
+                            style: const TextStyle(
+                              color: Color(0xFF8B7E6F),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
+                    )
+                  : Column(
+                      children: tabFilteredTasks.map((task) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _TaskTile(
+                            task: task,
+                            currentUserEmail: _currentUserEmail,
+                            onEdit: () async {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => CreateTaskPage(
+                                    task: task,
+                                    authService: widget.authService,
+                                  ),
+                                ),
+                              );
+                              if (result == true) {
+                                _loadTasks();
+                              }
+                            },
+                            onDelete: () => _deleteTask(task),
+                            isOffline: _isOffline,
+                          ),
+                        );
+                      }).toList(),
                     ),
-                  );
-                  if (result == true) {
-                    _loadTasks();
-                  }
-                },
-                onDelete: () => _deleteTask(task),
-                isOffline: _isOffline,
-              ),
-            );
-          },
-          childCount: _selectedDayTasks.length,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTab(String label, int index, double width, double height) {
+    final isActive = _taskTab == index;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _prevTaskTab = _taskTab;
+        _taskTab = index;
+      }),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isActive ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
         ),
       ),
     );
@@ -574,7 +781,8 @@ class _TaskTile extends StatelessWidget {
           Navigator.pop(context); // Close sheet
           onDelete();
         },
-        isOwner: task.userEmail == currentUserEmail || task.teamId == null,
+        isOwner: task.teamId == null,
+        currentUserEmail: currentUserEmail,
       ),
     );
   }
@@ -589,24 +797,28 @@ class _TaskTile extends StatelessWidget {
           children: [
             Container(
               margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Title
+                  Text(
+                    task.title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Priority badge + Time (for individual) OR just Time (for team)
                   Row(
                     children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: _getPriorityColor(), width: 2.5),
-                        ),
-                      ),
+                      _buildPriorityBadge(),
                       const SizedBox(width: 8),
                       Text(
                         _getFormattedTime(task.dueTime),
@@ -616,62 +828,70 @@ class _TaskTile extends StatelessWidget {
                           color: Color(0xFF5D544E),
                         ),
                       ),
-                      if (task.teamId != null) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0E7FF),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'Team',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF6366F1),
-                            ),
+                    ],
+                  ),
+                  // Assign to (team tasks only)
+                  if (task.teamId != null && task.assignedEmails != null && task.assignedEmails!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Assign to: ',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF5D544E)),
+                        ),
+                        Expanded(
+                          child: Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: task.assignedEmails!.split(',').map((email) {
+                              final trimmedEmail = email.trim();
+                              if (trimmedEmail.isEmpty) return const SizedBox.shrink();
+                              final isCurrentUser = currentUserEmail != null &&
+                                  trimmedEmail.toLowerCase() == currentUserEmail!.toLowerCase().trim();
+                              final displayName = isCurrentUser
+                                  ? 'You'
+                                  : (trimmedEmail.contains('@') ? trimmedEmail.split('@').first : trimmedEmail);
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2D2633),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.person, size: 10, color: Colors.white70),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      displayName,
+                                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    task.title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                      letterSpacing: -0.2,
                     ),
-                  ),
+                  ],
+                  // Description
                   if (task.description != null && task.description!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     RichText(
                       text: TextSpan(
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF6B6159),
-                          height: 1.4,
-                        ),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF5D544E), height: 1.4),
                         children: [
+                          const TextSpan(
+                            text: 'Description : ',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
                           TextSpan(
-                            text: task.description!.length > 60
-                                ? '${task.description!.substring(0, 60)}...'
+                            text: task.description!.length > 80
+                                ? '${task.description!.substring(0, 80)}...'
                                 : task.description,
                           ),
-                          if (task.description!.length > 60)
-                            const TextSpan(
-                              text: ' view more',
-                              style: TextStyle(
-                                color: Color(0xFF7B5BED),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
                         ],
                       ),
                     ),
@@ -681,9 +901,9 @@ class _TaskTile extends StatelessWidget {
             ),
             if (task.teamId != null && isOffline)
               Positioned.fill(
-                bottom: 12, // Match margin
+                bottom: 12,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
                     child: Container(
@@ -700,14 +920,8 @@ class _TaskTile extends StatelessWidget {
                             children: [
                               Icon(Icons.wifi_off, color: Colors.white, size: 16),
                               SizedBox(width: 10),
-                              Text(
-                                "Offline: Connection Required",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              Text("Offline: Connection Required",
+                                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -721,16 +935,52 @@ class _TaskTile extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildPriorityBadge() {
+    Color bgColor;
+    Color textColor;
+    String label;
+    switch (task.priority.toLowerCase()) {
+      case 'high':
+        bgColor = const Color(0xFFFFE5E5);
+        textColor = const Color(0xFFCC0000);
+        label = 'High Priority';
+        break;
+      case 'medium':
+        bgColor = const Color(0xFFFFF3CD);
+        textColor = const Color(0xFF856404);
+        label = 'Medium';
+        break;
+      default:
+        bgColor = const Color(0xFFE5F5E5);
+        textColor = const Color(0xFF155724);
+        label = 'Low';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle, size: 8, color: textColor),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textColor)),
+        ],
+      ),
+    );
+  }
 }
 
 class _TaskDetailSheet extends StatelessWidget {
   final TaskLocal task;
+  final String? currentUserEmail;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final bool isOwner;
 
   const _TaskDetailSheet({
     required this.task,
+    this.currentUserEmail,
     required this.onEdit,
     required this.onDelete,
     required this.isOwner,
@@ -783,7 +1033,7 @@ class _TaskDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppColors.background,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(28),
           topRight: Radius.circular(28),
@@ -848,8 +1098,8 @@ class _TaskDetailSheet extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -886,6 +1136,52 @@ class _TaskDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
+          // ── Assign to (team tasks only) ──
+          if (task.teamId != null && task.assignedEmails != null && task.assignedEmails!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Assigned To',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: task.assignedEmails!.split(',').map((email) {
+                final trimmedEmail = email.trim();
+                if (trimmedEmail.isEmpty) return const SizedBox.shrink();
+                final isCurrentUser = currentUserEmail != null &&
+                    trimmedEmail.toLowerCase() == currentUserEmail!.toLowerCase().trim();
+                final displayName = isCurrentUser
+                    ? 'You'
+                    : (trimmedEmail.contains('@') ? trimmedEmail.split('@').first : trimmedEmail);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2D2633),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.person, size: 10, color: Colors.white70),
+                      const SizedBox(width: 3),
+                      Text(
+                        displayName,
+                        style: const TextStyle(fontSize: 11, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+
           // ── Description ──
           const Text(
             'Description',
@@ -900,7 +1196,7 @@ class _TaskDetailSheet extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Text(
@@ -951,31 +1247,6 @@ class _TaskDetailSheet extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ] else ...[
-            // Status tag for team tasks where user isn't owner
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5FE),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.info_outline_rounded,
-                      size: 18, color: Color(0xFF6366F1)),
-                  SizedBox(width: 8),
-                  Text(
-                    'View-only: This task belongs to the team.',
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF6366F1),
-                        fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
             ),
           ],
           SizedBox(height: MediaQuery.of(context).padding.bottom + 8),

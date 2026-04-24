@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -6,11 +7,44 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:wudi/features/profile/services/notification_settings_service.dart';
 
+/// Notification types that should trigger a group/team page refresh.
+const _kTeamEventTypes = {'invite', 'kick', 'ban', 'new_task', 'task_update', 'team'};
+
 class NotificationHelper {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
   static bool _isInitialized = false;
+
+  /// Broadcasts whenever a foreground FCM message related to teams/invites arrives.
+  static final _teamEventController = StreamController<void>.broadcast();
+  static Stream<void> get onTeamEvent => _teamEventController.stream;
+
+  /// Broadcasts notification tap data so MainNavigation can switch tabs.
+  static final _tapController = StreamController<Map<String, dynamic>>.broadcast();
+  static Stream<Map<String, dynamic>> get onNotificationTap => _tapController.stream;
+
+  /// Stores the tap data when the app was launched from a killed state.
+  /// MainNavigation claims this in its first frame via [claimInitialTap].
+  static Map<String, dynamic>? _pendingInitialTap;
+
+  /// Store tap from a terminated-state launch (no live subscribers yet).
+  static void setInitialTap(Map<String, dynamic> data) {
+    _pendingInitialTap = data;
+  }
+
+  /// Emit a notification tap to live subscribers AND store as pending fallback.
+  static void emitTap(Map<String, dynamic> data) {
+    _pendingInitialTap = data;
+    _tapController.add(data);
+  }
+
+  /// Claim and clear the pending initial tap. Returns null if already consumed.
+  static Map<String, dynamic>? claimInitialTap() {
+    final data = _pendingInitialTap;
+    _pendingInitialTap = null;
+    return data;
+  }
 
   // Multiplier to generate unique notification IDs per reminder day offset.
   static const int _idMultiplier = 10000;
@@ -51,7 +85,11 @@ class NotificationHelper {
     await _notificationsPlugin.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Notification clicked
+        final payload = response.payload ?? '';
+        if (payload.isNotEmpty) {
+          final type = payload.startsWith('task_') ? 'todo_reminder' : 'update';
+          emitTap({'type': type, 'payload': payload});
+        }
       },
     );
 
@@ -83,6 +121,11 @@ class NotificationHelper {
           description: message.data['description'] ?? message.data['deskripsi'],
           payload: message.data.toString(),
         );
+      }
+
+      final type = (message.data['type'] as String? ?? '').toLowerCase();
+      if (_kTeamEventTypes.contains(type)) {
+        _teamEventController.add(null);
       }
     });
   }
@@ -318,4 +361,29 @@ class NotificationHelper {
       await _notificationsPlugin.cancel(id: taskId + (i + 1) * _idMultiplier);
     }
   }
+
+  /// Cancel a notification by its exact ID (used by ReminderService).
+  static Future<void> cancelById(int id) async {
+    await _notificationsPlugin.cancel(id: id);
+  }
+
+  /// Schedule a custom per-task reminder (used by ReminderService).
+  static Future<void> scheduleCustomReminder({
+    required int id,
+    required String title,
+    required String body,
+    String? description,
+    String priority = 'medium',
+    required DateTime scheduledDate,
+    String? payload,
+  }) =>
+      _scheduleExactNotification(
+        id: id,
+        title: title,
+        body: body,
+        description: description,
+        priority: priority,
+        scheduledDate: scheduledDate,
+        payload: payload,
+      );
 }

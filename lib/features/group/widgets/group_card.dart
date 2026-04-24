@@ -1,3 +1,5 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/utils/image_cache_manager.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 
@@ -10,6 +12,7 @@ class GroupCard extends StatelessWidget {
   final double progress; // 0.0 to 1.0
   final int memberCount;
   final List<String> memberAvatars;
+  final String? teamAvatarUrl;
   final VoidCallback? onTap;
   final VoidCallback? onMoreTap;
 
@@ -23,6 +26,7 @@ class GroupCard extends StatelessWidget {
     required this.progress,
     this.memberCount = 0,
     this.memberAvatars = const [],
+    this.teamAvatarUrl,
     this.onTap,
     this.onMoreTap,
   });
@@ -50,12 +54,24 @@ class GroupCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
                     color: iconBgColor,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(icon, color: iconColor, size: 28),
+                  child: (teamAvatarUrl != null && teamAvatarUrl!.isNotEmpty)
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: CachedNetworkImage(
+                            imageUrl: teamAvatarUrl!,
+                            fit: BoxFit.cover,
+                            cacheManager: WudiCacheManager(),
+                            errorWidget: (_, _, _) =>
+                                Icon(icon, color: iconColor, size: 28),
+                          ),
+                        )
+                      : Icon(icon, color: iconColor, size: 28),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -194,10 +210,11 @@ class _AvatarItem extends StatelessWidget {
       ),
       child: ClipOval(
         child: avatarUrl != null && avatarUrl!.isNotEmpty
-            ? Image.network(
-                avatarUrl!,
+            ? CachedNetworkImage(
+                imageUrl: avatarUrl!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                cacheManager: WudiCacheManager(),
+                errorWidget: (_, _, _) => _buildPlaceholder(),
               )
             : _buildPlaceholder(),
       ),
