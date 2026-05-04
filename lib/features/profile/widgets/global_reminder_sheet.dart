@@ -25,9 +25,9 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
 
   static const List<String> _units = ['H', 'D', 'W'];
   static const Map<String, String> _unitLabels = {
-    'H': 'Jam',
-    'D': 'Hari',
-    'W': 'Minggu',
+    'H': 'Hour',
+    'D': 'Day',
+    'W': 'Week',
   };
 
   @override
@@ -126,7 +126,7 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
             const SizedBox(height: 20),
 
             Text(
-              isEdit ? 'Edit Reminder' : 'Tambah Reminder Global',
+              isEdit ? 'Edit Reminder' : 'Add Global Reminder',
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -135,13 +135,13 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Reminder akan berlaku untuk semua task, bukan satu task saja.',
+              'Reminder will apply to all tasks, not just one task.',
               style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
             ),
             const SizedBox(height: 24),
 
             // ── Task Type ───────────────────────────────────────────────────
-            _sectionLabel('Berlaku untuk'),
+            _sectionLabel('Applies to'),
             const SizedBox(height: 10),
             Row(
               children: ReminderTaskType.values.map((type) {
@@ -197,7 +197,7 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
             const SizedBox(height: 24),
 
             // ── Trigger Mode ─────────────────────────────────────────────────
-            _sectionLabel('Tipe Trigger'),
+            _sectionLabel('Trigger Type'),
             const SizedBox(height: 10),
             Row(
               children: ReminderTriggerMode.values.map((mode) {
@@ -319,8 +319,8 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
             // ── Time picker ──────────────────────────────────────────────────
             _sectionLabel(
               _triggerMode == ReminderTriggerMode.daily
-                  ? 'Jam Notifikasi'
-                  : 'Jam Notifikasi (sebelum deadline)',
+                  ? 'Notification Time'
+                  : 'Notification Time (before deadline)',
             ),
             const SizedBox(height: 10),
             GestureDetector(
@@ -375,7 +375,7 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
                       ),
                     ),
                     child: const Text(
-                      'Batal',
+                      'Cancel',
                       style: TextStyle(color: AppColors.textSecondary),
                     ),
                   ),
@@ -394,7 +394,7 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
                       ),
                     ),
                     child: Text(
-                      isEdit ? 'Simpan' : 'Tambah',
+                      isEdit ? 'Save' : 'Add',
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),

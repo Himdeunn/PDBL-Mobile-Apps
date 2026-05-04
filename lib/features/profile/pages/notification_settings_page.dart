@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../services/notification_settings_service.dart';
 import '../services/global_reminder_service.dart';
+import '../services/global_reminder_scheduler.dart';
 import '../widgets/global_reminder_card.dart';
 import '../widgets/global_reminder_sheet.dart';
 import '../../../core/utils/notification_helper.dart';
@@ -205,12 +206,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 TextButton.icon(
                   onPressed: () => _openAddReminderSheet(),
                   icon: const Icon(Icons.add, size: 16, color: AppColors.primary),
-                  label: const Text('Tambah', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600, fontSize: 13)),
+                  label: const Text('Add', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600, fontSize: 13)),
                 ),
               ],
             ),
             const Text(
-              'Notifikasi global untuk mengingatkan semua task, individu, atau tim.',
+              'Global notifications to remind all tasks, individuals, or teams.',
               style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
             ),
             const SizedBox(height: 16),
@@ -229,7 +230,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Belum ada reminder global. Tap "Tambah".',
+                        'There are no global reminders yet. Tap "Add".',
                         style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
                       ),
                     ),
@@ -283,6 +284,63 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     if (mounted) {
                       messenger.showSnackBar(
                         const SnackBar(content: Text('Test notification scheduled! Wait 5 seconds...'), duration: Duration(seconds: 3)),
+                      );
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              // ── Test: Before Deadline Global Reminder ────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                  ],
+                ),
+                child: ListTile(
+                  leading: const Icon(Icons.alarm_on, color: Colors.purple),
+                  title: const Text('Test Before Deadline Reminder', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text(
+                    'Simulasi task deadline 2 jam lagi.\n'
+                    'Notifikasi muncul sesuai interval Global Reminder aktif.',
+                  ),
+                  isThreeLine: true,
+                  trailing: const Icon(Icons.send),
+                  onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    // Fake task: deadline 2 jam dari sekarang
+                    final fakeDeadline = DateTime.now().add(const Duration(hours: 2));
+                    const fakeTaskId = 999998;
+
+                    await GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
+                      taskId: fakeTaskId,
+                      taskTitle: '[TEST] Fake Task',
+                      taskDescription: 'Ini adalah task simulasi untuk testing global reminder.',
+                      priority: 'high',
+                      deadline: fakeDeadline,
+                      isTeam: false,
+                    );
+
+                    // Hitung berapa reminder yang terjadwal
+                    final reminders = await GlobalReminderService.getAll();
+                    final beforeDeadlineCount = reminders
+                        .where((r) =>
+                            r.isEnabled &&
+                            r.triggerMode == ReminderTriggerMode.beforeDeadline)
+                        .length;
+
+                    if (mounted) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            beforeDeadlineCount == 0
+                                ? '⚠️ Tidak ada Global Reminder "Before Deadline" yang aktif. Tambahkan dulu!'
+                                : '✅ $beforeDeadlineCount before-deadline reminder dijadwalkan untuk fake task (deadline: ${fakeDeadline.hour}:${fakeDeadline.minute.toString().padLeft(2, "0")})',
+                          ),
+                          duration: const Duration(seconds: 5),
+                        ),
                       );
                     }
                   },

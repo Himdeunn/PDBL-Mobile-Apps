@@ -2,11 +2,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/utils/notification_helper.dart';
-import '../../../features/task/services/task_repository.dart';
 import '../../../core/storage/secure_storage.dart';
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/utils/notification_helper.dart';
+import '../../../features/task/models/task_local.dart';
+import '../../../features/task/services/task_repository.dart';
+import 'global_reminder_scheduler.dart';
 
 /// Type of tasks this reminder applies to.
 enum ReminderTaskType { individual, team, all }
@@ -277,9 +276,58 @@ class GlobalReminderService {
         scheduledDate: fire,
         payload: 'global_reminder_${reminder.id}',
       );
+    } else {
+      // beforeDeadline mode: schedule this reminder for every matching
+      // uncompleted task that currently exists in local storage.
+      await _scheduleBeforeDeadlineForAllTasks(reminder);
     }
-    // beforeDeadline mode is applied per-task when tasks are scheduled
-    // (handled in task_repository rescheduleAllVisibleTasks)
+  }
+
+  /// Loops through all uncompleted tasks and schedules [reminder] for each
+  /// matching one (respects taskType filter).
+  static Future<void> _scheduleBeforeDeadlineForAllTasks(
+    GlobalReminder reminder,
+  ) async {
+    try {
+      final email = await SecureStorage.getEmail();
+      if (email == null || email.isEmpty) return;
+
+      final repo = TaskRepository();
+      final List<TaskLocal> allTasks = await repo.getAllTasks(email);
+
+      for (final task in allTasks) {
+        if (task.isCompleted || task.dueDate == null) continue;
+
+        final bool isTeam = task.teamId != null;
+        if (reminder.taskType == ReminderTaskType.individual && isTeam) continue;
+        if (reminder.taskType == ReminderTaskType.team && !isTeam) continue;
+
+        // Build precise deadline DateTime
+        DateTime deadline = task.dueDate!;
+        if (task.dueTime != null) {
+          try {
+            final parts = task.dueTime!.split(':');
+            deadline = DateTime(
+              task.dueDate!.year,
+              task.dueDate!.month,
+              task.dueDate!.day,
+              int.parse(parts[0]),
+              int.parse(parts[1]),
+              parts.length > 2 ? int.parse(parts[2]) : 0,
+            );
+          } catch (_) {}
+        }
+
+        await GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
+          taskId: task.id,
+          taskTitle: task.title,
+          taskDescription: task.description,
+          priority: task.priority,
+          deadline: deadline,
+          isTeam: isTeam,
+        );
+      }
+    } catch (_) {}
   }
 
   /// Generates a bulleted list of tasks for the given reminder and date.
@@ -320,7 +368,24 @@ class GlobalReminderService {
   }
 
   static Future<void> _cancelReminder(GlobalReminder reminder) async {
-    await NotificationHelper.cancelById(reminder.notificationIdBase);
+    if (reminder.triggerMode == ReminderTriggerMode.daily) {
+      await NotificationHelper.cancelById(reminder.notificationIdBase);
+    } else {
+      // Cancel per-task notifications for this beforeDeadline reminder.
+      try {
+        final email = await SecureStorage.getEmail();
+        if (email == null || email.isEmpty) return;
+        final repo = TaskRepository();
+        final List<TaskLocal> allTasks = await repo.getAllTasks(email);
+        for (final task in allTasks) {
+          final notifId = GlobalReminderScheduler.notifIdFor(reminder, task.id);
+          await NotificationHelper.cancelById(notifId);
+        }
+      } catch (_) {
+        // Fallback: at minimum cancel the base ID
+        await NotificationHelper.cancelById(reminder.notificationIdBase);
+      }
+    }
   }
 
   static String _titleFor(GlobalReminder r) {

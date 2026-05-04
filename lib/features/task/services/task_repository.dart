@@ -5,6 +5,7 @@ import '../../../core/storage/local_database.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../../../core/utils/notification_helper.dart';
+import '../../../features/profile/services/global_reminder_scheduler.dart';
 
 import '../models/task_local.dart';
 
@@ -98,6 +99,14 @@ class TaskRepository {
         priority: task.priority,
         deadline: finalDeadline,
       );
+      await GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
+        taskId: task.id,
+        taskTitle: task.title,
+        taskDescription: task.description,
+        priority: task.priority,
+        deadline: finalDeadline,
+        isTeam: false,
+      );
     }
     // WidgetService.fullSync();
   }
@@ -137,6 +146,14 @@ class TaskRepository {
         priority: task.priority,
         isTeam: task.teamId != null,
         deadline: finalDeadline,
+      );
+      await GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
+        taskId: task.id,
+        taskTitle: task.title,
+        taskDescription: task.description,
+        priority: task.priority,
+        deadline: finalDeadline,
+        isTeam: task.teamId != null,
       );
     }
     // WidgetService.fullSync();
@@ -179,8 +196,17 @@ class TaskRepository {
           isTeam: task.teamId != null,
           deadline: finalDeadline,
         );
+        GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
+          taskId: task.id,
+          taskTitle: task.title,
+          taskDescription: task.description,
+          priority: task.priority,
+          deadline: finalDeadline,
+          isTeam: task.teamId != null,
+        );
       } else {
         NotificationHelper.cancelTaskReminders(task.id);
+        GlobalReminderScheduler.cancelBeforeDeadlineForTask(task.id);
       }
     });
     // WidgetService.fullSync();
@@ -288,6 +314,7 @@ class TaskRepository {
         await _isar.taskLocals.delete(task.id);
       });
       await NotificationHelper.cancelTaskReminders(task.id);
+      await GlobalReminderScheduler.cancelBeforeDeadlineForTask(task.id);
       return;
     }
 
@@ -301,8 +328,9 @@ class TaskRepository {
       await _isar.taskLocals.delete(task.id);
     });
     
-    // Cancel any scheduled local notifications
+    // Cancel any scheduled local notifications (deadline + global reminders)
     await NotificationHelper.cancelTaskReminders(task.id);
+    await GlobalReminderScheduler.cancelBeforeDeadlineForTask(task.id);
     // WidgetService.fullSync();
   }
 
@@ -437,6 +465,14 @@ class TaskRepository {
                 priority: task.priority,
                 isTeam: task.teamId != null,
                 deadline: finalDeadline,
+              );
+              GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
+                taskId: task.id,
+                taskTitle: task.title,
+                taskDescription: task.description,
+                priority: task.priority,
+                deadline: finalDeadline,
+                isTeam: task.teamId != null,
               );
             }
           }
@@ -669,6 +705,14 @@ class TaskRepository {
           priority: task.priority,
           isTeam: task.teamId != null,
           deadline: finalDeadline,
+        );
+        await GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
+          taskId: task.id,
+          taskTitle: task.title,
+          taskDescription: task.description,
+          priority: task.priority,
+          deadline: finalDeadline,
+          isTeam: task.teamId != null,
         );
       }
     }
