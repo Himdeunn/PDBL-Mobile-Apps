@@ -56,9 +56,9 @@ extension ReminderTriggerModeX on ReminderTriggerMode {
   String get label {
     switch (this) {
       case ReminderTriggerMode.daily:
-        return 'Harian (jam tetap)';
+        return 'Daily (fixed time)';
       case ReminderTriggerMode.beforeDeadline:
-        return 'Sebelum Deadline';
+        return 'Before Deadline';
     }
   }
 
@@ -151,13 +151,13 @@ class GlobalReminder {
       return 'Setiap hari jam $h:$m';
     } else {
       final unitLabel = switch (intervalUnit) {
-        'H' => intervalAmount == 1 ? '1 jam' : '$intervalAmount jam',
-        'W' => intervalAmount == 1 ? '1 minggu' : '$intervalAmount minggu',
-        _ => intervalAmount == 1 ? '1 hari' : '$intervalAmount hari',
+        'H' => intervalAmount == 1 ? '1 hour' : '$intervalAmount hour',
+        'W' => intervalAmount == 1 ? '1 week' : '$intervalAmount week',
+        _ => intervalAmount == 1 ? '1 day' : '$intervalAmount day',
       };
       final h = hour.toString().padLeft(2, '0');
       final m = minute.toString().padLeft(2, '0');
-      return '$unitLabel sebelum deadline • $h:$m';
+      return '$unitLabel before deadline • $h:$m';
     }
   }
 

@@ -13,6 +13,13 @@
 # Flutter Secure Storage
 -keep class com.it_nomads.fluttersecurestorage.** { *; }
 
+# Google Sign-In / Play Services Auth
+-keep class com.google.android.gms.** { *; }
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.google.android.gms.common.** { *; }
+-keep class com.google.android.gms.tasks.** { *; }
+
 # Suppress warnings for optional/missing dependencies
 -dontwarn com.google.android.play.core.**
 -dontwarn com.google.errorprone.annotations.**

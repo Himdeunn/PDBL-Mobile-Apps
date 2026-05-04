@@ -303,8 +303,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   leading: const Icon(Icons.alarm_on, color: Colors.purple),
                   title: const Text('Test Before Deadline Reminder', style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text(
-                    'Simulasi task deadline 2 jam lagi.\n'
-                    'Notifikasi muncul sesuai interval Global Reminder aktif.',
+                    'Simulate task deadline in 2 hours.\n'
+                    'Notifications will appear according to the active Global Reminder interval.',
                   ),
                   isThreeLine: true,
                   trailing: const Icon(Icons.send),
@@ -336,8 +336,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         SnackBar(
                           content: Text(
                             beforeDeadlineCount == 0
-                                ? '⚠️ Tidak ada Global Reminder "Before Deadline" yang aktif. Tambahkan dulu!'
-                                : '✅ $beforeDeadlineCount before-deadline reminder dijadwalkan untuk fake task (deadline: ${fakeDeadline.hour}:${fakeDeadline.minute.toString().padLeft(2, "0")})',
+                                ? '⚠️ There are no active "Before Deadline" Global Reminders. Add one now!'
+                                : '✅ $beforeDeadlineCount before-deadline reminder scheduled for fake task (deadline: ${fakeDeadline.hour}:${fakeDeadline.minute.toString().padLeft(2, "0")})',
                           ),
                           duration: const Duration(seconds: 5),
                         ),
