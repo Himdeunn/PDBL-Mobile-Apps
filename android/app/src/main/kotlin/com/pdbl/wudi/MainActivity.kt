@@ -7,6 +7,6 @@ import es.antonborri.home_widget.HomeWidgetLaunchIntent
 class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        HomeWidgetLaunchIntent.setLaunchIntent(intent)
+        setIntent(intent)
     }
 }

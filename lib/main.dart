@@ -17,14 +17,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
 }
 
-@pragma('vm:entry-point')
-void homeWidgetBackgroundCallback(Uri? uri) {
-  if (uri?.host == 'toggle_task') {
-    WidgetService.handleBackgroundAction(uri!);
-  }
-}
-
 void main() async {
+
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Firebase

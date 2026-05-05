@@ -10,8 +10,16 @@ import '../../features/group/services/team_service.dart';
 import '../../features/task/pages/task_page.dart';
 import '../../features/task/pages/create_task_page.dart';
 import '../../features/group/pages/team_detail_page.dart';
+import '../storage/local_database.dart';
 import 'navigator_service.dart';
 import '../../features/task/services/widget_sync_service.dart';
+
+@pragma('vm:entry-point')
+void homeWidgetBackgroundCallback(Uri? uri) {
+  if (uri?.host == 'toggle_task') {
+    WidgetService.handleBackgroundAction(uri!);
+  }
+}
 
 class WidgetService {
   static const String _androidWidgetName = 'WidgetProvider';
