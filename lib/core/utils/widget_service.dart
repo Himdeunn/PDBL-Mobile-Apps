@@ -28,7 +28,10 @@ class WidgetService {
     // Handle initial launch from widget
     final initialUri = await HomeWidget.initiallyLaunchedFromHomeWidget();
     if (initialUri != null) {
-      _handleWidgetClick(initialUri);
+      // Delay initial launch handling to avoid being overwritten by SplashPage (which takes ~2.5s)
+      Future.delayed(const Duration(milliseconds: 3500), () {
+        _handleWidgetClick(initialUri);
+      });
     }
   }
 
@@ -122,9 +125,18 @@ class WidgetService {
 
     if (personalTasks != null || teamTasks != null) {
       final List<Map<String, dynamic>> combinedTasks = [];
+      final now = DateTime.now();
       
       if (personalTasks != null) {
-        combinedTasks.addAll(personalTasks.map((t) => {
+        // Filter for today's tasks only
+        final todayPersonal = personalTasks.where((t) {
+           if (t.dueDate == null) return false;
+           return t.dueDate!.year == now.year &&
+                  t.dueDate!.month == now.month &&
+                  t.dueDate!.day == now.day;
+        }).toList();
+
+        combinedTasks.addAll(todayPersonal.map((t) => {
           'id': t.id.toString(),
           'title': t.title,
           'dueTime': t.dueTime ?? '',
@@ -135,7 +147,16 @@ class WidgetService {
       }
 
       if (teamTasks != null) {
-        combinedTasks.addAll(teamTasks.map((t) => {
+        // Filter for today's team tasks
+        final todayTeam = teamTasks.where((t) {
+           if (t['deadline'] == null) return false;
+           try {
+             final dt = DateTime.parse(t['deadline'].toString());
+             return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+           } catch (_) { return false; }
+        }).toList();
+
+        combinedTasks.addAll(todayTeam.map((t) => {
           'id': t['id']?.toString() ?? '',
           'title': t['judul'] ?? t['title'] ?? '',
           'dueTime': t['deadline'] != null && t['deadline'].toString().contains(' ') 
@@ -149,6 +170,7 @@ class WidgetService {
       }
 
       final jsonStr = jsonEncode(combinedTasks);
+      debugPrint("WUDI_WIDGET_FLUTTER: Saving focus_today_tasks (${combinedTasks.length} items)");
       await HomeWidget.saveWidgetData<String>('focus_today_tasks', jsonStr);
     }
 
@@ -179,18 +201,16 @@ class WidgetService {
       bool hasTeam = false;
 
       // Fetch personal tasks
-      if (user != null) {
-        final repository = TaskRepository();
-        final email = user.isGuest ? 'guest' : (user.email ?? '');
-        personalTasks = await repository.getAllTasks(email);
+      final repository = TaskRepository();
+      final email = (user == null || user.isGuest) ? 'guest' : (user.email ?? 'guest');
+      personalTasks = await repository.getAllTasks(email);
 
-        // Fallback: If no tasks found for email, check if there are tasks marked as 'guest'
-        if ((personalTasks == null || personalTasks.isEmpty) && email != 'guest') {
-           final guestTasks = await repository.getAllTasks('guest');
-           if (guestTasks.isNotEmpty) {
-             personalTasks = guestTasks;
-           }
-        }
+      // Fallback: If no tasks found for email, check if there are tasks marked as 'guest'
+      if ((personalTasks.isEmpty) && email != 'guest') {
+          final guestTasks = await repository.getAllTasks('guest');
+          if (guestTasks.isNotEmpty) {
+            personalTasks = guestTasks;
+          }
       }
 
       // Fetch team tasks if logged in

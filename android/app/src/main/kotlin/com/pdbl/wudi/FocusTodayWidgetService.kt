@@ -32,26 +32,34 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
         
         try {
             val jsonArray = JSONArray(jsonString)
+            android.util.Log.d("WUDI_WIDGET", "Loading ${jsonArray.length()} tasks from sharedPrefs")
+            
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                val timeStr = obj.getString("dueTime")
-                val isTeam = if (obj.has("isTeam")) obj.getBoolean("isTeam") else false
-                val idStr = if (obj.has("id")) obj.getString("id") else ""
-                val teamIdStr = if (obj.has("team_id")) obj.getString("team_id") else ""
-                val isCompleted = if (obj.has("isCompleted")) obj.getBoolean("isCompleted") else false
+                val timeStr = obj.optString("dueTime", "")
+                val isTeam = obj.optBoolean("isTeam", false)
+                val idStr = obj.optString("id", "")
+                val teamIdStr = obj.optString("team_id", "")
+                val isCompleted = obj.optBoolean("isCompleted", false)
+                val title = obj.optString("title", "Untitled")
+                val priority = obj.optString("priority", "low")
+                
                 val parsedTime = parseTime(timeStr)
                 
                 tasks.add(TaskData(
                     id = idStr,
-                    title = obj.getString("title"),
+                    title = title,
                     dueTime = if (parsedTime != null) formatDisplayTime(parsedTime) else timeStr,
-                    priority = obj.getString("priority"),
+                    priority = priority,
                     isTeam = isTeam,
                     teamId = teamIdStr,
                     isCompleted = isCompleted
                 ))
             }
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) { 
+            android.util.Log.e("WUDI_WIDGET", "Error parsing tasks JSON: ${e.message}")
+            e.printStackTrace() 
+        }
     }
 
     private fun parseTime(timeStr: String): Calendar? {
