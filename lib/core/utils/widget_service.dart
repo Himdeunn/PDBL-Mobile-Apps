@@ -43,24 +43,56 @@ class WidgetService {
       return;
     }
 
-    if (uri.host == 'add_task') {
-      NavigatorService.navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const CreateTaskPage()),
-      );
-      return;
-    }
+    // Delay briefly to ensure Navigator is ready if app just launched
+    Future.delayed(const Duration(milliseconds: 300), () {
+      final navigator = NavigatorService.navigatorKey.currentState;
+      if (navigator == null) return;
+
+      if (uri.host == 'add_task') {
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const CreateTaskPage()),
+        );
+        return;
+      }
+
+      if (uri.host == 'task_detail' && taskIdStr != null) {
+        final taskId = int.parse(taskIdStr);
+        final isTeam = isTeamStr == 'true';
+        
+        if (isTeam && teamId != null) {
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => TeamDetailPage(teamId: int.parse(teamId)),
+            ),
+          );
+        } else {
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => TaskPage(initialTaskId: taskId),
+            ),
+          );
+        }
+        return;
+      }
+    });
   }
 
   static Future<void> _handleToggleBackground(int taskId) async {
     try {
       final repository = TaskRepository();
-      final allTasks = await repository.getAllTasks('guest'); // Force Isar initialization reference
       final user = await SecureStorage.getUser();
       final userEmail = user?.email ?? 'guest';
+      
+      // Fetch tasks for the correct user/email
+      final allTasks = await repository.getAllTasks(userEmail);
       
       final task = allTasks.where((t) => t.id == taskId).firstOrNull;
       if (task != null) {
         await repository.toggleTaskStatus(task, userEmail);
+        
+        // After toggle, sync the widget again to update the UI
+        final updatedTasks = await repository.getAllTasks(userEmail);
+        await WidgetSyncService.syncFocusTodayWidget(updatedTasks);
       }
     } catch (e) {
       debugPrint("WUDI_WIDGET_ERROR (Toggle): $e");
@@ -83,37 +115,36 @@ class WidgetService {
 
     // REMOVED current_tab saving from Flutter to avoid overwriting native state
 
-    if (personalTasks != null) {
-      final tasksJson = personalTasks.map((t) => {
-        'id': t.id.toString(),
-        'title': t.title,
-        'description': t.description ?? '',
-        'date': t.dueDate != null ? '${t.dueDate!.day}/${t.dueDate!.month}/${t.dueDate!.year}' : '',
-        'time': t.dueTime ?? '',
-        'priority': t.priority,
-      }).toList();
-      final jsonStr = jsonEncode(tasksJson);
-      debugPrint("WUDI_WIDGET_FLUTTER: Saving personal_tasks: ${jsonStr}");
-      await HomeWidget.saveWidgetData<String>('personal_tasks', jsonStr);
-    }
+    if (personalTasks != null || teamTasks != null) {
+      final List<Map<String, dynamic>> combinedTasks = [];
+      
+      if (personalTasks != null) {
+        combinedTasks.addAll(personalTasks.map((t) => {
+          'id': t.id.toString(),
+          'title': t.title,
+          'dueTime': t.dueTime ?? '',
+          'priority': t.priority,
+          'isTeam': false,
+          'isCompleted': t.isCompleted,
+        }));
+      }
 
-    if (teamTasks != null) {
-      debugPrint("WUDI_WIDGET_FLUTTER: teamTasks input length: ${teamTasks.length}");
-      final tasksJson = teamTasks.map((t) => {
-        'id': t['id'].toString(),
-        'team_id': t['team_id']?.toString() ?? '',
-        'title': t['judul'] ?? t['title'] ?? '',
-        'description': t['deskripsi'] ?? t['description'] ?? '',
-        'date': t['deadline'] != null ? t['deadline'].toString().split(' ')[0] : '',
-        'time': t['deadline'] != null && t['deadline'].toString().contains(' ')
-            ? t['deadline'].toString().split(' ')[1]
-            : '',
-        'priority': t['priority'] ?? 'low',
-        'assign_to': t['assign_to'] ?? '',
-      }).toList();
-      final jsonStr = jsonEncode(tasksJson);
-      debugPrint("WUDI_WIDGET_FLUTTER: Saving team_tasks: ${jsonStr}");
-      await HomeWidget.saveWidgetData<String>('team_tasks', jsonStr);
+      if (teamTasks != null) {
+        combinedTasks.addAll(teamTasks.map((t) => {
+          'id': t['id']?.toString() ?? '',
+          'title': t['judul'] ?? t['title'] ?? '',
+          'dueTime': t['deadline'] != null && t['deadline'].toString().contains(' ') 
+              ? t['deadline'].toString().split(' ')[1] 
+              : '',
+          'priority': t['priority'] ?? 'low',
+          'isTeam': true,
+          'team_id': t['team_id']?.toString() ?? '',
+          'isCompleted': t['is_completed'] == true,
+        }));
+      }
+
+      final jsonStr = jsonEncode(combinedTasks);
+      await HomeWidget.saveWidgetData<String>('focus_today_tasks', jsonStr);
     }
 
     await HomeWidget.updateWidget(
