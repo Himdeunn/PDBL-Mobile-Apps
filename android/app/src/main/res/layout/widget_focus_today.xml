@@ -35,8 +35,8 @@
             android:id="@+id/btn_add_task"
             android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:layout_alignParentEnd="true" android:layout_alignBottom="@+id/logo_container"
-            android:layout_marginBottom="-30dp"
-            android:text="+ Add your task" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            android:layout_marginBottom="-34dp"
+            android:text="+ Add your task" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" />
     </RelativeLayout>
 
     <ViewFlipper

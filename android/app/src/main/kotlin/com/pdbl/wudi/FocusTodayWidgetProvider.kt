@@ -33,11 +33,10 @@ class FocusTodayWidgetProvider : AppWidgetProvider() {
             views.setRemoteAdapter(R.id.widget_list_view, intent)
             views.setEmptyView(R.id.widget_list_view, R.id.widget_empty_view)
 
-            val clickIntentTemplate = Intent(context, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            val clickIntentTemplate = Intent(context, FocusTodayWidgetProvider::class.java).apply {
+                action = "com.pdbl.wudi.ACTION_CLICK"
             }
-            val clickPendingIntentTemplate = PendingIntent.getActivity(
+            val clickPendingIntentTemplate = PendingIntent.getBroadcast(
                 context, 0, clickIntentTemplate, 
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
@@ -59,6 +58,25 @@ class FocusTodayWidgetProvider : AppWidgetProvider() {
             
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_list_view)
             scheduleNextUpdate(context)
+        } else if (intent.action == "com.pdbl.wudi.ACTION_CLICK") {
+            val uri = intent.data
+            if (uri != null) {
+                if (uri.host == "toggle_task") {
+                    // Send to background receiver
+                    val backgroundIntent = Intent(context, es.antonborri.home_widget.HomeWidgetBackgroundReceiver::class.java).apply {
+                        data = uri
+                    }
+                    context.sendBroadcast(backgroundIntent)
+                } else {
+                    // Open App for detail/others
+                    val launchIntent = Intent(context, MainActivity::class.java).apply {
+                        action = Intent.ACTION_VIEW
+                        data = uri
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    }
+                    context.startActivity(launchIntent)
+                }
+            }
         }
     }
 

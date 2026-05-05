@@ -25,6 +25,9 @@ class WidgetService {
       _handleWidgetClick(uri);
     });
 
+    // Register background callback for checkbox/background actions
+    await HomeWidget.registerBackgroundCallback(homeWidgetBackgroundCallback);
+
     // Handle initial launch from widget
     final initialUri = await HomeWidget.initiallyLaunchedFromHomeWidget();
     if (initialUri != null) {
@@ -82,6 +85,17 @@ class WidgetService {
         debugPrint("WUDI_WIDGET_ERROR: Navigator timeout for ${uri.host}");
       }
     });
+  }
+
+  static Future<void> handleBackgroundAction(Uri uri) async {
+    if (uri.host == 'toggle_task') {
+      final taskIdStr = uri.queryParameters['id'];
+      if (taskIdStr != null) {
+        // We need to ensure Isar/LocalDB is initialized in the background isolate
+        await LocalDatabase.init();
+        await _handleToggleBackground(int.parse(taskIdStr));
+      }
+    }
   }
 
   static Future<void> _handleToggleBackground(int taskId) async {

@@ -9,9 +9,9 @@
 
     <ImageView
         android:id="@+id/btn_checkbox"
-        android:layout_width="22dp" android:layout_height="22dp"
+        android:layout_width="26dp" android:layout_height="26dp"
         android:src="@drawable/ic_checkbox_outline"
-        android:layout_marginEnd="12dp" />
+        android:layout_marginEnd="14dp" />
 
     <LinearLayout
         android:layout_width="0dp" android:layout_height="wrap_content"
@@ -19,11 +19,11 @@
         <TextView
             android:id="@+id/tv_task_title"
             android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:textColor="#3A3042" android:textStyle="bold" android:textSize="15sp" />
+            android:textColor="#3A3042" android:textStyle="bold" android:textSize="17sp" />
         <TextView
             android:id="@+id/tv_task_time"
             android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:textColor="#888888" android:textSize="13sp" android:layout_marginTop="2dp"/>
+            android:textColor="#888888" android:textSize="14sp" android:layout_marginTop="2dp"/>
     </LinearLayout>
 
     <LinearLayout
