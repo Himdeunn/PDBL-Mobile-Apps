@@ -637,20 +637,20 @@ class _TaskDetailSheet extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppColors.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Drag handle ──
+          // ─── Drag handle ───
           Center(
             child: Container(
               width: 48,
               height: 5,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: Colors.grey[400],
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
@@ -691,13 +691,15 @@ class _TaskDetailSheet extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 20),
+
           // ── Date ──
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -739,8 +741,8 @@ class _TaskDetailSheet extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -791,7 +793,7 @@ class _TaskDetailSheet extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Text(

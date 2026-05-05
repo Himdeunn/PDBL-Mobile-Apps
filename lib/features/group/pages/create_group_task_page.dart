@@ -118,11 +118,13 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
   Future<void> _selectDate(BuildContext context) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final fifteenYearsLater = DateTime(now.year + 15, now.month, now.day);
+    
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
       firstDate: today,
-      lastDate: DateTime(2101),
+      lastDate: fifteenYearsLater,
       builder: (ctx, child) => Theme(
         data: ThemeData.light().copyWith(
           colorScheme: const ColorScheme.light(

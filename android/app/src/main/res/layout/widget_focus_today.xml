@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@drawable/bg_widget_dark">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp">
+        
+        <LinearLayout
+            android:id="@+id/logo_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="@drawable/bg_task_card"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:layout_alignParentTop="true">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Wudi" android:textColor="#43364A" android:textStyle="bold" android:textSize="12sp"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="." android:textColor="#E15252" android:textStyle="bold" android:textSize="12sp"/>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_below="@id/logo_container" android:layout_marginTop="4dp"
+            android:text="Focus Today" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/btn_add_task"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true" android:layout_alignBottom="@+id/logo_container"
+            android:layout_marginBottom="-30dp"
+            android:text="+ Add your task" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+    </RelativeLayout>
+
+    <ViewFlipper
+        android:id="@+id/view_flipper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+        
+        <!-- Index 0: List View Jika Ada Data -->
+        <ListView
+            android:id="@+id/widget_list_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@android:color/transparent"
+            android:dividerHeight="10dp" />
+
+        <!-- Index 1: Empty View Jika Data Kosong/Waktu Habis -->
+        <LinearLayout
+            android:id="@+id/widget_empty_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:background="@drawable/bg_empty_state">
+            <TextView
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="No Task Today" android:textStyle="bold" android:textColor="#EFE6DD" android:textSize="20sp" />
+        </LinearLayout>
+    </ViewFlipper>
+</LinearLayout>

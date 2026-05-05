@@ -138,9 +138,9 @@ class _CalendarPageState extends State<CalendarPage> {
     int pickerYear = _currentMonth.year;
     int pickerMonth = _currentMonth.month;
 
-    // Controller created once outside the builder so StatefulBuilder rebuilds
-    // don't create duplicate controllers, and it's disposed after the dialog closes.
-    final yearController = TextEditingController(text: '$pickerYear');
+    // Generate years from 5 years ago to 10 years in the future
+    final currentYear = DateTime.now().year;
+    final List<int> years = List.generate(15, (i) => currentYear - 5 + i);
 
     final result = await showDialog<DateTime>(
       context: context,
@@ -154,35 +154,45 @@ class _CalendarPageState extends State<CalendarPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Year text input
-                TextField(
-                  controller: yearController,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                // Year Dropdown instead of TextField
+                Container(
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.calendarBorder.withValues(alpha: 0.3)),
                   ),
-                  decoration: InputDecoration(
-                    hintText: 'Year',
-                    hintStyle: const TextStyle(color: AppColors.textSecondary),
-                    filled: true,
-                    fillColor: AppColors.background,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: pickerYear,
+                      isExpanded: true,
+                      dropdownColor: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      menuMaxHeight: 300,
+                      icon: const Icon(Icons.expand_more_rounded, color: AppColors.textSecondary),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setDialogState(() {
+                            pickerYear = newValue;
+                          });
+                        }
+                      },
+                      items: years.map<DropdownMenuItem<int>>((int value) {
+                        return DropdownMenuItem<int>(
+                          value: value,
+                          child: Text(value.toString()),
+                        );
+                      }).toList(),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  onChanged: (v) {
-                    final y = int.tryParse(v);
-                    if (y != null && y >= 1900 && y <= 2100) {
-                      setDialogState(() => pickerYear = y);
-                    }
-                  },
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 GridView.count(
                   crossAxisCount: 3,
                   shrinkWrap: true,
@@ -275,50 +285,49 @@ class _CalendarPageState extends State<CalendarPage> {
           slivers: [
             // Header & Calendar Grid
             SliverToBoxAdapter(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragEnd: (details) {
-                  if (details.primaryVelocity! > 0) {
-                    _previousMonth();
-                  } else if (details.primaryVelocity! < 0) {
-                    _nextMonth();
-                  }
-                },
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (Widget child, Animation<double> animation) {
-                    final isIncoming = child.key == ValueKey<DateTime>(_currentMonth);
-                    final slideOffset = _isNext 
-                        ? (isIncoming ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0))
-                        : (isIncoming ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0));
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  _buildHeader(), // Now Header is outside the AnimatedSwitcher!
+                  const SizedBox(height: 24),
+                  _buildWeekDays(), // And Weekdays too (optional, but good for static feeling)
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onHorizontalDragEnd: (details) {
+                      if (details.primaryVelocity! > 0) {
+                        _previousMonth();
+                      } else if (details.primaryVelocity! < 0) {
+                        _nextMonth();
+                      }
+                    },
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      transitionBuilder: (Widget child, Animation<double> animation) {
+                        final isIncoming = child.key == ValueKey<DateTime>(_currentMonth);
+                        final slideOffset = _isNext 
+                            ? (isIncoming ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0))
+                            : (isIncoming ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0));
 
-                    return SlideTransition(
-                      position: animation.drive(Tween<Offset>(
-                        begin: slideOffset,
-                        end: Offset.zero,
-                      ).chain(CurveTween(curve: Curves.easeInOutCubic))),
-                      child: FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: Column(
-                    key: ValueKey<DateTime>(_currentMonth),
-                    children: [
-                      const SizedBox(height: 16),
-                      _buildHeader(),
-                      const SizedBox(height: 24),
-                      _buildWeekDays(),
-                      const SizedBox(height: 16),
-                      _buildCalendarGrid(),
-                    ],
+                        return SlideTransition(
+                          position: animation.drive(Tween<Offset>(
+                            begin: slideOffset,
+                            end: Offset.zero,
+                          ).chain(CurveTween(curve: Curves.easeInOutCubic))),
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        );
+                    },
+                    child: _buildCalendarGrid(key: ValueKey<DateTime>(_currentMonth)),
                   ),
                 ),
-              ),
+              ],
             ),
-            
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          ),
+          
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
             
             // Individu / Team tab — sliding pill
             SliverToBoxAdapter(
@@ -465,10 +474,11 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  Widget _buildCalendarGrid() {
+  Widget _buildCalendarGrid({Key? key}) {
     final days = _getDaysInMonth(_currentMonth);
 
     return Padding(
+      key: key,
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GridView.builder(
         shrinkWrap: true,

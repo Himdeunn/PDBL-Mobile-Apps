@@ -7,6 +7,7 @@ import '../../features/auth/pages/login_page.dart';
 import '../../features/task/services/task_repository.dart';
 import '../../features/group/services/team_service.dart';
 import '../../features/task/pages/task_page.dart';
+import '../../features/task/pages/create_task_page.dart';
 import '../../features/group/pages/team_detail_page.dart';
 import 'navigator_service.dart';
 
@@ -36,29 +37,43 @@ class WidgetService {
     final type = uri.queryParameters['type']; // 'personal' or 'team'
     final teamId = uri.queryParameters['team_id'];
 
+    if (uri.host == 'add_task') {
+      NavigatorService.navigatorKey.currentState?.push(
+        MaterialPageRoute(builder: (_) => const CreateTaskPage()),
+      );
+      return;
+    }
+
+    if (uri.host == 'task_detail') {
+      final taskId = uri.queryParameters['id'];
+      final isTeamStr = uri.queryParameters['isTeam'];
+      final teamId = uri.queryParameters['team_id'];
+      
+      if (isTeamStr == 'true' && teamId != null && teamId.isNotEmpty) {
+        NavigatorService.navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => TeamDetailPage(
+              teamId: int.parse(teamId),
+              taskId: taskId,
+            ),
+          ),
+        );
+      } else {
+        NavigatorService.navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => TaskPage(taskId: taskId),
+          ),
+        );
+      }
+      return;
+    }
+
     // Handle Login Redirection
     if (uri.host == 'login') {
       NavigatorService.navigatorKey.currentState?.push(
         MaterialPageRoute(builder: (_) => const LoginPage()),
       );
       return;
-    }
-
-    if (type == 'personal') {
-      NavigatorService.navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => TaskPage(taskId: taskId),
-        ),
-      );
-    } else if (type == 'team' && teamId != null) {
-      NavigatorService.navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => TeamDetailPage(
-            teamId: int.parse(teamId),
-            taskId: taskId,
-          ),
-        ),
-      );
     }
   }
 

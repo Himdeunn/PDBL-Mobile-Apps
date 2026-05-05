@@ -6,6 +6,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../../../core/utils/notification_helper.dart';
 import '../../../features/profile/services/global_reminder_scheduler.dart';
+import 'widget_sync_service.dart';
 
 import '../models/task_local.dart';
 
@@ -105,10 +106,13 @@ class TaskRepository {
         taskDescription: task.description,
         priority: task.priority,
         deadline: finalDeadline,
-        isTeam: false,
+          isTeam: false,
       );
     }
-    // WidgetService.fullSync();
+    
+    // Trigger Widget Sync
+    final allTasks = await _isar.taskLocals.where().findAll();
+    await WidgetSyncService.syncFocusTodayWidget(allTasks);
   }
 
   Future<void> createTeamTask(TaskLocal task, String userEmail, List<String> assignedEmails) async {
@@ -153,10 +157,13 @@ class TaskRepository {
         taskDescription: task.description,
         priority: task.priority,
         deadline: finalDeadline,
-        isTeam: task.teamId != null,
+          isTeam: task.teamId != null,
       );
     }
-    // WidgetService.fullSync();
+    
+    // Trigger Widget Sync
+    final allTasks = await _isar.taskLocals.where().findAll();
+    await WidgetSyncService.syncFocusTodayWidget(allTasks);
   }
 
   Future<void> updateTask(TaskLocal task) async {
@@ -208,8 +215,12 @@ class TaskRepository {
         NotificationHelper.cancelTaskReminders(task.id);
         GlobalReminderScheduler.cancelBeforeDeadlineForTask(task.id);
       }
+      
+      // Trigger Widget Sync
+      _isar.taskLocals.where().findAll().then((allTasks) {
+        WidgetSyncService.syncFocusTodayWidget(allTasks);
+      });
     });
-    // WidgetService.fullSync();
   }
 
   /// Toggle completion status for a task.
@@ -279,6 +290,10 @@ class TaskRepository {
                 await _isar.taskLocals.put(fresh);
               }
             });
+            
+            // Trigger Widget Sync after team status update
+            final allTasks = await _isar.taskLocals.where().findAll();
+            await WidgetSyncService.syncFocusTodayWidget(allTasks);
           }
         } catch (_) {
           // Server call failed: revert optimistic update to previous known state
@@ -302,6 +317,10 @@ class TaskRepository {
         await _isar.taskLocals.put(task);
       });
       await _syncSingleTask(task);
+      
+      // Trigger Widget Sync
+      final allTasks = await _isar.taskLocals.where().findAll();
+      await WidgetSyncService.syncFocusTodayWidget(allTasks);
     }
   }
 
@@ -331,7 +350,10 @@ class TaskRepository {
     // Cancel any scheduled local notifications (deadline + global reminders)
     await NotificationHelper.cancelTaskReminders(task.id);
     await GlobalReminderScheduler.cancelBeforeDeadlineForTask(task.id);
-    // WidgetService.fullSync();
+    
+    // Trigger Widget Sync
+    final allTasks = await _isar.taskLocals.where().findAll();
+    await WidgetSyncService.syncFocusTodayWidget(allTasks);
   }
 
   Future<void> fetchTasksFromServer(String userEmail, {bool force = false}) async {

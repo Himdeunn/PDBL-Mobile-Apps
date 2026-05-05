@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="14dp"
+    android:background="@drawable/bg_task_card"
+    android:gravity="center_vertical">
+
+    <ImageView
+        android:layout_width="22dp" android:layout_height="22dp"
+        android:background="@drawable/ic_checkbox_outline" android:layout_marginEnd="12dp"/>
+
+    <LinearLayout
+        android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="1" android:orientation="vertical">
+        <TextView
+            android:id="@+id/tv_task_title"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#3A3042" android:textStyle="bold" android:textSize="15sp" />
+        <TextView
+            android:id="@+id/tv_task_time"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#888888" android:textSize="13sp" android:layout_marginTop="2dp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:orientation="vertical" android:gravity="end">
+        <TextView
+            android:id="@+id/tv_team_tag"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFFFFF" android:textSize="10sp" android:textStyle="bold"
+            android:paddingHorizontal="6dp" android:paddingVertical="3dp"
+            android:layout_marginBottom="4dp"
+            android:background="#2C2433" android:text="Team" android:visibility="gone"/>
+        <LinearLayout
+            android:id="@+id/ll_priority_bg"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:paddingHorizontal="10dp" android:paddingVertical="5dp"
+            android:background="@drawable/bg_priority_high">
+            
+            <ImageView
+                android:id="@+id/iv_priority_icon"
+                android:layout_width="14dp" android:layout_height="14dp"
+                android:layout_marginEnd="4dp"
+                android:visibility="gone" />
+                
+            <TextView
+                android:id="@+id/tv_priority"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="#C64141" android:textSize="10sp" android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
