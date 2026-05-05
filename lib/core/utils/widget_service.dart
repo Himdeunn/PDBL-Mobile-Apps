@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import '../../features/task/models/task_local.dart';
@@ -35,7 +36,6 @@ class WidgetService {
     if (uri == null || uri.scheme != 'home_widget') return;
 
     final taskIdStr = uri.queryParameters['id'];
-    final type = uri.queryParameters['type'];
     final teamId = uri.queryParameters['team_id'];
     final isTeamStr = uri.queryParameters['isTeam'];
 
@@ -44,36 +44,39 @@ class WidgetService {
       return;
     }
 
-    // Delay briefly to ensure Navigator is ready if app just launched
-    Future.delayed(const Duration(milliseconds: 300), () {
+    // Polling mechanism to ensure Navigator is ready
+    int attempts = 0;
+    Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      attempts++;
       final navigator = NavigatorService.navigatorKey.currentState;
-      if (navigator == null) return;
-
-      if (uri.host == 'add_task') {
-        navigator.push(
-          MaterialPageRoute(builder: (_) => const CreateTaskPage()),
-        );
-        return;
-      }
-
-      if (uri.host == 'task_detail' && taskIdStr != null) {
-        final taskId = int.parse(taskIdStr);
-        final isTeam = isTeamStr == 'true';
-        
-        if (isTeam && teamId != null) {
+      
+      if (navigator != null) {
+        timer.cancel();
+        if (uri.host == 'add_task') {
           navigator.push(
-            MaterialPageRoute(
-              builder: (_) => TeamDetailPage(teamId: int.parse(teamId)),
-            ),
+            MaterialPageRoute(builder: (_) => const CreateTaskPage()),
           );
-        } else {
-          navigator.push(
-            MaterialPageRoute(
-              builder: (_) => TaskPage(taskId: taskId.toString()),
-            ),
-          );
+        } else if (uri.host == 'task_detail' && taskIdStr != null) {
+          final taskId = int.parse(taskIdStr);
+          final isTeam = isTeamStr == 'true';
+          
+          if (isTeam && teamId != null) {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => TeamDetailPage(teamId: int.parse(teamId)),
+              ),
+            );
+          } else {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => TaskPage(taskId: taskId.toString()),
+              ),
+            );
+          }
         }
-        return;
+      } else if (attempts >= 15) { // Timeout after 3 seconds
+        timer.cancel();
+        debugPrint("WUDI_WIDGET_ERROR: Navigator timeout for ${uri.host}");
       }
     });
   }
@@ -84,14 +87,15 @@ class WidgetService {
       final user = await SecureStorage.getUser();
       final userEmail = user?.email ?? 'guest';
       
-      // Fetch tasks for the correct user/email
+      // Fetch the most up-to-date tasks from the repository
       final allTasks = await repository.getAllTasks(userEmail);
       
       final task = allTasks.where((t) => t.id == taskId).firstOrNull;
       if (task != null) {
+        // Toggle the status (this already triggers WidgetSyncService in most cases)
         await repository.toggleTaskStatus(task, userEmail);
         
-        // After toggle, sync the widget again to update the UI
+        // Explicitly sync the widget again to be absolutely sure the UI updates immediately
         final updatedTasks = await repository.getAllTasks(userEmail);
         await WidgetSyncService.syncFocusTodayWidget(updatedTasks);
       }

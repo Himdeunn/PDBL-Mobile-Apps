@@ -39,26 +39,17 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
                 val idStr = if (obj.has("id")) obj.getString("id") else ""
                 val teamIdStr = if (obj.has("team_id")) obj.getString("team_id") else ""
                 val isCompleted = if (obj.has("isCompleted")) obj.getBoolean("isCompleted") else false
-                
                 val parsedTime = parseTime(timeStr)
-                if (parsedTime != null) {
-                    val taskHour = parsedTime.get(Calendar.HOUR_OF_DAY)
-                    val taskMinute = parsedTime.get(Calendar.MINUTE)
-                    
-                    val isFutureOrNow = (taskHour > currentHour) || (taskHour == currentHour && taskMinute >= currentMinute)
-                    
-                    if (isFutureOrNow) {
-                        tasks.add(TaskData(
-                            id = idStr,
-                            title = obj.getString("title"),
-                            dueTime = formatDisplayTime(parsedTime),
-                            priority = obj.getString("priority"),
-                            isTeam = isTeam,
-                            teamId = teamIdStr,
-                            isCompleted = isCompleted
-                        ))
-                    }
-                }
+                
+                tasks.add(TaskData(
+                    id = idStr,
+                    title = obj.getString("title"),
+                    dueTime = if (parsedTime != null) formatDisplayTime(parsedTime) else timeStr,
+                    priority = obj.getString("priority"),
+                    isTeam = isTeam,
+                    teamId = teamIdStr,
+                    isCompleted = isCompleted
+                ))
             }
         } catch (e: Exception) { e.printStackTrace() }
     }
