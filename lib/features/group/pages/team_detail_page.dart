@@ -747,9 +747,12 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Team Members (${_members.length}/${_teamData?['max_members'] ?? 100})',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Flexible(
+                    child: Text(
+                      'Team Members (${_members.length}/${_teamData?['max_members'] ?? 100})',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   if (_teamData?['created_by']?.toString() ==
                       _currentUserId?.toString())

@@ -84,21 +84,15 @@ class _RegisterPageState extends State<RegisterPage> {
       _failedAttempts = 0;
       _lockoutUntil = null;
       
-      // Changed flow: Register -> Success Dialog -> LoginPage
-      ErrorHandler.showSuccessPopup(
-        'Account created successfully! Please log in to continue.',
-        title: 'Registration Successful',
-      );
-      
+      // Register flow: register -> verify OTP -> account saved -> home
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => const LoginPage(),
+          builder: (_) => VerifyEmailPage(
+            email: _emailController.text.trim(),
+            canSkip: false,
+          ),
         ),
-      );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
       );
     } catch (e) {
       if (!mounted) return;

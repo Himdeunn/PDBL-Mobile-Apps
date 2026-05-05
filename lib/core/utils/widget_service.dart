@@ -33,9 +33,15 @@ class WidgetService {
   static void _handleWidgetClick(Uri? uri) {
     if (uri == null || uri.scheme != 'home_widget') return;
 
-    final taskId = uri.queryParameters['id'];
-    final type = uri.queryParameters['type']; // 'personal' or 'team'
+    final taskIdStr = uri.queryParameters['id'];
+    final type = uri.queryParameters['type'];
     final teamId = uri.queryParameters['team_id'];
+    final isTeamStr = uri.queryParameters['isTeam'];
+
+    if (uri.host == 'toggle_task' && taskIdStr != null) {
+      _handleToggleBackground(int.parse(taskIdStr));
+      return;
+    }
 
     if (uri.host == 'add_task') {
       NavigatorService.navigatorKey.currentState?.push(
@@ -43,37 +49,21 @@ class WidgetService {
       );
       return;
     }
+  }
 
-    if (uri.host == 'task_detail') {
-      final taskId = uri.queryParameters['id'];
-      final isTeamStr = uri.queryParameters['isTeam'];
-      final teamId = uri.queryParameters['team_id'];
+  static Future<void> _handleToggleBackground(int taskId) async {
+    try {
+      final repository = TaskRepository();
+      final allTasks = await repository.getAllTasks('guest'); // Force Isar initialization reference
+      final user = await SecureStorage.getUser();
+      final userEmail = user?.email ?? 'guest';
       
-      if (isTeamStr == 'true' && teamId != null && teamId.isNotEmpty) {
-        NavigatorService.navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => TeamDetailPage(
-              teamId: int.parse(teamId),
-              taskId: taskId,
-            ),
-          ),
-        );
-      } else {
-        NavigatorService.navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => TaskPage(taskId: taskId),
-          ),
-        );
+      final task = allTasks.where((t) => t.id == taskId).firstOrNull;
+      if (task != null) {
+        await repository.toggleTaskStatus(task, userEmail);
       }
-      return;
-    }
-
-    // Handle Login Redirection
-    if (uri.host == 'login') {
-      NavigatorService.navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-      );
-      return;
+    } catch (e) {
+      debugPrint("WUDI_WIDGET_ERROR (Toggle): $e");
     }
   }
 

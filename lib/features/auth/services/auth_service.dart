@@ -1,5 +1,6 @@
 // lib/features/auth/services/auth_service.dart
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/local_database.dart';
 import '../../../core/storage/secure_storage.dart';
@@ -183,15 +184,11 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    await SecureStorage.clearAll();
     try {
-      // API expects the token to log out. The AuthInterceptor handles attaching it.
-      await _api.post('logout');
+      await GoogleSignIn().signOut();
     } catch (_) {
-      // Ignore network errors on logout
-    } finally {
-      _cachedUser = null;
-      await LocalDatabase.clearAll();
-      await SecureStorage.logout();
+      // Ignore if google sign in fails or was not used
     }
   }
 
@@ -307,14 +304,12 @@ class AuthService {
     return await _handleAuthSuccess(response.data);
   }
 
-  Future<String> verifyEmail(String email, String otp) async {
+  Future<void> verifyEmail(String email, String otp) async {
     final response = await _api.post(
       'auth/verify-email',
       data: {'email': email, 'otp': otp},
     );
-    return await _handleAuthSuccess(response.data) != null
-        ? response.data['token'] as String
-        : '';
+    await _handleAuthSuccess(response.data);
   }
 
   Future<void> resendVerification(String email) async {

@@ -35,24 +35,31 @@ class _SplashPageState extends State<SplashPage>
     _initializeApp();
   }
 
+  Future<void> _ensureMinimumSplashDuration(DateTime startTime) async {
+    final elapsed = DateTime.now().difference(startTime);
+    final remaining = const Duration(milliseconds: 2500) - elapsed;
+    if (remaining > Duration.zero) {
+      await Future.delayed(remaining);
+    }
+  }
+
   Future<void> _initializeApp() async {
     final startTime = DateTime.now();
 
     // Run auth check, remote config fetch, and package info in parallel
     final authService = AuthService();
-    final results = await Future.wait([
+    
+    // We fetch remote config and package info in parallel
+    final packageInfoFuture = PackageInfo.fromPlatform();
+    
+    final results = await Future.wait<dynamic>([
       authService.isLoggedIn(),
-      RemoteConfigService.initialize(),
-      PackageInfo.fromPlatform(),
+      packageInfoFuture,
+      _ensureMinimumSplashDuration(startTime),
     ]);
 
     final bool isLoggedIn = results[0] as bool;
-    final PackageInfo packageInfo = results[2] as PackageInfo;
-
-    // Ensure splash shows for at least 2.5 seconds
-    final elapsed = DateTime.now().difference(startTime);
-    final remaining = const Duration(milliseconds: 2500) - elapsed;
-    if (remaining > Duration.zero) await Future.delayed(remaining);
+    final PackageInfo packageInfo = results[1] as PackageInfo;
 
     if (!mounted) return;
 

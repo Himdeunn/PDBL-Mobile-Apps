@@ -17,7 +17,7 @@ class FocusTodayWidgetService : RemoteViewsService() {
 
 class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
     private var tasks = mutableListOf<TaskData>()
-    data class TaskData(val id: String, val title: String, val dueTime: String, val priority: String, val isTeam: Boolean, val teamId: String)
+    data class TaskData(val id: String, val title: String, val dueTime: String, val priority: String, val isTeam: Boolean, val teamId: String, val isCompleted: Boolean)
 
     override fun onCreate() {}
 
@@ -38,6 +38,7 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
                 val isTeam = if (obj.has("isTeam")) obj.getBoolean("isTeam") else false
                 val idStr = if (obj.has("id")) obj.getString("id") else ""
                 val teamIdStr = if (obj.has("team_id")) obj.getString("team_id") else ""
+                val isCompleted = if (obj.has("isCompleted")) obj.getBoolean("isCompleted") else false
                 
                 val parsedTime = parseTime(timeStr)
                 if (parsedTime != null) {
@@ -53,7 +54,8 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
                             dueTime = formatDisplayTime(parsedTime),
                             priority = obj.getString("priority"),
                             isTeam = isTeam,
-                            teamId = teamIdStr
+                            teamId = teamIdStr,
+                            isCompleted = isCompleted
                         ))
                     }
                 }
@@ -76,7 +78,9 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
     }
 
     private fun formatDisplayTime(cal: Calendar): String {
-        val sdf = SimpleDateFormat("h:mm a", Locale.ENGLISH)
+        val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+        val pattern = if (is24Hour) "HH:mm" else "h:mm a"
+        val sdf = SimpleDateFormat(pattern, Locale.getDefault())
         return sdf.format(cal.time)
     }
 
@@ -121,10 +125,27 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
             views.setViewVisibility(R.id.tv_team_tag, android.view.View.GONE)
         }
         
-        val fillInIntent = android.content.Intent().apply {
+        if (task.isCompleted) {
+            views.setImageViewResource(R.id.btn_checkbox, R.drawable.ic_checkbox_checked)
+            views.setInt(R.id.tv_task_title, "setPaintFlags", 16)
+            views.setTextColor(R.id.tv_task_title, Color.parseColor("#B0A495"))
+        } else {
+            views.setImageViewResource(R.id.btn_checkbox, R.drawable.ic_checkbox_outline)
+            views.setInt(R.id.tv_task_title, "setPaintFlags", 0)
+            views.setTextColor(R.id.tv_task_title, Color.parseColor("#3A3042"))
+        }
+
+        val detailFillInIntent = android.content.Intent().apply {
             data = android.net.Uri.parse("home_widget://task_detail?id=${task.id}&isTeam=${task.isTeam}&team_id=${task.teamId}")
         }
-        views.setOnClickFillInIntent(R.id.ll_priority_bg, fillInIntent)
+        views.setOnClickFillInIntent(R.id.ll_priority_bg, detailFillInIntent)
+        views.setOnClickFillInIntent(R.id.tv_task_title, detailFillInIntent)
+        views.setOnClickFillInIntent(R.id.tv_task_time, detailFillInIntent)
+
+        val toggleFillInIntent = android.content.Intent().apply {
+            data = android.net.Uri.parse("home_widget://toggle_task?id=${task.id}&isTeam=${task.isTeam}&team_id=${task.teamId}")
+        }
+        views.setOnClickFillInIntent(R.id.btn_checkbox, toggleFillInIntent)
         
         return views
     }

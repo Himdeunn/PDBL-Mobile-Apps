@@ -334,7 +334,7 @@ class GlobalReminderService {
   static Future<String> _generateTaskSummary(GlobalReminder reminder, DateTime targetDate) async {
     try {
       final email = await SecureStorage.getEmail();
-      if (email == null || email.isEmpty) return _bodyFor(reminder);
+      if (email == null || email.isEmpty) return _getDefaultBody(reminder.taskType);
 
       final repo = TaskRepository();
       final allTasks = await repo.getAllTasks(email);
@@ -353,17 +353,17 @@ class GlobalReminderService {
         };
       }).toList();
 
-      if (relevantTasks.isEmpty) return _bodyFor(reminder);
+    if (relevantTasks.isEmpty) return _getDefaultBody(reminder.taskType);
 
-      final buffer = StringBuffer();
-      buffer.writeln('📋 Daftar task kamu hari ini:');
-      for (int i = 0; i < relevantTasks.length; i++) {
-        buffer.write('${i + 1}. ${relevantTasks[i].title}');
+    final buffer = StringBuffer();
+    buffer.writeln('📋 Tasks for today:');
+    for (int i = 0; i < relevantTasks.length; i++) {
+      buffer.write('${i + 1}. ${relevantTasks[i].title}');
         if (i < relevantTasks.length - 1) buffer.writeln();
       }
       return buffer.toString();
     } catch (_) {
-      return _bodyFor(reminder);
+      return _getDefaultBody(reminder.taskType);
     }
   }
 
@@ -391,20 +391,20 @@ class GlobalReminderService {
   static String _titleFor(GlobalReminder r) {
     switch (r.taskType) {
       case ReminderTaskType.individual:
-        return '📋 Reminder Task Individu';
+        return '📋 Individual Task Reminder';
       case ReminderTaskType.team:
-        return '👥 Reminder Task Tim';
-      case ReminderTaskType.all:
-        return '⏰ Reminder Task';
+        return '👥 Team Task Reminder';
+      default:
+        return '🔔 System Reminder';
     }
   }
 
-  static String _bodyFor(GlobalReminder r) {
-    switch (r.taskType) {
+  static String _getDefaultBody(ReminderTaskType type) {
+    switch (type) {
       case ReminderTaskType.individual:
-        return 'Cek task individu kamu hari ini!';
+        return 'Check your individual tasks for today!';
       case ReminderTaskType.team:
-        return 'Cek task tim kamu hari ini!';
+        return 'Check your team tasks for today!';
       case ReminderTaskType.all:
         return 'Cek semua task kamu hari ini!';
     }

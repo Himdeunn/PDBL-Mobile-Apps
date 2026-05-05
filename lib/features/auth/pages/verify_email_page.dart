@@ -155,6 +155,38 @@ final authService = AuthService();
     );
   }
 
+  Future<void> _handleSwitchAccount() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        content: const Text('Are you sure you want to sign out and switch to a different account?', style: TextStyle(color: AppColors.textSecondary, height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+            child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await AuthService().logout();
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const WelcomePage()),
+        (_) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -178,24 +210,26 @@ final authService = AuthService();
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            size: 18,
-                            color: AppColors.textPrimary,
-                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textPrimary),
                         ),
                       )
                     else
-                      const SizedBox(width: 40),
+                      GestureDetector(
+                        onTap: _handleSwitchAccount,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textPrimary),
+                        ),
+                      ),
                     const Expanded(
                       child: Text(
                         'Verify Your Email',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                       ),
                     ),
                     const SizedBox(width: 40),
@@ -384,107 +418,26 @@ final authService = AuthService();
                       if (!widget.canSkip) ...[
                         const SizedBox(height: 20),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
                             color: Colors.amber.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.amber.withValues(alpha: 0.3),
-                            ),
+                            border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
                           ),
                           child: const Row(
                             children: [
-                              Icon(
-                                Icons.info_outline_rounded,
-                                size: 16,
-                                color: Colors.amber,
-                              ),
+                              Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber),
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'You must verify your email to access Wudi.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.amber,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: TextStyle(fontSize: 12, color: Colors.amber, fontWeight: FontWeight.w600),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ],
-                      const SizedBox(height: 24),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              backgroundColor: AppColors.surface,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              title: const Text(
-                                'Sign Out',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              content: const Text(
-                                'Are you sure you want to sign out and switch to a different account?',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  height: 1.5,
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: const Text(
-                                    'Cancel',
-                                    style: TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.red.shade700,
-                                  ),
-                                  child: const Text(
-                                    'Sign Out',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            await AuthService().logout();
-                            if (!mounted) return;
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(builder: (_) => const WelcomePage()),
-                              (_) => false,
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.logout, size: 16, color: AppColors.textSecondary),
-                        label: const Text(
-                          'Logout and use different account',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
                       const SizedBox(height: 32),
                     ],
                   ),
