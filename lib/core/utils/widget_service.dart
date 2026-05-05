@@ -10,7 +10,7 @@ import '../../features/task/pages/task_page.dart';
 import '../../features/task/pages/create_task_page.dart';
 import '../../features/group/pages/team_detail_page.dart';
 import 'navigator_service.dart';
-import '../features/task/services/widget_sync_service.dart';
+import '../../features/task/services/widget_sync_service.dart';
 
 class WidgetService {
   static const String _androidWidgetName = 'WidgetProvider';
@@ -69,7 +69,7 @@ class WidgetService {
         } else {
           navigator.push(
             MaterialPageRoute(
-              builder: (_) => TaskPage(taskId: taskId),
+              builder: (_) => TaskPage(taskId: taskId.toString()),
             ),
           );
         }
