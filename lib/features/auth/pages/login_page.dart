@@ -94,25 +94,9 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) {
       if (!mounted) return;
 
-      // Email not verified — redirect to verify page
-      if (e is DioException && e.response?.statusCode == 403) {
-        final data = e.response?.data;
-        final status = (data is Map) ? (data['status'] ?? '') : '';
-        if (status == 'email_not_verified') {
-          final email = _emailController.text.trim();
-          if (!mounted) return;
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => VerifyEmailPage(email: email, canSkip: false),
-            ),
-          );
-          return;
-        }
-        // Server/proxy error (non-JSON 403) — don't penalize the user
-        ErrorHandler.handleApiError(e);
-        return;
-      }
+      // If the backend returns an error (e.g., 401, 403, 422), handle it normally.
+      // QA requested that login flow should not force email verification redirection here.
+      ErrorHandler.handleApiError(e);
 
       // Only count failed attempts on credential errors (422)
       final isCredentialError = e is! DioException || e.response?.statusCode == 422;

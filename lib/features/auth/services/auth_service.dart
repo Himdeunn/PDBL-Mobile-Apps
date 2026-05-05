@@ -101,7 +101,12 @@ class AuthService {
     required String password,
     required String passwordConfirmation,
   }) async {
+    // Ensure no stale session exists before registration
+    await SecureStorage.clearAll();
+    _cachedUser = null;
+
     final deviceId = await SecureStorage.getDeviceId();
+
     await _api.post(
       'register',
       data: {
