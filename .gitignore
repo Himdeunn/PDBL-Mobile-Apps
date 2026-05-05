@@ -82,3 +82,4 @@ app.*.map.json
 .env
 **/.env
 **/flutter_assets/.env
+backend.env
