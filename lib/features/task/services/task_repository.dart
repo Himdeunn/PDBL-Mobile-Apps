@@ -24,7 +24,7 @@ class TaskRepository {
 
   // Prevent redundant server fetches during a session (persists across instances)
   static DateTime? _lastServerFetch;
-  static const _fetchCooldown = Duration(minutes: 2);
+  static const _fetchCooldown = Duration(seconds: 15);
 
   Future<List<TaskLocal>> getAllTasks(String userEmail) async {
     return await _isar.taskLocals
@@ -416,8 +416,10 @@ class TaskRepository {
             task.priority = todo['priority'] ?? 'medium';
             
             // Map individual completion for team tasks
-            if (todo['team_id'] != null && todo['completed_by'] != null) {
-              final List<dynamic> completedBy = todo['completed_by'] as List;
+            if (todo['team_id'] != null) {
+              final completedByRaw = todo['completed_by'];
+              final List<dynamic> completedBy =
+                  completedByRaw is List ? completedByRaw : <dynamic>[];
               final bool isFullyCompleted = todo['is_completed'] == true;
               final bool myEmailChecked = completedBy.any((e) =>
                 e.toString().toLowerCase().trim() == userEmail.toLowerCase().trim()
@@ -505,6 +507,12 @@ class TaskRepository {
         hasNextPage = false;
       }
     }
+
+    final allTasks = await _isar.taskLocals
+        .filter()
+        .userEmailEqualTo(userEmail)
+        .findAll();
+    await WidgetSyncService.syncFocusTodayWidget(allTasks);
   }
 
   Future<void> _syncSingleTask(TaskLocal task) async {

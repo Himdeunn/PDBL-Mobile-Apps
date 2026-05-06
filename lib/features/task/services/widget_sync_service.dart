@@ -7,20 +7,39 @@ class WidgetSyncService {
     
     final todayTasks = allTasks.where((task) {
       if (task.dueDate == null) return false;
-      return task.dueDate!.year == now.year &&
-             task.dueDate!.month == now.month &&
-             task.dueDate!.day == now.day;
+      if (task.dueDate!.year != now.year ||
+          task.dueDate!.month != now.month ||
+          task.dueDate!.day != now.day) {
+        return false;
+      }
+
+      final dueDateTime = _combineDateAndTime(task.dueDate!, task.dueTime);
+      return dueDateTime == null || dueDateTime.isAfter(now);
     }).toList();
 
-    final List<Map<String, dynamic>> taskJsonList = todayTasks.map((t) => {
+    final taskJsonByKey = <String, Map<String, dynamic>>{};
+
+    for (final t in todayTasks) {
+      final isTeam = t.teamId != null;
+      final isLocked = isTeam && t.leaderChecked == true;
+      final widgetKey = isTeam && t.apiId != null
+          ? 'team:${t.apiId}'
+          : 'personal:${t.id}';
+
+      taskJsonByKey[widgetKey] = {
+      'widgetKey': widgetKey,
       'id': t.id.toString(),
       'title': t.title ?? '',
       'dueTime': t.dueTime ?? '',
       'priority': t.priority ?? 'medium',
-      'isTeam': (t.teamId != null) ? true : false,
-      'isCompleted': t.isCompleted == true,
-      'team_id': t.teamId?.toString() ?? '',
-    }).toList();
+        'isTeam': isTeam,
+        'isCompleted': t.isCompleted == true || isLocked,
+        'isLocked': isLocked,
+        'team_id': t.teamId?.toString() ?? '',
+      };
+    }
+
+    final taskJsonList = taskJsonByKey.values.toList();
 
     await HomeWidget.saveWidgetData<String>('focus_today_tasks', jsonEncode(taskJsonList));
     
@@ -29,5 +48,19 @@ class WidgetSyncService {
       name: 'FocusTodayWidgetProvider',
       androidName: 'FocusTodayWidgetProvider',
     );
+  }
+
+  static DateTime? _combineDateAndTime(DateTime date, String? dueTime) {
+    if (dueTime == null || dueTime.trim().isEmpty) return null;
+
+    final parts = dueTime.trim().split(':');
+    if (parts.length < 2) return null;
+
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    final second = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
+    if (hour == null || minute == null) return null;
+
+    return DateTime(date.year, date.month, date.day, hour, minute, second);
   }
 }

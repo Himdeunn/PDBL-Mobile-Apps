@@ -1022,7 +1022,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       try {
                         await _teamService.toggleMemberTaskStatus(t['id']);
                         if (_currentUserEmail != null) {
-                          _taskRepository.fetchTasksFromServer(_currentUserEmail!);
+                          await _taskRepository.fetchTasksFromServer(
+                            _currentUserEmail!,
+                            force: true,
+                          );
                         }
                         _loadData(showLoading: false);
                       } catch (e) {

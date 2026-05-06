@@ -22,7 +22,7 @@ class TaskPage extends StatefulWidget {
   State<TaskPage> createState() => _TaskPageState();
 }
 
-class _TaskPageState extends State<TaskPage> {
+class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
   final TaskRepository _repository = TaskRepository();
   List<TaskLocal> _tasks = [];
   bool _isLoading = true;
@@ -32,6 +32,7 @@ class _TaskPageState extends State<TaskPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkInitialConnection();
     _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
       if (mounted) {
@@ -56,7 +57,7 @@ class _TaskPageState extends State<TaskPage> {
   }
 
   Future<void> _checkInitialConnection() async {
-    final connected = await ConnectionService().isConnected();
+    final connected = await ConnectionService().refresh();
     if (mounted) {
       setState(() {
         _isOffline = !connected;
@@ -65,7 +66,15 @@ class _TaskPageState extends State<TaskPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkInitialConnection();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
     super.dispose();
   }

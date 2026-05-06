@@ -17,6 +17,7 @@ import '../../task/models/task_local.dart';
 import '../../task/pages/task_page.dart';
 import '../../task/services/task_repository.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/utils/notification_helper.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../profile/pages/notification_page.dart';
 
@@ -34,7 +35,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   User? _user;
   int _selectedDayIndex = 30;
   DateTime _selectedDate = DateTime.now();
@@ -48,10 +49,12 @@ class _HomePageState extends State<HomePage> {
   int _taskTab = 0; // 0 = Individu, 1 = Team
   int _prevTaskTab = 0;
   StreamSubscription? _connectivitySubscription;
+  StreamSubscription<void>? _teamEventSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Set user synchronously from in-memory cache so first frame shows correct data
     _user = widget.authService.currentCachedUser;
     _checkInitialConnection();
@@ -65,15 +68,26 @@ class _HomePageState extends State<HomePage> {
         }
       }
     });
+    _teamEventSubscription = NotificationHelper.onTeamEvent.listen((_) {
+      _loadData(_selectedDate, true);
+    });
     _loadData(_selectedDate);
   }
 
   Future<void> _checkInitialConnection() async {
-    final connected = await ConnectionService().isConnected();
+    final connected = await ConnectionService().refresh();
     if (mounted) {
       setState(() {
         _isOffline = !connected;
       });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkInitialConnection();
+      _loadData(_selectedDate, true);
     }
   }
 
@@ -212,7 +226,9 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _searchDebouncer.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
+    _teamEventSubscription?.cancel();
     super.dispose();
   }
 

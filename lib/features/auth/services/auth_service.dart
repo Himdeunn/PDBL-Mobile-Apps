@@ -1,8 +1,8 @@
 // lib/features/auth/services/auth_service.dart
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:dio/dio.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/storage/local_database.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../../../core/models/user.dart';
 import '../../task/services/task_repository.dart';
@@ -116,6 +116,10 @@ class AuthService {
         'password_confirmation': passwordConfirmation,
         'device_id': deviceId,
       },
+      options: Options(
+        sendTimeout: const Duration(seconds: 12),
+        receiveTimeout: const Duration(seconds: 12),
+      ),
     );
     // Registration only creates the account — no token issued until email is verified.
   }
