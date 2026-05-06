@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:ui';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/connection_service.dart';
+import '../../../core/utils/notification_helper.dart';
 
 class CalendarPage extends StatefulWidget {
   final AuthService? authService;
@@ -17,7 +18,7 @@ class CalendarPage extends StatefulWidget {
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> {
+class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver {
   final TaskRepository _taskRepository = TaskRepository();
   DateTime _selectedDate = DateTime.now();
   DateTime _currentMonth = DateTime(
@@ -36,6 +37,7 @@ class _CalendarPageState extends State<CalendarPage> {
   int _taskTab = 0; // 0 = Individu, 1 = Team
   int _prevTaskTab = 0;
   StreamSubscription? _connectivitySubscription;
+  StreamSubscription<void>? _teamEventSubscription;
   static const _monthNames = [
     'January',
     'February',
@@ -54,19 +56,32 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkInitialConnection();
     _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
       if (mounted) setState(() => _isOffline = !connected);
     });
+    _teamEventSubscription = NotificationHelper.onTeamEvent.listen((_) {
+      _loadTasks(force: true);
+    });
     _initTaskSubscription();
+    _loadTasks(force: true);
   }
 
   Future<void> _checkInitialConnection() async {
-    final connected = await ConnectionService().isConnected();
+    final connected = await ConnectionService().refresh();
     if (mounted) {
       setState(() {
         _isOffline = !connected;
       });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkInitialConnection();
+      _loadTasks(force: true);
     }
   }
 
@@ -92,7 +107,9 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void dispose() {
     _tasksSubscription?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
+    _teamEventSubscription?.cancel();
     super.dispose();
   }
 

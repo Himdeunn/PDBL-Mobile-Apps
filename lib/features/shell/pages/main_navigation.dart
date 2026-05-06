@@ -1,6 +1,7 @@
 import 'dart:async';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/notification_helper.dart';
+import '../../../../core/utils/widget_service.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../auth/services/auth_service.dart';
@@ -9,13 +10,15 @@ import '../../home/pages/home_page.dart';
 import '../../calendar/pages/calendar_page.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../group/pages/group_page.dart';
+import '../../task/services/task_repository.dart';
 import '../../../../core/services/remote_config_service.dart';
 import '../../../../core/widgets/maintenance_dialog.dart';
 import '../../../../core/widgets/update_dialog.dart';
 
 class MainNavigation extends StatefulWidget {
   final AuthService authService;
-  const MainNavigation({super.key, required this.authService});
+  final Uri? initialWidgetUri;
+  const MainNavigation({super.key, required this.authService, this.initialWidgetUri});
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -27,6 +30,8 @@ class _MainNavigationState extends State<MainNavigation> {
   late final List<Widget> _pages;
   StreamSubscription<void>? _rcSubscription;
   StreamSubscription<Map<String, dynamic>>? _notificationTapSub;
+  StreamSubscription<void>? _widgetDashboardSub;
+  StreamSubscription<void>? _teamEventSub;
 
   // Maps bar index → _pages index (index 2 / FAB handled separately)
   static int _pageIndex(int barIndex) {
@@ -61,8 +66,20 @@ class _MainNavigationState extends State<MainNavigation> {
       if (mounted) _handleNotificationTap(data);
     });
 
+    _teamEventSub = NotificationHelper.onTeamEvent.listen((_) {
+      _refreshTeamTasksFromServer();
+    });
+
+    _widgetDashboardSub = WidgetService.dashboardRequested.listen((_) {
+      if (mounted) _onNavTap(0);
+    });
+
     // Terminated-state notification tap → claim after first frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.initialWidgetUri != null && mounted) {
+        WidgetService.handleWidgetClick(widget.initialWidgetUri);
+      }
+
       final data = NotificationHelper.claimInitialTap();
       if (data != null && mounted) _handleNotificationTap(data);
     });
@@ -89,6 +106,14 @@ class _MainNavigationState extends State<MainNavigation> {
         return; // Unknown type — don't navigate
     }
     _onNavTap(barIndex);
+  }
+
+  Future<void> _refreshTeamTasksFromServer() async {
+    final user = await widget.authService.getCurrentUser();
+    final userEmail = user?.email;
+    if (user == null || user.isGuest || userEmail == null) return;
+
+    await TaskRepository().fetchTasksFromServer(userEmail, force: true);
   }
 
   Future<void> _handleRemoteConfigUpdate() async {
@@ -132,6 +157,8 @@ class _MainNavigationState extends State<MainNavigation> {
   void dispose() {
     _rcSubscription?.cancel();
     _notificationTapSub?.cancel();
+    _widgetDashboardSub?.cancel();
+    _teamEventSub?.cancel();
     super.dispose();
   }
 

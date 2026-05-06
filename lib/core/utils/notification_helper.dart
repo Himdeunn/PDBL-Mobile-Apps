@@ -15,6 +15,7 @@ class NotificationHelper {
       FlutterLocalNotificationsPlugin();
 
   static bool _isInitialized = false;
+  static bool _isTimezoneInitialized = false;
 
   /// Broadcasts whenever a foreground FCM message related to teams/invites arrives.
   static final _teamEventController = StreamController<void>.broadcast();
@@ -55,19 +56,7 @@ class NotificationHelper {
   static Future<void> initialize() async {
     if (_isInitialized) return;
 
-    tz.initializeTimeZones();
-    try {
-      final dynamic locationInfo = await FlutterTimezone.getLocalTimezone();
-      final String timeZoneName =
-          locationInfo is String ? locationInfo : locationInfo.name;
-      tz.setLocalLocation(tz.getLocation(timeZoneName));
-    } catch (e) {
-      try {
-        tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
-      } catch (_) {
-        tz.setLocalLocation(tz.getLocation('UTC'));
-      }
-    }
+    await _ensureTimezoneInitialized();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('launcher_icon');
@@ -106,6 +95,25 @@ class NotificationHelper {
     await androidPlugin?.createNotificationChannel(channel);
 
     _isInitialized = true;
+  }
+
+  static Future<void> _ensureTimezoneInitialized() async {
+    if (_isTimezoneInitialized) return;
+
+    tz.initializeTimeZones();
+    try {
+      final dynamic locationInfo = await FlutterTimezone.getLocalTimezone();
+      final String timeZoneName =
+          locationInfo is String ? locationInfo : locationInfo.name;
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+    } catch (e) {
+      try {
+        tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
+      } catch (_) {
+        tz.setLocalLocation(tz.getLocation('UTC'));
+      }
+    }
+    _isTimezoneInitialized = true;
   }
 
   /// Listen for foreground messages and show them as local notifications
@@ -234,6 +242,8 @@ class NotificationHelper {
     bool isTeam = false,
     required DateTime deadline,
   }) async {
+    await _ensureTimezoneInitialized();
+
     final List<int> reminderDays =
         await NotificationSettingsService.getReminderDays();
     final TimeOfDay reminderTime =
@@ -293,6 +303,8 @@ class NotificationHelper {
     required DateTime scheduledDate,
     String? payload,
   }) async {
+    await _ensureTimezoneInitialized();
+
     final tz.TZDateTime tzDate = scheduledDate is tz.TZDateTime
         ? scheduledDate
         : tz.TZDateTime.from(scheduledDate, tz.local);

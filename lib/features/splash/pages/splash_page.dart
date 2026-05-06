@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/remote_config_service.dart';
 import '../../../core/widgets/maintenance_dialog.dart';
 import '../../../core/widgets/update_dialog.dart';
+import '../../../core/utils/widget_service.dart';
 import '../../auth/services/auth_service.dart';
 import '../../auth/pages/welcome_page.dart';
 import '../../auth/pages/verify_email_page.dart';
@@ -143,11 +144,18 @@ class _SplashPageState extends State<SplashPage>
       return;
     }
 
-    Navigator.pushReplacement(
+    final launchUri = WidgetService.claimPendingLaunchUri();
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(
-        builder: (_) => MainNavigation(authService: authService),
+        builder: (_) => MainNavigation(
+          authService: authService,
+          initialWidgetUri: launchUri,
+        ),
       ),
+      (_) => false,
     );
   }
 

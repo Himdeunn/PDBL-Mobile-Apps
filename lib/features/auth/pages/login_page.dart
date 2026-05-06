@@ -61,10 +61,12 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    if (mounted) setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       // Check network connection
@@ -94,9 +96,27 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) {
       if (!mounted) return;
 
-      // If the backend returns an error (e.g., 401, 403, 422), handle it normally.
-      // QA requested that login flow should not force email verification redirection here.
-      ErrorHandler.handleApiError(e);
+      if (e is DioException && e.response?.statusCode == 403) {
+        final data = e.response?.data;
+        final status = data is Map ? data['status'] : null;
+        final email = data is Map ? data['email'] as String? : null;
+
+        if (status == 'email_not_verified' && email != null && email.isNotEmpty) {
+          _failedAttempts = 0;
+          _lockoutUntil = null;
+          ErrorHandler.showSuccessPopup('Verification code sent to $email');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => VerifyEmailPage(
+                email: email,
+                canSkip: false,
+              ),
+            ),
+          );
+          return;
+        }
+      }
 
       // Only count failed attempts on credential errors (422)
       final isCredentialError = e is! DioException || e.response?.statusCode == 422;
@@ -357,7 +377,7 @@ class _LoginPageState extends State<LoginPage> {
                               'https://www.google.com/favicon.ico',
                               width: 20,
                               height: 20,
-                              errorBuilder: (_, __, ___) => const Icon(
+                              errorBuilder: (_, _, _) => const Icon(
                                 Icons.g_mobiledata_rounded,
                                 size: 24,
                                 color: Colors.red,

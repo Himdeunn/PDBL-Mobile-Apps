@@ -17,7 +17,7 @@ class FocusTodayWidgetService : RemoteViewsService() {
 
 class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
     private var tasks = mutableListOf<TaskData>()
-    data class TaskData(val id: String, val title: String, val dueTime: String, val priority: String, val isTeam: Boolean, val teamId: String, val isCompleted: Boolean)
+    data class TaskData(val id: String, val widgetKey: String, val title: String, val dueTime: String, val priority: String, val isTeam: Boolean, val teamId: String, val isCompleted: Boolean, val isLocked: Boolean)
 
     override fun onCreate() {}
 
@@ -39,27 +39,43 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
                 val timeStr = obj.optString("dueTime", "")
                 val isTeam = obj.optBoolean("isTeam", false)
                 val idStr = obj.optString("id", "")
+                val widgetKey = obj.optString("widgetKey", idStr)
                 val teamIdStr = obj.optString("team_id", "")
                 val isCompleted = obj.optBoolean("isCompleted", false)
+                val isLocked = obj.optBoolean("isLocked", false)
                 val title = obj.optString("title", "Untitled")
                 val priority = obj.optString("priority", "low")
                 
                 val parsedTime = parseTime(timeStr)
+                if (parsedTime != null && isPastDue(parsedTime, calNow)) {
+                    continue
+                }
                 
                 tasks.add(TaskData(
                     id = idStr,
+                    widgetKey = widgetKey,
                     title = title,
                     dueTime = if (parsedTime != null) formatDisplayTime(parsedTime) else timeStr,
                     priority = priority,
                     isTeam = isTeam,
                     teamId = teamIdStr,
-                    isCompleted = isCompleted
+                    isCompleted = isCompleted,
+                    isLocked = isLocked
                 ))
             }
         } catch (e: Exception) { 
             android.util.Log.e("WUDI_WIDGET", "Error parsing tasks JSON: ${e.message}")
             e.printStackTrace() 
         }
+    }
+
+    private fun isPastDue(taskTime: Calendar, now: Calendar): Boolean {
+        val taskHour = taskTime.get(Calendar.HOUR_OF_DAY)
+        val taskMinute = taskTime.get(Calendar.MINUTE)
+        val currentHour = now.get(Calendar.HOUR_OF_DAY)
+        val currentMinute = now.get(Calendar.MINUTE)
+
+        return taskHour < currentHour || (taskHour == currentHour && taskMinute < currentMinute)
     }
 
     private fun parseTime(timeStr: String): Calendar? {
@@ -135,14 +151,16 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
         }
 
         val detailFillInIntent = android.content.Intent().apply {
-            data = android.net.Uri.parse("home_widget://task_detail?id=${task.id}&isTeam=${task.isTeam}&team_id=${task.teamId}")
+            data = android.net.Uri.parse("wudi-widget://task-detail?id=${task.id}&isTeam=${task.isTeam}&team_id=${task.teamId}")
         }
+
+        views.setFloat(R.id.btn_checkbox, "setAlpha", if (task.isLocked) 0.45f else 1.0f)
         views.setOnClickFillInIntent(R.id.ll_priority_bg, detailFillInIntent)
         views.setOnClickFillInIntent(R.id.tv_task_title, detailFillInIntent)
         views.setOnClickFillInIntent(R.id.tv_task_time, detailFillInIntent)
 
-        val toggleFillInIntent = android.content.Intent().apply {
-            data = android.net.Uri.parse("home_widget://toggle_task?id=${task.id}&isTeam=${task.isTeam}&team_id=${task.teamId}")
+        val toggleFillInIntent = Intent().apply {
+            data = android.net.Uri.parse("wudi-widget://toggle-task?id=${task.id}&widget_key=${android.net.Uri.encode(task.widgetKey)}&isTeam=${task.isTeam}&team_id=${task.teamId}")
         }
         views.setOnClickFillInIntent(R.id.btn_checkbox, toggleFillInIntent)
         
@@ -152,6 +170,6 @@ class FocusTodayWidgetFactory(private val context: Context) : RemoteViewsService
     override fun onDestroy() {}
     override fun getLoadingView(): RemoteViews? = null
     override fun getViewTypeCount(): Int = 1
-    override fun getItemId(position: Int): Long = position.toLong()
+    override fun getItemId(position: Int): Long = tasks[position].widgetKey.hashCode().toLong()
     override fun hasStableIds(): Boolean = true
 }

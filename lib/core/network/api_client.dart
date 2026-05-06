@@ -60,8 +60,8 @@ class ApiClient {
     return await _dio.get(path, queryParameters: queryParameters);
   }
 
-  Future<Response> post(String path, {dynamic data}) async {
-    return await _dio.post(path, data: data);
+  Future<Response> post(String path, {dynamic data, Options? options}) async {
+    return await _dio.post(path, data: data, options: options);
   }
 
   Future<Response> put(String path, {dynamic data}) async {
