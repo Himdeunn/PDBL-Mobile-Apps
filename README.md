@@ -346,11 +346,11 @@ Do not write the Shorebird app ID in this README. Keep it in `shorebird.yaml` on
 
 | Goal | Command | Output or note |
 | --- | --- | --- |
-| Check Shorebird setup | `/home/fajar/.shorebird/bin/shorebird doctor` | Should report `No issues detected`. |
-| Create Android release for Play Store | `/home/fajar/.shorebird/bin/shorebird release android` | Produces `build/app/outputs/bundle/release/app-release.aab`. |
-| Create APK for manual testing | `/home/fajar/.shorebird/bin/shorebird release android --artifact apk` | Produces `build/app/outputs/flutter-apk/app-release.apk`. |
-| Validate Android release without publishing | `/home/fajar/.shorebird/bin/shorebird release android --dry-run` | Useful before the real release command. |
-| Patch an existing live Android release | `/home/fajar/.shorebird/bin/shorebird patch android` | Use only for patchable Dart/Flutter changes. |
+| Check Shorebird setup | `shorebird doctor` | Should report `No issues detected`. |
+| Create Android release for Play Store | `shorebird release android` | Produces `build/app/outputs/bundle/release/app-release.aab`. |
+| Create APK for manual testing | `shorebird release android --artifact apk` | Produces `build/app/outputs/flutter-apk/app-release.apk`. |
+| Validate Android release without publishing | `shorebird release android --dry-run` | Useful before the real release command. |
+| Patch an existing live Android release | `shorebird patch android` | Use only for patchable Dart/Flutter changes. |
 
 If Shorebird reports that the release version already exists, bump the `version` field in `pubspec.yaml`, for example from `1.0.5+7` to `1.0.6+8`, then run the release command again.
 
