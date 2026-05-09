@@ -298,6 +298,9 @@ class AuthService {
     required String name,
     String? avatarUrl,
   }) async {
+    await SecureStorage.clearAuthSession();
+    _cachedUser = null;
+
     final deviceId = await SecureStorage.getDeviceId();
     final response = await _api.post(
       'auth/google',

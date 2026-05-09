@@ -135,4 +135,13 @@ class SecureStorage {
       await _storage.deleteAll();
     } catch (_) {}
   }
+
+  static Future<void> clearAuthSession() async {
+    try {
+      await _storage.delete(key: _tokenKey);
+      await _storage.delete(key: _userKey);
+      await _storage.delete(key: _lastFcmTokenKey);
+      await _storage.delete(key: _lastFcmSyncTimeKey);
+    } catch (_) {}
+  }
 }

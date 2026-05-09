@@ -15,6 +15,7 @@ Cross-platform task management application built with Flutter. Designed for dail
 - [Environment Configuration](#environment-configuration)
 - [Running the Application](#running-the-application)
 - [Production Build](#production-build)
+- [Shorebird Release and Patch](#shorebird-release-and-patch)
 - [Feature Modules](#feature-modules)
   - [Authentication](#authentication)
   - [Task Management](#task-management)
@@ -30,6 +31,7 @@ Cross-platform task management application built with Flutter. Designed for dail
   - [Connection Service](#connection-service)
 - [API Integration](#api-integration)
 - [Android Permissions](#android-permissions)
+- [Google Sign-In and Android Signing](#google-sign-in-and-android-signing)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
@@ -324,25 +326,43 @@ flutter run -d <device_id>
 
 ## Production Build
 
-**Architecture-specific APK (recommended for direct distribution):**
-```bash
-flutter build apk --target-platform android-arm64
-```
+| Goal | Command | Output or note |
+| --- | --- | --- |
+| Build release APK for direct installation | `flutter build apk --release` | `build/app/outputs/flutter-apk/app-release.apk` |
+| Build ARM64-only APK | `flutter build apk --release --target-platform android-arm64` | Smaller APK for common Android devices |
+| Build split APKs by ABI | `flutter build apk --release --split-per-abi` | Multiple APKs under `build/app/outputs/flutter-apk/` |
+| Build Android App Bundle for Play Store | `flutter build appbundle --release` | `build/app/outputs/bundle/release/app-release.aab` |
+| Generate launcher icons after asset changes | `dart run flutter_launcher_icons` | Updates generated launcher icon assets |
 
-**Split APKs by ABI:**
-```bash
-flutter build apk --split-per-abi
-```
+For Play Store releases that need Shorebird patch support, prefer the Shorebird release command in the next section instead of plain `flutter build appbundle --release`.
 
-**Android App Bundle (recommended for Play Store):**
-```bash
-flutter build appbundle
-```
+---
 
-**Generate launcher icons after asset changes:**
-```bash
-dart run flutter_launcher_icons
-```
+## Shorebird Release and Patch
+
+Shorebird has been initialized for this Flutter app. The required config file is `shorebird.yaml`, and it is included as a Flutter asset in `pubspec.yaml`.
+
+Do not write the Shorebird app ID in this README. Keep it in `shorebird.yaml` only.
+
+| Goal | Command | Output or note |
+| --- | --- | --- |
+| Check Shorebird setup | `/home/fajar/.shorebird/bin/shorebird doctor` | Should report `No issues detected`. |
+| Create Android release for Play Store | `/home/fajar/.shorebird/bin/shorebird release android` | Produces `build/app/outputs/bundle/release/app-release.aab`. |
+| Create APK for manual testing | `/home/fajar/.shorebird/bin/shorebird release android --artifact apk` | Produces `build/app/outputs/flutter-apk/app-release.apk`. |
+| Validate Android release without publishing | `/home/fajar/.shorebird/bin/shorebird release android --dry-run` | Useful before the real release command. |
+| Patch an existing live Android release | `/home/fajar/.shorebird/bin/shorebird patch android` | Use only for patchable Dart/Flutter changes. |
+
+If Shorebird reports that the release version already exists, bump the `version` field in `pubspec.yaml`, for example from `1.0.5+7` to `1.0.6+8`, then run the release command again.
+
+| Change type | Can use Shorebird patch? | Required action |
+| --- | --- | --- |
+| Dart business logic | Yes | Run `shorebird patch android`. |
+| Flutter UI, layout, text, or routing | Yes | Run `shorebird patch android`. |
+| Native Android files under `android/` | No | Create a new Shorebird release and upload the new AAB to Play Store. |
+| Gradle, signing config, or app permissions | No | Create a new Shorebird release and upload the new AAB to Play Store. |
+| Plugin dependency changes with native code | No | Create a new Shorebird release and upload the new AAB to Play Store. |
+| `google-services.json` or Firebase config changes | No | Create a new Shorebird release and upload the new AAB to Play Store. |
+| Package name or application ID changes | No | Create a new Shorebird release and upload the new AAB to Play Store. |
 
 ---
 
@@ -512,6 +532,54 @@ The following permissions are declared in `AndroidManifest.xml`:
 
 ---
 
+## Google Sign-In and Android Signing
+
+Google Sign-In depends on the package name and the certificate that signed the installed app. Do not document raw fingerprint values, API keys, OAuth client IDs, or app IDs in this README.
+
+| File or console | Purpose | Security note |
+| --- | --- | --- |
+| `android/app/google-services.json` | Firebase and Android OAuth client config | Contains credential-like values; keep it out of public commits. |
+| `android/key.properties` | Points Gradle to the upload keystore | Secret local signing config; keep it ignored. |
+| `android/app/build.gradle.kts` | Defines package name and signing behavior | Debug/profile/release are configured to use the upload keystore locally. |
+| Firebase Console | Stores SHA fingerprints for Android OAuth | Add fingerprints there, not in README. |
+| Play Console, App integrity | Shows Play App Signing certificate | Required for Play Store/internal testing installs. |
+
+Required Firebase fingerprint entries:
+
+| Install path | Fingerprints needed in Firebase | Where to get them |
+| --- | --- | --- |
+| APK/AAB installed directly from local build | Upload key SHA-1 and SHA-256 | `cd android && bash ./gradlew :app:signingReport --console=plain` |
+| App installed from Play Store/internal testing | Play App Signing SHA-1 and SHA-256 | Play Console, App integrity, App signing key certificate |
+
+After adding or changing Firebase fingerprints:
+
+| Step | Action |
+| --- | --- |
+| 1 | Download a fresh `google-services.json` from Firebase Console. |
+| 2 | Replace `android/app/google-services.json`. |
+| 3 | Run `cd android && bash ./gradlew :app:processReleaseGoogleServices --console=plain`. |
+| 4 | Build a new Shorebird release and upload the new AAB to Play Store/internal testing. |
+
+Google login flow:
+
+| Step | Component | Behavior |
+| --- | --- | --- |
+| 1 | Login or welcome page | Runs `GoogleSignIn(scopes: ['email', 'profile']).signIn()`. |
+| 2 | Google SDK | Returns account id, email, display name, and photo URL when account picker succeeds. |
+| 3 | `AuthService.googleLogin()` | Clears stale auth session data, keeps device ID, then posts to `auth/google`. |
+| 4 | Backend | Expects `google_id`, `email`, `name`, `avatar_url`, and optional `device_id`; not `id_token`. |
+| 5 | Frontend | Stores JWT/user data and navigates into the app after backend success. |
+
+Recent Google login related changes:
+
+| Area | File | Change |
+| --- | --- | --- |
+| Signing | `android/app/build.gradle.kts` | Debug and profile builds use the release signing config so local builds use the registered upload key. |
+| Auth service | `lib/features/auth/services/auth_service.dart` | Google login clears stale auth session data before the backend request. |
+| Secure storage | `lib/core/storage/secure_storage.dart` | Added `clearAuthSession()` to clear auth cache without deleting the persistent device ID. |
+
+---
+
 ## Troubleshooting
 
 ### API Connection Fails in Release Build
@@ -542,6 +610,22 @@ dart run build_runner build --delete-conflicting-outputs
 The app uses idempotent token refresh with concurrent request deduplication. If persistent 401 errors occur:
 1. Clear app data and re-login
 2. Check that the backend JWT blacklist grace period is configured (recommended: 30 seconds)
+
+### Google Sign-In Fails Before Backend Request
+
+| Symptom | Likely cause | What to check |
+| --- | --- | --- |
+| `ApiException: 10` or `DEVELOPER_ERROR` | OAuth/signing mismatch | Confirm the installed app uses package `com.pdbl.wudi` and its signing certificate is registered in Firebase/Google Cloud. |
+| Local APK works but Play Store/internal testing fails | Missing Play App Signing fingerprint | Add Play App Signing SHA-1 and SHA-256 in Firebase, download a fresh `google-services.json`, then release a new AAB. |
+| Account picker succeeds but login fails after that | Backend request or session handling | Check Dio logs and confirm `POST /api/auth/google` reaches the backend. |
+
+Useful runtime checks:
+
+| Purpose | Command |
+| --- | --- |
+| Capture Google login logs | `adb logcat \| grep -i -E "google\|signin\|ApiException\|DEVELOPER_ERROR\|auth/google\|DioException"` |
+| Check signing variants | `cd android && bash ./gradlew :app:signingReport --console=plain` |
+| Validate release Google services config | `cd android && bash ./gradlew :app:processReleaseGoogleServices --console=plain` |
 
 ### Offline Sync Not Working
 
