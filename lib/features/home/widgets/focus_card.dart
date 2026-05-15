@@ -1,5 +1,6 @@
 import '../../../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import '../../task/widgets/priority_badge.dart';
 
 class FocusCard extends StatelessWidget {
   final String tag;
@@ -50,34 +51,15 @@ class FocusCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
+                  TaskPriorityBadge(
+                    priority: tag,
+                    iconSize: 14,
+                    fontSize: 12,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 6,
                     ),
-                    decoration: BoxDecoration(
-                      color: _getPriorityBgColor(tag),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _getPriorityIcon(tag),
-                          size: 14,
-                          color: _getPriorityColor(tag),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _getPriorityLabel(tag),
-                          style: TextStyle(
-                            color: _getPriorityColor(tag),
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   Container(
                     width: 32,
@@ -142,53 +124,5 @@ class FocusCard extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  Color _getPriorityColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return const Color(0xFFFF0000); // Pure Red
-      case 'medium':
-        return const Color(0xFFA49C00); // Dark Olive (Text)
-      case 'low':
-        return const Color(0xFF16A34A); // Forest Green
-      default:
-        return const Color(0xFF8E8E93);
-    }
-  }
-
-  Color _getPriorityBgColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'medium':
-        return const Color(0xFFD4EA0C).withValues(alpha: 0.15); // Lime/Yellow Tint
-      default:
-        return _getPriorityColor(priority).withValues(alpha: 0.15);
-    }
-  }
-
-  String _getPriorityLabel(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return 'High Priority';
-      case 'medium':
-        return 'Medium Priority';
-      case 'low':
-        return 'Low Priority';
-      default:
-        return priority;
-    }
-  }
-
-  IconData _getPriorityIcon(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return Icons.error;
-      case 'medium':
-        return Icons.priority_high;
-      case 'low':
-        return Icons.low_priority;
-      default:
-        return Icons.info_outline;
-    }
   }
 }

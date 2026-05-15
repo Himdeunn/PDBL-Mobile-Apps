@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import '../../../core/network/api_client.dart';
 
 class TeamService {
@@ -27,7 +30,12 @@ class TeamService {
     return response.data;
   }
 
-  Future<void> updateTeam(int teamId, String name, String? description, {int? maxMembers}) async {
+  Future<void> updateTeam(
+    int teamId,
+    String name,
+    String? description, {
+    int? maxMembers,
+  }) async {
     await _api.put(
       '/teams/$teamId',
       data: {
@@ -100,17 +108,42 @@ class TeamService {
     await _api.put('/todos/$taskId', data: data);
   }
 
-  Future<Map<String, dynamic>> toggleMemberTaskStatus(int taskId, {bool force = false}) async {
+  Future<Map<String, dynamic>> toggleMemberTaskStatus(
+    int taskId, {
+    bool force = false,
+    String? targetEmail,
+  }) async {
+    final data = <String, dynamic>{
+      if (force) 'force': true,
+      if (targetEmail != null && targetEmail.trim().isNotEmpty)
+        'target_email': targetEmail.trim(),
+    };
     final response = await _api.post(
       '/todos/$taskId/toggle-member',
-      data: force ? {'force': true} : null,
+      data: data.isEmpty ? null : data,
     );
     return response.data;
   }
 
-  Future<void> uploadTeamAvatar(int teamId, String filePath, {String? oldAvatarUrl}) async {
+  Future<void> uploadTeamAvatar(
+    int teamId,
+    String filePath, {
+    String? oldAvatarUrl,
+  }) async {
+    final filename = filePath.split(Platform.pathSeparator).last;
+    final extension = filename.split('.').last.toLowerCase();
+    final contentType = switch (extension) {
+      'png' => MediaType('image', 'png'),
+      'gif' => MediaType('image', 'gif'),
+      _ => MediaType('image', 'jpeg'),
+    };
+
     final fields = <String, dynamic>{
-      'avatar': await MultipartFile.fromFile(filePath),
+      'avatar': await MultipartFile.fromFile(
+        filePath,
+        filename: filename,
+        contentType: contentType,
+      ),
     };
     if (oldAvatarUrl != null && oldAvatarUrl.isNotEmpty) {
       fields['old_avatar'] = oldAvatarUrl;
@@ -120,7 +153,10 @@ class TeamService {
   }
 
   Future<Map<String, dynamic>> checkEmail(String email) async {
-    final response = await _api.get('/users/check-email', queryParameters: {'email': email});
+    final response = await _api.get(
+      '/users/check-email',
+      queryParameters: {'email': email},
+    );
     return response.data;
   }
 }

@@ -1,14 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:wudi/features/profile/services/notification_settings_service.dart';
 
 /// Notification types that should trigger a group/team page refresh.
-const _kTeamEventTypes = {'invite', 'kick', 'ban', 'new_task', 'task_update', 'team'};
+const _kTeamEventTypes = {
+  'invite',
+  'kick',
+  'ban',
+  'new_task',
+  'task_update',
+  'team',
+};
 
 class NotificationHelper {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -22,12 +31,15 @@ class NotificationHelper {
   static Stream<void> get onTeamEvent => _teamEventController.stream;
 
   /// Broadcasts notification tap data so MainNavigation can switch tabs.
-  static final _tapController = StreamController<Map<String, dynamic>>.broadcast();
-  static Stream<Map<String, dynamic>> get onNotificationTap => _tapController.stream;
+  static final _tapController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  static Stream<Map<String, dynamic>> get onNotificationTap =>
+      _tapController.stream;
 
   /// Stores the tap data when the app was launched from a killed state.
   /// MainNavigation claims this in its first frame via [claimInitialTap].
   static Map<String, dynamic>? _pendingInitialTap;
+  static int? _activeChatConversationId;
 
   /// Store tap from a terminated-state launch (no live subscribers yet).
   static void setInitialTap(Map<String, dynamic> data) {
@@ -38,6 +50,22 @@ class NotificationHelper {
   static void emitTap(Map<String, dynamic> data) {
     _pendingInitialTap = data;
     _tapController.add(data);
+  }
+
+  static void setActiveChatConversationId(int? conversationId) {
+    _activeChatConversationId = conversationId;
+  }
+
+  static int chatNotificationId(int conversationId) {
+    return 700000 + conversationId;
+  }
+
+  static Future<void> cancelChatNotification(int conversationId) async {
+    await _notificationsPlugin.cancel(id: chatNotificationId(conversationId));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('unread_chat_$conversationId');
+    } catch (_) {}
   }
 
   /// Claim and clear the pending initial tap. Returns null if already consumed.
@@ -66,7 +94,8 @@ class NotificationHelper {
 
     final androidPlugin = _notificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     await androidPlugin?.requestNotificationsPermission();
     await androidPlugin?.requestExactAlarmsPermission();
@@ -76,8 +105,14 @@ class NotificationHelper {
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final payload = response.payload ?? '';
         if (payload.isNotEmpty) {
-          final type = payload.startsWith('task_') ? 'todo_reminder' : 'update';
-          emitTap({'type': type, 'payload': payload});
+          final data = <String, dynamic>{'type': 'update', 'payload': payload};
+          try {
+            final parsed = payload.startsWith('{')
+                ? Map<String, dynamic>.from(jsonDecode(payload) as Map)
+                : <String, dynamic>{};
+            data.addAll(parsed);
+          } catch (_) {}
+          emitTap(data);
         }
       },
     );
@@ -103,8 +138,9 @@ class NotificationHelper {
     tz.initializeTimeZones();
     try {
       final dynamic locationInfo = await FlutterTimezone.getLocalTimezone();
-      final String timeZoneName =
-          locationInfo is String ? locationInfo : locationInfo.name;
+      final String timeZoneName = locationInfo is String
+          ? locationInfo
+          : locationInfo.name;
       tz.setLocalLocation(tz.getLocation(timeZoneName));
     } catch (e) {
       try {
@@ -121,13 +157,24 @@ class NotificationHelper {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       RemoteNotification? notification = message.notification;
       if (notification != null) {
+        final type = (message.data['type'] as String? ?? '').toLowerCase();
+        final conversationId = int.tryParse(
+          (message.data['conversation_id'] ?? '').toString(),
+        );
+        if (type == 'chat' &&
+            conversationId != null &&
+            _activeChatConversationId == conversationId) {
+          return;
+        }
         showNotification(
-          id: notification.hashCode,
+          id: type == 'chat' && conversationId != null
+              ? chatNotificationId(conversationId)
+              : notification.hashCode,
           title: notification.title ?? 'System Alert',
           body: notification.body ?? 'Update received',
           priority: message.data['priority'] ?? 'medium',
           description: message.data['description'] ?? message.data['deskripsi'],
-          payload: message.data.toString(),
+          payload: jsonEncode(message.data),
         );
       }
 
@@ -144,24 +191,7 @@ class NotificationHelper {
     required String priority,
     String? description,
   }) {
-    String priorityText;
-    switch (priority.toLowerCase()) {
-      case 'high':
-        priorityText = '🔴 High Priority';
-        break;
-      case 'medium':
-        priorityText = '🟡 Medium Priority';
-        break;
-      case 'low':
-        priorityText = '🟢 Low Priority';
-        break;
-      default:
-        priorityText = '⚪ Priority: $priority';
-    }
-
     final buffer = StringBuffer();
-    buffer.writeln(priorityText);
-    buffer.writeln('──────────────────');
     buffer.writeln(baseBody);
     if (description != null && description.isNotEmpty) {
       buffer.writeln();
@@ -180,25 +210,97 @@ class NotificationHelper {
     String? description,
     String? payload,
   }) async {
-    final richBody = _formatRichBody(
-      baseBody: body,
-      priority: priority,
-      description: description,
-    );
+    final type = _payloadType(payload);
+    final isChat = type == 'chat';
 
-    final bigTextStyle = BigTextStyleInformation(
-      richBody,
-      contentTitle: title,
-      summaryText: 'Immediate Alert',
-    );
+    StyleInformation? styleInformation;
+    String notificationTitle = title;
+
+    if (isChat && payload != null) {
+      try {
+        final decoded = jsonDecode(payload);
+        final conversationId = decoded['conversation_id']?.toString() ?? '';
+        final senderName = decoded['sender_name']?.toString() ?? 'Unknown';
+        final conversationName =
+            decoded['conversation_name']?.toString() ?? title;
+        final chatType = decoded['chat_type']?.toString() ?? 'personal';
+        final chatBody = chatType == 'team'
+            ? _stripSenderPrefix(body, senderName)
+            : body;
+
+        if (conversationId.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          final key = 'unread_chat_$conversationId';
+          final unread = prefs.getStringList(key) ?? [];
+
+          final msgData = {
+            'sender': senderName,
+            'body': chatBody,
+            'time': DateTime.now().millisecondsSinceEpoch,
+          };
+          unread.add(jsonEncode(msgData));
+          await prefs.setStringList(key, unread);
+
+          final titleWithTime = _chatTitleWithTime(conversationName);
+
+          if (chatType == 'team') {
+            body = '$senderName: $chatBody';
+            styleInformation = BigTextStyleInformation(
+              _groupTeamChatMessages(unread),
+              contentTitle: titleWithTime,
+              summaryText: 'Group Chat',
+            );
+          } else {
+            final messages = unread.map((e) {
+              try {
+                final map = jsonDecode(e);
+                return Message(
+                  map['body']?.toString() ?? '',
+                  DateTime.fromMillisecondsSinceEpoch(map['time'] as int),
+                  Person(name: map['sender']?.toString()),
+                );
+              } catch (_) {
+                return Message(e, DateTime.now(), null);
+              }
+            }).toList();
+
+            styleInformation = MessagingStyleInformation(
+              const Person(name: 'Me'),
+              conversationTitle: conversationName,
+              groupConversation: false,
+              messages: messages,
+            );
+          }
+          notificationTitle = titleWithTime;
+        }
+      } catch (_) {}
+    }
+
+    if (styleInformation == null) {
+      final richBody = _formatRichBody(
+        baseBody: body,
+        priority: priority,
+        description: description,
+      );
+
+      styleInformation = BigTextStyleInformation(
+        richBody,
+        contentTitle: isChat ? _chatTitleWithTime(title) : title,
+        summaryText: isChat ? 'Chat' : 'Task Management',
+      );
+      if (isChat) notificationTitle = _chatTitleWithTime(title);
+    }
 
     final androidDetails = AndroidNotificationDetails(
       'high_importance_channel_v2',
-      'System Alerts',
+      isChat ? 'Chat Notifications' : 'Task Reminders',
+      channelDescription: isChat
+          ? 'Messages from personal and group chats'
+          : 'Important deadline and task reminders',
       importance: Importance.max,
       priority: Priority.high,
       icon: 'launcher_icon',
-      styleInformation: bigTextStyle,
+      styleInformation: styleInformation,
       color: priority.toLowerCase() == 'high'
           ? const Color(0xFFC62828) // Urgent Red
           : const Color(0xFF6B4E31), // Premium Brown
@@ -208,11 +310,71 @@ class NotificationHelper {
 
     await _notificationsPlugin.show(
       id: id,
-      title: title,
+      title: notificationTitle,
       body: body, // Keep short body for preview
       notificationDetails: notificationDetails,
       payload: payload,
     );
+  }
+
+  static String _chatTitleWithTime(String title) {
+    final now = DateTime.now();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    return '$title • $hour:$minute';
+  }
+
+  static String _stripSenderPrefix(String body, String senderName) {
+    final trimmedBody = body.trimLeft();
+    final trimmedSender = senderName.trim();
+    if (trimmedSender.isEmpty) return body;
+
+    final prefix = '$trimmedSender:';
+    if (!trimmedBody.toLowerCase().startsWith(prefix.toLowerCase())) {
+      return body;
+    }
+
+    return trimmedBody.substring(prefix.length).trimLeft();
+  }
+
+  static String _groupTeamChatMessages(List<String> unread) {
+    final groupedBlocks = <List<String>>[];
+    String? currentSender;
+
+    for (final raw in unread) {
+      String sender = 'Unknown User';
+      String message = raw;
+
+      try {
+        final map = jsonDecode(raw);
+        sender = (map['sender']?.toString().trim().isNotEmpty ?? false)
+            ? map['sender'].toString().trim()
+            : 'Unknown User';
+        message = map['body']?.toString().trim() ?? '';
+      } catch (_) {}
+
+      if (message.isEmpty) continue;
+
+      if (currentSender != sender) {
+        currentSender = sender;
+        groupedBlocks.add([sender, message]);
+      } else {
+        groupedBlocks.last.add(message);
+      }
+    }
+
+    return groupedBlocks.map((block) => block.join('\n')).join('\n\n');
+  }
+
+  static String _payloadType(String? payload) {
+    if (payload == null || payload.isEmpty) return '';
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) {
+        return (decoded['type'] ?? '').toString().toLowerCase();
+      }
+    } catch (_) {}
+    return payload.startsWith('task_') ? 'task' : '';
   }
 
   /// Alias for showNotification
@@ -223,15 +385,14 @@ class NotificationHelper {
     String priority = 'medium',
     String? description,
     String? payload,
-  }) =>
-      showNotification(
-        id: id,
-        title: title,
-        body: body,
-        priority: priority,
-        description: description,
-        payload: payload,
-      );
+  }) => showNotification(
+    id: id,
+    title: title,
+    body: body,
+    priority: priority,
+    description: description,
+    payload: payload,
+  );
 
   /// Schedule local reminders for a task based on user settings.
   static Future<void> scheduleDeadlineReminders({
@@ -282,8 +443,9 @@ class NotificationHelper {
         String label = dayOffset == 0 ? "today" : "$dayOffset days away";
         await _scheduleExactNotification(
           id: taskId + (dayOffset + 1) * _idMultiplier,
-          title:
-              isTeam ? '📢 Team Reminder: $title' : '⏳ Task Reminder: $title',
+          title: isTeam
+              ? '📢 Team Reminder: $title'
+              : '⏳ Task Reminder: $title',
           body: 'The deadline is $label.',
           description: description,
           priority: priority,
@@ -360,7 +522,8 @@ class NotificationHelper {
       id: 99999,
       title: '🚀 Premium Test Notification',
       body: 'This is a test notification with high priority.',
-      description: 'You can now see full task descriptions and priority labels directly in your notification tray! The formatting is designed to be sleek and professional.',
+      description:
+          'You can now see full task descriptions and priority labels directly in your notification tray! The formatting is designed to be sleek and professional.',
       priority: 'high',
       scheduledDate: DateTime.now().add(const Duration(seconds: 5)),
     );
@@ -388,14 +551,13 @@ class NotificationHelper {
     String priority = 'medium',
     required DateTime scheduledDate,
     String? payload,
-  }) =>
-      _scheduleExactNotification(
-        id: id,
-        title: title,
-        body: body,
-        description: description,
-        priority: priority,
-        scheduledDate: scheduledDate,
-        payload: payload,
-      );
+  }) => _scheduleExactNotification(
+    id: id,
+    title: title,
+    body: body,
+    description: description,
+    priority: priority,
+    scheduledDate: scheduledDate,
+    payload: payload,
+  );
 }

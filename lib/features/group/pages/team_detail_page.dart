@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/image_utils.dart';
+import '../../../../core/utils/notification_helper.dart';
 import '../../../../core/utils/time_utils.dart';
 
 import '../services/team_service.dart';
@@ -17,6 +18,7 @@ import 'create_team_task_page.dart';
 import 'edit_team_task_page.dart';
 import 'member_detail_page.dart';
 import '../../task/services/task_repository.dart';
+import '../../task/widgets/priority_badge.dart';
 import '../../../../core/services/connection_service.dart';
 
 class TeamDetailPage extends StatefulWidget {
@@ -51,6 +53,8 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   bool _isOffline = false;
   bool _isInviting = false;
   Timer? _refreshTimer;
+  StreamSubscription<void>? _teamEventSubscription;
+  bool _isRefreshingTeamData = false;
 
   // Members search + pagination
   final TextEditingController _memberSearchController = TextEditingController();
@@ -73,7 +77,12 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
         }
       }
     });
-    // Auto-refresh every 5 seconds so all members see updated task states promptly
+    _teamEventSubscription = NotificationHelper.onTeamEvent.listen((_) {
+      if (mounted && !_isOffline) _loadData(showLoading: false);
+    });
+
+    // Auto-refresh as a fallback; skip overlapping requests so slow responses
+    // don't stack up and make team/member task sync feel delayed.
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && !_isOffline) _loadData(showLoading: false);
     });
@@ -82,13 +91,16 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _teamEventSubscription?.cancel();
     _memberSearchController.dispose();
     super.dispose();
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
+    if (_isRefreshingTeamData) return;
+    _isRefreshingTeamData = true;
     if (showLoading) setState(() => _isLoading = true);
-    
+
     final isOnline = await _connectionService.isConnected();
     if (!isOnline) {
       if (mounted) {
@@ -101,6 +113,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           title: "No Internet Connection",
         );
       }
+      _isRefreshingTeamData = false;
       return;
     }
 
@@ -116,7 +129,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           // Robust parsing for the top-level object
           if (rawData is Map) {
             _teamData = rawData['team'] is Map ? rawData['team'] : null;
-            
+
             // Robust parsing for members
             final List<dynamic> memberList = [];
             final membersPart = rawData['members'] ?? _teamData?['members'];
@@ -131,8 +144,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
             if (owner is Map) {
               final ownerEmail = owner['email']?.toString().toLowerCase();
               if (ownerEmail != null) {
-                final exists = memberList.any((m) => 
-                  m is Map && m['email']?.toString().toLowerCase() == ownerEmail
+                final exists = memberList.any(
+                  (m) =>
+                      m is Map &&
+                      m['email']?.toString().toLowerCase() == ownerEmail,
                 );
                 if (!exists) {
                   memberList.insert(0, owner);
@@ -144,7 +159,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
               if (m is Map) return m;
               return {'name': m.toString(), 'email': m.toString()};
             }).toList();
-            
+
             // Robust parsing for tasks
             final tasksPart = rawData['tasks'];
             if (tasksPart is List) {
@@ -165,15 +180,18 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
         ErrorHandler.handleApiError(e);
       }
       setState(() => _isLoading = false);
+    } finally {
+      _isRefreshingTeamData = false;
     }
   }
 
   void _showMemberOptions(dynamic member) {
     final String? teamOwnerId = _teamData?['created_by']?.toString();
     final String? currentUserIdStr = _currentUserId?.toString();
-    final bool isOwner = teamOwnerId != null && 
-                         currentUserIdStr != null && 
-                         teamOwnerId == currentUserIdStr;
+    final bool isOwner =
+        teamOwnerId != null &&
+        currentUserIdStr != null &&
+        teamOwnerId == currentUserIdStr;
 
     if (!isOwner || member['id']?.toString() == currentUserIdStr) {
       return;
@@ -181,6 +199,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
 
     showModalBottomSheet(
       context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -205,7 +227,8 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
 
   Future<void> _pickTeamAvatar() async {
     if (_isPickingImage) return;
-    final bool isOwner = _teamData?['created_by']?.toString() == _currentUserId?.toString();
+    final bool isOwner =
+        _teamData?['created_by']?.toString() == _currentUserId?.toString();
     if (!isOwner) return;
 
     setState(() => _isPickingImage = true);
@@ -213,23 +236,41 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       final source = await showModalBottomSheet<ImageSource>(
         context: context,
         backgroundColor: AppColors.surface,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
         builder: (ctx) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 8),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
               const SizedBox(height: 16),
-              const Text('Change Team Photo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text(
+                'Change Team Photo',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               const SizedBox(height: 12),
               ListTile(
-                leading: const CircleAvatar(backgroundColor: Color(0xFFF3E8FF), child: Icon(Icons.camera_alt, color: Color(0xFFA855F7))),
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFF3E8FF),
+                  child: Icon(Icons.camera_alt, color: Color(0xFFA855F7)),
+                ),
                 title: const Text('Take Photo'),
                 onTap: () => Navigator.pop(ctx, ImageSource.camera),
               ),
               ListTile(
-                leading: const CircleAvatar(backgroundColor: Color(0xFFF3E8FF), child: Icon(Icons.photo_library, color: Color(0xFFA855F7))),
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFF3E8FF),
+                  child: Icon(Icons.photo_library, color: Color(0xFFA855F7)),
+                ),
                 title: const Text('Choose from Gallery'),
                 onTap: () => Navigator.pop(ctx, ImageSource.gallery),
               ),
@@ -252,7 +293,9 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       final int maxSize = isGif ? 2 * 1024 * 1024 : 1 * 1024 * 1024;
 
       if (sizeInBytes > maxSize) {
-        ErrorHandler.showErrorPopup('File too large (Image max 1MB, GIF max 2MB)');
+        ErrorHandler.showErrorPopup(
+          'File too large (Image max 1MB, GIF max 2MB)',
+        );
         return;
       }
 
@@ -277,7 +320,9 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
 
   Future<void> _showEditTeamDialog() async {
     final nameController = TextEditingController(text: _teamData?['name']);
-    final descController = TextEditingController(text: _teamData?['description']);
+    final descController = TextEditingController(
+      text: _teamData?['description'],
+    );
     final maxMembersController = TextEditingController(
       text: (_teamData?['max_members'] ?? 100).toString(),
     );
@@ -319,7 +364,9 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
             onPressed: () async {
               final maxMembers = int.tryParse(maxMembersController.text.trim());
               if (maxMembers == null || maxMembers < 1 || maxMembers > 100) {
-                ErrorHandler.showErrorPopup('Max members must be between 1 and 100');
+                ErrorHandler.showErrorPopup(
+                  'Max members must be between 1 and 100',
+                );
                 return;
               }
               // Prevent reducing below current member count
@@ -334,7 +381,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
               if (!isOnline) {
                 ErrorHandler.showErrorPopup(
                   "Sorry, you don't have internet. Please connect to internet to create or see the team.",
-                  title: "No Internet Connection"
+                  title: "No Internet Connection",
                 );
                 return;
               }
@@ -401,7 +448,9 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                   : () async {
                       final email = emailController.text.trim();
                       if (email.isEmpty) {
-                        ErrorHandler.showErrorPopup('Please enter an email address');
+                        ErrorHandler.showErrorPopup(
+                          'Please enter an email address',
+                        );
                         return;
                       }
 
@@ -418,10 +467,15 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       try {
                         await _teamService.inviteToTeam(widget.teamId, email);
                         if (context.mounted) {
-                          ErrorHandler.showSuccessPopup('Invitation successfully sent to $email');
+                          ErrorHandler.showSuccessPopup(
+                            'Invitation successfully sent to $email',
+                          );
                           Navigator.pop(context);
                           // Small delay to let dialog finish closing before refresh
-                          Future.delayed(const Duration(milliseconds: 300), () => _loadData());
+                          Future.delayed(
+                            const Duration(milliseconds: 300),
+                            () => _loadData(),
+                          );
                         }
                       } catch (e) {
                         if (context.mounted) {
@@ -457,7 +511,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
     if (!isOnline) {
       ErrorHandler.showErrorPopup(
         "Sorry, you don't have internet. Please connect to internet to create or see the team.",
-        title: "No Internet Connection"
+        title: "No Internet Connection",
       );
       return;
     }
@@ -470,11 +524,11 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
     }
   }
 
-
   List<String> _getAssignedUsernames(List<String> emails) {
     return emails.map((email) {
       final member = _members.firstWhere(
-        (m) => m is Map &&
+        (m) =>
+            m is Map &&
             m['email']?.toString().toLowerCase().trim() ==
                 email.toLowerCase().trim(),
         orElse: () => <String, dynamic>{},
@@ -495,7 +549,8 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => _TaskDetailSheet(
         task: task,
-        isOwner: _teamData?['created_by']?.toString() == _currentUserId?.toString(),
+        isOwner:
+            _teamData?['created_by']?.toString() == _currentUserId?.toString(),
         teamMembers: _members,
         onDelete: () async {
           try {
@@ -525,12 +580,19 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary, size: 32),
+          icon: const Icon(
+            Icons.chevron_left,
+            color: AppColors.textPrimary,
+            size: 32,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'Project Team',
-          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
       ),
@@ -577,7 +639,9 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       height: height,
       decoration: BoxDecoration(
         color: const Color(0xFF3A3252),
-        borderRadius: circle ? BorderRadius.circular(height / 2) : BorderRadius.circular(12),
+        borderRadius: circle
+            ? BorderRadius.circular(height / 2)
+            : BorderRadius.circular(12),
       ),
     );
   }
@@ -595,17 +659,28 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary, size: 32),
+            icon: const Icon(
+              Icons.chevron_left,
+              color: AppColors.textPrimary,
+              size: 32,
+            ),
             onPressed: () => Navigator.pop(context),
           ),
-          title: const Text('No Internet Connection', style: TextStyle(color: AppColors.textPrimary)),
+          title: const Text(
+            'No Internet Connection',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
           centerTitle: true,
         ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.wifi_off_rounded, size: 80, color: Colors.red.withValues(alpha: 0.5)),
+              Icon(
+                Icons.wifi_off_rounded,
+                size: 80,
+                color: Colors.red.withValues(alpha: 0.5),
+              ),
               const SizedBox(height: 24),
               const Text(
                 "You're Offline",
@@ -626,7 +701,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 12,
+                  ),
                 ),
                 child: const Text("Try Again"),
               ),
@@ -671,7 +749,9 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
               Row(
                 children: [
                   GestureDetector(
-                    onTap: (_teamData?['created_by']?.toString() == _currentUserId?.toString())
+                    onTap:
+                        (_teamData?['created_by']?.toString() ==
+                            _currentUserId?.toString())
                         ? _pickTeamAvatar
                         : null,
                     child: Stack(
@@ -684,27 +764,53 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: _isUpdatingAvatar
-                              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                              : (_teamData?['avatar_url'] != null && (_teamData!['avatar_url'] as String).isNotEmpty)
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: CachedNetworkImage(
-                                        imageUrl: _teamData!['avatar_url'] as String,
-                                        fit: BoxFit.cover,
-                                        httpHeaders: getNetworkImageHeaders(_teamData!['avatar_url'] as String),
-                                        cacheManager: WudiCacheManager(),
-                                        errorWidget: (_, _, _) => const Icon(Icons.palette_rounded, color: Color(0xFFA855F7), size: 32),
-                                      ),
-                                    )
-                                  : const Icon(Icons.palette_rounded, color: Color(0xFFA855F7), size: 32),
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : (_teamData?['avatar_url'] != null &&
+                                    (_teamData!['avatar_url'] as String)
+                                        .isNotEmpty)
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: CachedNetworkImage(
+                                    imageUrl:
+                                        _teamData!['avatar_url'] as String,
+                                    fit: BoxFit.cover,
+                                    httpHeaders: getNetworkImageHeaders(
+                                      _teamData!['avatar_url'] as String,
+                                    ),
+                                    cacheManager: WudiCacheManager(),
+                                    errorWidget: (_, _, _) => const Icon(
+                                      Icons.palette_rounded,
+                                      color: Color(0xFFA855F7),
+                                      size: 32,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.palette_rounded,
+                                  color: Color(0xFFA855F7),
+                                  size: 32,
+                                ),
                         ),
-                        if (_teamData?['created_by']?.toString() == _currentUserId?.toString())
+                        if (_teamData?['created_by']?.toString() ==
+                            _currentUserId?.toString())
                           Positioned(
-                            bottom: 0, right: 0,
+                            bottom: 0,
+                            right: 0,
                             child: Container(
                               padding: const EdgeInsets.all(3),
-                              decoration: const BoxDecoration(color: Color(0xFFA855F7), shape: BoxShape.circle),
-                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 12),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFA855F7),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 12,
+                              ),
                             ),
                           ),
                       ],
@@ -732,9 +838,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       ],
                     ),
                   ),
-                  if (_teamData?['created_by'] != null && 
+                  if (_teamData?['created_by'] != null &&
                       _currentUserId != null &&
-                      _teamData?['created_by'].toString() == _currentUserId.toString())
+                      _teamData?['created_by'].toString() ==
+                          _currentUserId.toString())
                     IconButton(
                       icon: const Icon(Icons.more_vert),
                       onPressed: () => _showEditTeamDialog(),
@@ -750,7 +857,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                   Flexible(
                     child: Text(
                       'Team Members (${_members.length}/${_teamData?['max_members'] ?? 100})',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -772,11 +882,22 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 }),
                 decoration: InputDecoration(
                   hintText: 'Search by name or email...',
-                  hintStyle: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                  prefixIcon: const Icon(Icons.search, size: 20, color: AppColors.textSecondary),
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                   suffixIcon: _memberSearchQuery.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.close, size: 18, color: AppColors.textSecondary),
+                          icon: const Icon(
+                            Icons.close,
+                            size: 18,
+                            color: AppColors.textSecondary,
+                          ),
                           onPressed: () => setState(() {
                             _memberSearchController.clear();
                             _memberSearchQuery = '';
@@ -786,7 +907,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       : null,
                   filled: true,
                   fillColor: AppColors.surface,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
@@ -794,115 +918,152 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              Builder(builder: (context) {
-                final String? ownerId = _teamData?['created_by']?.toString();
-                final String? myId = _currentUserId?.toString();
-                final bool isOwner = ownerId != null && myId != null && ownerId == myId;
+              Builder(
+                builder: (context) {
+                  final String? ownerId = _teamData?['created_by']?.toString();
+                  final String? myId = _currentUserId?.toString();
+                  final bool isOwner =
+                      ownerId != null && myId != null && ownerId == myId;
 
-                // Filter by search
-                final filtered = _memberSearchQuery.isEmpty
-                    ? _members
-                    : _members.where((m) {
-                        final name = (m['name'] ?? '').toString().toLowerCase();
-                        final email = (m['email'] ?? '').toString().toLowerCase();
-                        return name.contains(_memberSearchQuery) || email.contains(_memberSearchQuery);
-                      }).toList();
+                  // Filter by search
+                  final filtered = _memberSearchQuery.isEmpty
+                      ? _members
+                      : _members.where((m) {
+                          final name = (m['name'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          final email = (m['email'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          return name.contains(_memberSearchQuery) ||
+                              email.contains(_memberSearchQuery);
+                        }).toList();
 
-                final totalPages = (filtered.length / _membersPerPage).ceil();
-                final clampedPage = _memberPage.clamp(0, totalPages > 0 ? totalPages - 1 : 0);
-                final pageMembers = filtered.skip(clampedPage * _membersPerPage).take(_membersPerPage).toList();
+                  final totalPages = (filtered.length / _membersPerPage).ceil();
+                  final clampedPage = _memberPage.clamp(
+                    0,
+                    totalPages > 0 ? totalPages - 1 : 0,
+                  );
+                  final pageMembers = filtered
+                      .skip(clampedPage * _membersPerPage)
+                      .take(_membersPerPage)
+                      .toList();
 
-                return Column(
-                  children: [
-                    ...pageMembers.map((m) {
-                      final bool isMe = m['email']?.toString().toLowerCase().trim() ==
-                          _currentUserEmail?.toLowerCase().trim();
+                  return Column(
+                    children: [
+                      ...pageMembers.map((m) {
+                        final bool isMe =
+                            m['email']?.toString().toLowerCase().trim() ==
+                            _currentUserEmail?.toLowerCase().trim();
 
-                      return _MemberTile(
-                        name: m['name'] ?? '',
-                        role: m['role'] ?? 'Member',
-                        avatarUrl: ImageUtils.getAvatarUrl(m['avatar_url'] ?? m['avatar']),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => MemberDetailPage(
-                                teamId: widget.teamId,
-                                member: m,
-                                memberTasks: _tasks.where((t) {
-                                  final assignedEmails =
-                                      (t['assigned_emails'] as List<dynamic>?)
-                                          ?.cast<String>() ??
-                                      [];
-                                  final memberEmail = m['email']
-                                      ?.toString()
-                                      .toLowerCase()
-                                      .trim();
-                                  return memberEmail != null &&
-                                      assignedEmails.any(
-                                        (e) => e.toLowerCase().trim() == memberEmail,
-                                      );
-                                }).toList(),
-                                teamMembers: _members,
-                                currentUserEmail: _currentUserEmail,
-                                isOwner: isOwner,
-                              ),
-                            ),
-                          ).then((_) => _loadData());
-                        },
-                        onMore: (isOwner && !isMe) ? () => _showMemberOptions(m) : null,
-                      );
-                    }),
-                    if (totalPages > 1) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            onPressed: clampedPage > 0
-                                ? () => setState(() => _memberPage = clampedPage - 1)
-                                : null,
-                            icon: const Icon(Icons.chevron_left),
-                            color: clampedPage > 0 ? AppColors.textPrimary : Colors.grey,
-                            iconSize: 28,
+                        return _MemberTile(
+                          name: m['name'] ?? '',
+                          role: m['role'] ?? 'Member',
+                          avatarUrl: ImageUtils.getAvatarUrl(
+                            m['avatar_url'] ?? m['avatar'],
                           ),
-                          ...List.generate(totalPages, (i) => GestureDetector(
-                            onTap: () => setState(() => _memberPage = i),
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: i == clampedPage
-                                    ? const Color(0xFF1E1E1E)
-                                    : AppColors.surface,
-                                borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => MemberDetailPage(
+                                  teamId: widget.teamId,
+                                  member: m,
+                                  memberTasks: _tasks.where((t) {
+                                    final assignedEmails =
+                                        (t['assigned_emails'] as List<dynamic>?)
+                                            ?.cast<String>() ??
+                                        [];
+                                    final memberEmail = m['email']
+                                        ?.toString()
+                                        .toLowerCase()
+                                        .trim();
+                                    return memberEmail != null &&
+                                        assignedEmails.any(
+                                          (e) =>
+                                              e.toLowerCase().trim() ==
+                                              memberEmail,
+                                        );
+                                  }).toList(),
+                                  teamMembers: _members,
+                                  currentUserEmail: _currentUserEmail,
+                                  onToggle: () => _loadData(showLoading: false),
+                                  isOwner: isOwner,
+                                ),
                               ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                '${i + 1}',
-                                style: TextStyle(
-                                  color: i == clampedPage ? Colors.white : AppColors.textPrimary,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
+                            ).then((_) => _loadData());
+                          },
+                          onMore: (isOwner && !isMe)
+                              ? () => _showMemberOptions(m)
+                              : null,
+                        );
+                      }),
+                      if (totalPages > 1) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              onPressed: clampedPage > 0
+                                  ? () => setState(
+                                      () => _memberPage = clampedPage - 1,
+                                    )
+                                  : null,
+                              icon: const Icon(Icons.chevron_left),
+                              color: clampedPage > 0
+                                  ? AppColors.textPrimary
+                                  : Colors.grey,
+                              iconSize: 28,
+                            ),
+                            ...List.generate(
+                              totalPages,
+                              (i) => GestureDetector(
+                                onTap: () => setState(() => _memberPage = i),
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: i == clampedPage
+                                        ? const Color(0xFF1E1E1E)
+                                        : AppColors.surface,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: TextStyle(
+                                      color: i == clampedPage
+                                          ? Colors.white
+                                          : AppColors.textPrimary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          )),
-                          IconButton(
-                            onPressed: clampedPage < totalPages - 1
-                                ? () => setState(() => _memberPage = clampedPage + 1)
-                                : null,
-                            icon: const Icon(Icons.chevron_right),
-                            color: clampedPage < totalPages - 1 ? AppColors.textPrimary : Colors.grey,
-                            iconSize: 28,
-                          ),
-                        ],
-                      ),
+                            IconButton(
+                              onPressed: clampedPage < totalPages - 1
+                                  ? () => setState(
+                                      () => _memberPage = clampedPage + 1,
+                                    )
+                                  : null,
+                              icon: const Icon(Icons.chevron_right),
+                              color: clampedPage < totalPages - 1
+                                  ? AppColors.textPrimary
+                                  : Colors.grey,
+                              iconSize: 28,
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ],
-                );
-              }),
+                  );
+                },
+              ),
 
               const SizedBox(height: 32),
 
@@ -938,106 +1099,158 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 const Center(
                   child: Text(
                     'No tasks created yet.',
-                  style: TextStyle(color: AppColors.textTertiary),
-                ),
-              )
-                else
-              ..._tasks.map((t) {
-                final List<String> assignedEmailsList =
-                    (t['assigned_emails'] as List<dynamic>?)?.cast<String>() ??
-                    [t['user']?['email'] ?? 'Unassigned'];
-                final List<String> completedByList =
-                    (t['completed_by'] as List<dynamic>?)?.cast<String>() ?? [];
-                final bool taskDone = t['is_completed'] == true;
-                final bool taskLeaderChecked = taskDone &&
-                    _currentUserEmail != null &&
-                    !completedByList.any((e) =>
-                        e.toLowerCase().trim() ==
-                        _currentUserEmail!.toLowerCase().trim());
-                final bool taskIsOwner = _teamData?['created_by']?.toString() == _currentUserId?.toString();
-                return _TaskTile(
-                  key: ValueKey(t['id']),
-                  title: t['judul'] ?? '',
-                  priority: t['priority']?.toString(),
-                  assignedEmails: assignedEmailsList,
-                  assignedUsernames: _getAssignedUsernames(assignedEmailsList),
-                  completedBy: completedByList,
-                  isDone: taskDone,
-                  leaderChecked: taskLeaderChecked,
-                  currentUserEmail: _currentUserEmail,
-                  isOffline: _isOffline,
-                  isOwner: taskIsOwner,
-                  onTap: () => _showTaskDetail(t),
-                  onToggle: () async {
-                    if (_isOffline) return;
-                    final bool isOwner = taskIsOwner;
-                    final List<String> assignedEmailsForToggle = (t['assigned_emails'] as List<dynamic>?)?.cast<String>() ?? [];
-                    final String? currentUserEmailNormalized = _currentUserEmail?.toLowerCase().trim();
+                    style: TextStyle(color: AppColors.textTertiary),
+                  ),
+                )
+              else
+                ..._tasks.map((t) {
+                  final List<String> assignedEmailsList =
+                      (t['assigned_emails'] as List<dynamic>?)
+                          ?.cast<String>() ??
+                      [t['user']?['email'] ?? 'Unassigned'];
+                  final List<String> completedByList =
+                      (t['completed_by'] as List<dynamic>?)?.cast<String>() ??
+                      [];
+                  final bool taskDone = t['is_completed'] == true;
+                  final bool taskLeaderChecked =
+                      taskDone &&
+                      _currentUserEmail != null &&
+                      !completedByList.any(
+                        (e) =>
+                            e.toLowerCase().trim() ==
+                            _currentUserEmail!.toLowerCase().trim(),
+                      );
+                  final bool taskIsOwner =
+                      _teamData?['created_by']?.toString() ==
+                      _currentUserId?.toString();
+                  return _TaskTile(
+                    key: ValueKey(t['id']),
+                    title: t['judul'] ?? '',
+                    priority: t['priority']?.toString(),
+                    assignedEmails: assignedEmailsList,
+                    assignedUsernames: _getAssignedUsernames(
+                      assignedEmailsList,
+                    ),
+                    completedBy: completedByList,
+                    isDone: taskDone,
+                    leaderChecked: taskLeaderChecked,
+                    currentUserEmail: _currentUserEmail,
+                    isOffline: _isOffline,
+                    isOwner: taskIsOwner,
+                    onTap: () => _showTaskDetail(t),
+                    onToggle: () async {
+                      if (_isOffline) return;
+                      final bool isOwner = taskIsOwner;
+                      final List<String> assignedEmailsForToggle =
+                          (t['assigned_emails'] as List<dynamic>?)
+                              ?.cast<String>() ??
+                          [];
+                      final String? currentUserEmailNormalized =
+                          _currentUserEmail?.toLowerCase().trim();
 
-                    final bool isAssigned = currentUserEmailNormalized != null && assignedEmailsForToggle.any((e) => e.toLowerCase().trim() == currentUserEmailNormalized);
-
-                    // Block non-owner from toggling a task already force-completed by leader
-                    if (t['is_completed'] == true && !isOwner) {
-                      ErrorHandler.showErrorPopup('Task has been completed by the leader and cannot be modified');
-                      return;
-                    }
-
-                    if (isOwner || isAssigned) {
-                      final taskIndex = _tasks.indexOf(t);
-                      if (taskIndex != -1) {
-                        setState(() {
-                          final task = Map<String, dynamic>.from(_tasks[taskIndex]);
-                          final bool ownerNotAssigned = isOwner && !isAssigned;
-
-                          if (ownerNotAssigned) {
-                            // Force-toggle all assigned members
-                            final bool currentlyDone = task['is_completed'] == true;
-                            if (currentlyDone) {
-                              task['completed_by'] = [];
-                              task['is_completed'] = false;
-                            } else {
-                              task['completed_by'] = List<String>.from(assignedEmailsForToggle);
-                              task['is_completed'] = true;
-                            }
-                          } else {
-                            // Toggle own entry only
-                            final List<String> completedBy = (task['completed_by'] as List<dynamic>?)?.cast<String>() ?? [];
-                            if (currentUserEmailNormalized != null) {
-                              if (completedBy.any((e) => e.toLowerCase().trim() == currentUserEmailNormalized)) {
-                                completedBy.removeWhere((e) => e.toLowerCase().trim() == currentUserEmailNormalized);
-                              } else {
-                                completedBy.add(_currentUserEmail!);
-                              }
-                            }
-                            task['completed_by'] = completedBy;
-                            final int totalAssigned = assignedEmailsForToggle.isNotEmpty ? assignedEmailsForToggle.length : 1;
-                            task['is_completed'] = completedBy.where((e) =>
-                              assignedEmailsForToggle.any((a) => a.toLowerCase().trim() == e.toLowerCase().trim())
-                            ).length >= totalAssigned;
-                          }
-                          _tasks[taskIndex] = task;
-                        });
-                      }
-
-                      try {
-                        await _teamService.toggleMemberTaskStatus(t['id']);
-                        if (_currentUserEmail != null) {
-                          await _taskRepository.fetchTasksFromServer(
-                            _currentUserEmail!,
-                            force: true,
+                      final bool isAssigned =
+                          currentUserEmailNormalized != null &&
+                          assignedEmailsForToggle.any(
+                            (e) =>
+                                e.toLowerCase().trim() ==
+                                currentUserEmailNormalized,
                           );
-                        }
-                        _loadData(showLoading: false);
-                      } catch (e) {
-                        _loadData(showLoading: false);
-                        ErrorHandler.handleApiError(e);
+
+                      // A completed team task is locked for members until the leader reopens it.
+                      if (t['is_completed'] == true && !isOwner) {
+                        ErrorHandler.showErrorPopup(
+                          'This team task is locked. Ask the team leader to reopen it.',
+                          title: 'Team Task Locked',
+                        );
+                        return;
                       }
-                    } else {
-                      ErrorHandler.showErrorPopup('Only the owner or assigned member can toggle this task');
-                    }
-                  },
-                );
-              }),
+
+                      if (isOwner || isAssigned) {
+                        final taskIndex = _tasks.indexOf(t);
+                        if (taskIndex != -1) {
+                          setState(() {
+                            final task = Map<String, dynamic>.from(
+                              _tasks[taskIndex],
+                            );
+                            final bool ownerNotAssigned =
+                                isOwner && !isAssigned;
+
+                            if (ownerNotAssigned) {
+                              // Force-toggle all assigned members
+                              final bool currentlyDone =
+                                  task['is_completed'] == true;
+                              if (currentlyDone) {
+                                task['completed_by'] = [];
+                                task['is_completed'] = false;
+                              } else {
+                                task['completed_by'] = List<String>.from(
+                                  assignedEmailsForToggle,
+                                );
+                                task['is_completed'] = true;
+                              }
+                            } else {
+                              // Toggle own entry only
+                              final List<String> completedBy =
+                                  (task['completed_by'] as List<dynamic>?)
+                                      ?.cast<String>() ??
+                                  [];
+                              if (currentUserEmailNormalized != null) {
+                                if (completedBy.any(
+                                  (e) =>
+                                      e.toLowerCase().trim() ==
+                                      currentUserEmailNormalized,
+                                )) {
+                                  completedBy.removeWhere(
+                                    (e) =>
+                                        e.toLowerCase().trim() ==
+                                        currentUserEmailNormalized,
+                                  );
+                                } else {
+                                  completedBy.add(_currentUserEmail!);
+                                }
+                              }
+                              task['completed_by'] = completedBy;
+                              final int totalAssigned =
+                                  assignedEmailsForToggle.isNotEmpty
+                                  ? assignedEmailsForToggle.length
+                                  : 1;
+                              task['is_completed'] =
+                                  completedBy
+                                      .where(
+                                        (e) => assignedEmailsForToggle.any(
+                                          (a) =>
+                                              a.toLowerCase().trim() ==
+                                              e.toLowerCase().trim(),
+                                        ),
+                                      )
+                                      .length >=
+                                  totalAssigned;
+                            }
+                            _tasks[taskIndex] = task;
+                          });
+                        }
+
+                        try {
+                          await _teamService.toggleMemberTaskStatus(t['id']);
+                          if (_currentUserEmail != null) {
+                            await _taskRepository.fetchTasksFromServer(
+                              _currentUserEmail!,
+                              force: true,
+                            );
+                          }
+                          _loadData(showLoading: false);
+                        } catch (e) {
+                          _loadData(showLoading: false);
+                          ErrorHandler.handleApiError(e);
+                        }
+                      } else {
+                        ErrorHandler.showErrorPopup(
+                          'Only the owner or assigned member can toggle this task',
+                        );
+                      }
+                    },
+                  );
+                }),
             ],
           ),
         ),
@@ -1102,14 +1315,24 @@ class _MemberTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: Colors.white,
-              backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty
-                  ? CachedNetworkImageProvider(avatarUrl!, headers: getNetworkImageHeaders(avatarUrl!), cacheManager: WudiCacheManager())
-                  : null,
-              child: avatarUrl == null || avatarUrl!.isEmpty
-                  ? const Icon(Icons.person, color: Colors.grey)
-                  : null,
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              child: ClipOval(
+                child: avatarUrl != null && avatarUrl!.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: avatarUrl!,
+                        fit: BoxFit.cover,
+                        httpHeaders: getNetworkImageHeaders(avatarUrl!),
+                        cacheManager: WudiCacheManager(),
+                        errorWidget: (_, __, ___) => const Icon(Icons.person, color: Colors.grey),
+                      )
+                    : const Icon(Icons.person, color: Colors.grey),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1190,15 +1413,24 @@ class _TaskTileState extends State<_TaskTile> {
     final int totalAssigned = widget.assignedEmails.length;
     final int totalCompleted = widget.isDone
         ? totalAssigned
-        : widget.completedBy.where((e) => widget.assignedEmails.any(
-            (a) => a.toLowerCase().trim() == e.toLowerCase().trim())).length;
-    final double progress = totalAssigned > 0 ? totalCompleted / totalAssigned : 0;
-    final bool currentUserChecked = widget.isDone || (
-        widget.currentUserEmail != null &&
-        widget.completedBy.any(
-          (e) => e.toLowerCase().trim() == widget.currentUserEmail!.toLowerCase().trim(),
-        )
-    );
+        : widget.completedBy
+              .where(
+                (e) => widget.assignedEmails.any(
+                  (a) => a.toLowerCase().trim() == e.toLowerCase().trim(),
+                ),
+              )
+              .length;
+    final double progress = totalAssigned > 0
+        ? totalCompleted / totalAssigned
+        : 0;
+    final bool currentUserChecked =
+        widget.isDone ||
+        (widget.currentUserEmail != null &&
+            widget.completedBy.any(
+              (e) =>
+                  e.toLowerCase().trim() ==
+                  widget.currentUserEmail!.toLowerCase().trim(),
+            ));
 
     return AbsorbPointer(
       absorbing: widget.isOffline,
@@ -1221,7 +1453,10 @@ class _TaskTileState extends State<_TaskTile> {
                     onTap: () {
                       if (widget.isOffline) return;
                       if (widget.isDone && !widget.isOwner) {
-                        ErrorHandler.showErrorPopup('Task has been completed by the leader and cannot be modified');
+                        ErrorHandler.showErrorPopup(
+                          'This team task is locked. Ask the team leader to reopen it.',
+                          title: 'Team Task Locked',
+                        );
                         return;
                       }
                       _handleToggle();
@@ -1233,12 +1468,18 @@ class _TaskTileState extends State<_TaskTile> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: currentUserChecked ? Colors.black87 : Colors.black38,
+                          color: currentUserChecked
+                              ? Colors.black87
+                              : Colors.black38,
                           width: 1.8,
                         ),
                       ),
                       child: currentUserChecked
-                          ? const Icon(Icons.check, size: 14, color: Colors.black87)
+                          ? const Icon(
+                              Icons.check,
+                              size: 14,
+                              color: Colors.black87,
+                            )
                           : null,
                     ),
                   ),
@@ -1261,7 +1502,9 @@ class _TaskTileState extends State<_TaskTile> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            _buildPriorityBadge(widget.priority),
+                            TaskPriorityBadge(
+                              priority: widget.priority ?? 'medium',
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -1271,41 +1514,73 @@ class _TaskTileState extends State<_TaskTile> {
                             children: [
                               const Text(
                                 'Assign to: ',
-                                style: TextStyle(fontSize: 12, color: Colors.black54),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
+                                ),
                               ),
                               Expanded(
                                 child: Wrap(
                                   spacing: 4,
                                   runSpacing: 4,
-                                  children: widget.assignedEmails.asMap().entries.map((entry) {
-                                    final idx = entry.key;
-                                    final email = entry.value;
-                                    final isCurrentUser = widget.currentUserEmail != null &&
-                                        email.toLowerCase().trim() ==
-                                            widget.currentUserEmail!.toLowerCase().trim();
-                                    final rawName = idx < widget.assignedUsernames.length
-                                        ? widget.assignedUsernames[idx]
-                                        : (email.contains('@') ? email.split('@').first : email);
-                                    final displayName = isCurrentUser ? 'You' : (rawName.length > 14 ? '${rawName.substring(0, 13)}…' : rawName);
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: isCurrentUser ? const Color(0xFF2D2633) : const Color(0xFF4A4A4A),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.person, size: 10, color: Colors.white70),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            displayName,
-                                            style: const TextStyle(fontSize: 11, color: Colors.white),
+                                  children: widget.assignedEmails
+                                      .asMap()
+                                      .entries
+                                      .map((entry) {
+                                        final idx = entry.key;
+                                        final email = entry.value;
+                                        final isCurrentUser =
+                                            widget.currentUserEmail != null &&
+                                            email.toLowerCase().trim() ==
+                                                widget.currentUserEmail!
+                                                    .toLowerCase()
+                                                    .trim();
+                                        final rawName =
+                                            idx <
+                                                widget.assignedUsernames.length
+                                            ? widget.assignedUsernames[idx]
+                                            : (email.contains('@')
+                                                  ? email.split('@').first
+                                                  : email);
+                                        final displayName = isCurrentUser
+                                            ? 'You'
+                                            : (rawName.length > 14
+                                                  ? '${rawName.substring(0, 13)}…'
+                                                  : rawName);
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 2,
                                           ),
-                                        ],
-                                      ),
-                                    );
-                                  }).toList(),
+                                          decoration: BoxDecoration(
+                                            color: isCurrentUser
+                                                ? const Color(0xFF2D2633)
+                                                : const Color(0xFF4A4A4A),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons.person,
+                                                size: 10,
+                                                color: Colors.white70,
+                                              ),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                displayName,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      })
+                                      .toList(),
                                 ),
                               ),
                             ],
@@ -1354,7 +1629,10 @@ class _TaskTileState extends State<_TaskTile> {
                       color: Colors.white.withValues(alpha: 0.1),
                       child: Center(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.75),
                             borderRadius: BorderRadius.circular(12),
@@ -1362,9 +1640,20 @@ class _TaskTileState extends State<_TaskTile> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.wifi_off, color: Colors.white, size: 14),
+                              Icon(
+                                Icons.wifi_off,
+                                color: Colors.white,
+                                size: 14,
+                              ),
                               SizedBox(width: 8),
-                              Text("Offline", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                              Text(
+                                "Offline",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1375,44 +1664,6 @@ class _TaskTileState extends State<_TaskTile> {
               ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildPriorityBadge(String? priority) {
-    Color bgColor;
-    Color textColor;
-    IconData icon;
-    String label;
-    switch ((priority ?? 'low').toLowerCase()) {
-      case 'high':
-        bgColor = const Color(0xFFFFE5E5);
-        textColor = const Color(0xFFCC0000);
-        icon = Icons.error;
-        label = 'High Priority';
-        break;
-      case 'medium':
-        bgColor = const Color(0xFFFFF3CD);
-        textColor = const Color(0xFF856404);
-        icon = Icons.priority_high;
-        label = 'Medium';
-        break;
-      default:
-        bgColor = const Color(0xFFE5F5E5);
-        textColor = const Color(0xFF155724);
-        icon = Icons.low_priority;
-        label = 'Low';
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 10, color: textColor),
-          const SizedBox(width: 3),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textColor)),
-        ],
       ),
     );
   }
@@ -1434,20 +1685,35 @@ class _TaskDetailSheet extends StatelessWidget {
   });
 
   static String _monthName(int month) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return months[(month - 1).clamp(0, 11)];
   }
 
   @override
   Widget build(BuildContext context) {
-    final String time = AppTimeUtils.extractTimeFromDeadline(task['deadline']?.toString());
+    final String time = AppTimeUtils.extractTimeFromDeadline(
+      task['deadline']?.toString(),
+    );
     final DateTime? deadlineDate = task['deadline'] != null
         ? DateTime.tryParse(task['deadline'].toString())
         : null;
     final String dateStr = deadlineDate != null
         ? '${deadlineDate.day.toString().padLeft(2, '0')} '
-          '${_monthName(deadlineDate.month)} '
-          '${deadlineDate.year}'
+              '${_monthName(deadlineDate.month)} '
+              '${deadlineDate.year}'
         : 'No date set';
 
     return Container(
@@ -1490,7 +1756,10 @@ class _TaskDetailSheet extends StatelessWidget {
                     color: Colors.grey.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.calendar_today_rounded, color: Colors.grey),
+                  child: const Icon(
+                    Icons.calendar_today_rounded,
+                    color: Colors.grey,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Column(
@@ -1569,93 +1838,98 @@ class _TaskDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 32),
-            if (isOwner) ...[Row(
-              children: [
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          backgroundColor: AppColors.surface,
-                          title: const Text('Delete Task'),
-                          content: const Text(
-                            'Are you sure you want to delete this task?',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Cancel'),
+            if (isOwner) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: AppColors.surface,
+                            title: const Text('Delete Task'),
+                            content: const Text(
+                              'Are you sure you want to delete this task?',
                             ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text(
-                                'Delete',
-                                style: TextStyle(color: Colors.red),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-
-                      if (confirm == true && context.mounted) {
-                        Navigator.pop(context); // Close sheet immediately
-                        onDelete();
-                      }
-                    },
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: AppColors.textPrimary,
-                    ),
-                    label: const Text(
-                      'Delete',
-                      style: TextStyle(color: AppColors.textPrimary),
-                    ),
-                    style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFFF1E6D2),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => EditTeamTaskPage(
-                            teamId: task['team_id'],
-                            task: task,
-                            members: teamMembers,
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      );
+                        );
 
-                      if (result == true && context.mounted) {
-                        Navigator.pop(context); // Close sheet
-                        onEditComplete();
-                      }
-                    },
-                    icon: const Icon(Icons.edit_outlined, color: Colors.white),
-                    label: const Text(
-                      'Edit',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2D2633),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        if (confirm == true && context.mounted) {
+                          Navigator.pop(context); // Close sheet immediately
+                          onDelete();
+                        }
+                      },
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: AppColors.textPrimary,
+                      ),
+                      label: const Text(
+                        'Delete',
+                        style: TextStyle(color: AppColors.textPrimary),
+                      ),
+                      style: TextButton.styleFrom(
+                        backgroundColor: const Color(0xFFF1E6D2),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            )],
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EditTeamTaskPage(
+                              teamId: task['team_id'],
+                              task: task,
+                              members: teamMembers,
+                            ),
+                          ),
+                        );
+
+                        if (result == true && context.mounted) {
+                          Navigator.pop(context); // Close sheet
+                          onEditComplete();
+                        }
+                      },
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        'Edit',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2D2633),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 20),
           ],
         ),

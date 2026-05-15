@@ -43,8 +43,6 @@ class TaskRepository {
         .filter()
         .userEmailEqualTo(userEmail)
         .and()
-        .teamIdIsNull()
-        .and()
         .dueDateBetween(
           startOfDay,
           endOfDay,
@@ -106,16 +104,20 @@ class TaskRepository {
         taskDescription: task.description,
         priority: task.priority,
         deadline: finalDeadline,
-          isTeam: false,
+        isTeam: false,
       );
     }
-    
+
     // Trigger Widget Sync
     final allTasks = await _isar.taskLocals.where().findAll();
     await WidgetSyncService.syncFocusTodayWidget(allTasks);
   }
 
-  Future<void> createTeamTask(TaskLocal task, String userEmail, List<String> assignedEmails) async {
+  Future<void> createTeamTask(
+    TaskLocal task,
+    String userEmail,
+    List<String> assignedEmails,
+  ) async {
     task.userEmail = userEmail;
     task.assignedEmails = assignedEmails.join(',');
     // 1. Save locally first (offline first)
@@ -157,10 +159,10 @@ class TaskRepository {
         taskDescription: task.description,
         priority: task.priority,
         deadline: finalDeadline,
-          isTeam: task.teamId != null,
+        isTeam: task.teamId != null,
       );
     }
-    
+
     // Trigger Widget Sync
     final allTasks = await _isar.taskLocals.where().findAll();
     await WidgetSyncService.syncFocusTodayWidget(allTasks);
@@ -215,7 +217,7 @@ class TaskRepository {
         NotificationHelper.cancelTaskReminders(task.id);
         GlobalReminderScheduler.cancelBeforeDeadlineForTask(task.id);
       }
-      
+
       // Trigger Widget Sync
       _isar.taskLocals.where().findAll().then((allTasks) {
         WidgetSyncService.syncFocusTodayWidget(allTasks);
@@ -239,7 +241,9 @@ class TaskRepository {
       // Each tap flips the intended target:
       // If no pending target yet → flip from current DB state
       // If already have a pending target → flip that target
-      final bool newTarget = currentTarget != null ? !currentTarget : !task.isCompleted;
+      final bool newTarget = currentTarget != null
+          ? !currentTarget
+          : !task.isCompleted;
       _pendingToggleTarget[taskId] = newTarget;
 
       // 1. Optimistic local update for instant UI feedback
@@ -254,59 +258,71 @@ class TaskRepository {
 
       // 2. Cancel any previous pending server call — debounce 800ms
       _toggleDebounceTimers[taskId]?.cancel();
-      _toggleDebounceTimers[taskId] = Timer(const Duration(milliseconds: 800), () async {
-        _toggleDebounceTimers.remove(taskId);
-        final intendedState = _pendingToggleTarget.remove(taskId);
-        if (intendedState == null) return;
+      _toggleDebounceTimers[taskId] = Timer(
+        const Duration(milliseconds: 800),
+        () async {
+          _toggleDebounceTimers.remove(taskId);
+          final intendedState = _pendingToggleTarget.remove(taskId);
+          if (intendedState == null) return;
 
-        try {
-          final response = await _api.post('todos/${task.apiId}/toggle-member');
-          final todoData = response.data['todo'];
-          if (todoData != null) {
-            // Server is always the source of truth.
-            // isCompleted for THIS user = email ada di completedBy ATAU task sudah fully complete
-            // Ini memastikan kalau owner check (is_completed=true), semua member ikut ter-checked
-            final List<dynamic> completedByRaw = todoData['completed_by'] ?? [];
-            final completedByStr = completedByRaw
-                .map((e) => e.toString().toLowerCase().trim())
-                .join(',');
-            final assignedEmailsRaw = todoData['assigned_emails'];
-            final int totalAssigned = assignedEmailsRaw is List ? assignedEmailsRaw.length : 0;
-            final bool isFullyCompleted = todoData['is_completed'] == true;
-            final bool myEmailChecked = completedByRaw.any(
-              (e) => e.toString().toLowerCase().trim() == userEmail.toLowerCase().trim(),
+          try {
+            final response = await _api.post(
+              'todos/${task.apiId}/toggle-member',
             );
-            // If task is fully completed (e.g. owner checked), everyone sees it as checked
-            final bool newIsCompleted = isFullyCompleted || myEmailChecked;
+            final todoData = response.data['todo'];
+            if (todoData != null) {
+              // Server is always the source of truth.
+              // isCompleted for THIS user = email ada di completedBy ATAU task sudah fully complete
+              // Ini memastikan kalau owner check (is_completed=true), semua member ikut ter-checked
+              final List<dynamic> completedByRaw =
+                  todoData['completed_by'] ?? [];
+              final completedByStr = completedByRaw
+                  .map((e) => e.toString().toLowerCase().trim())
+                  .join(',');
+              final assignedEmailsRaw = todoData['assigned_emails'];
+              final int totalAssigned = assignedEmailsRaw is List
+                  ? assignedEmailsRaw.length
+                  : 0;
+              final bool isFullyCompleted = todoData['is_completed'] == true;
+              final bool myEmailChecked = completedByRaw.any(
+                (e) =>
+                    e.toString().toLowerCase().trim() ==
+                    userEmail.toLowerCase().trim(),
+              );
+              // If task is fully completed (e.g. owner checked), everyone sees it as checked
+              final bool newIsCompleted = isFullyCompleted || myEmailChecked;
 
+              await _isar.writeTxn(() async {
+                final fresh = await _isar.taskLocals.get(taskId);
+                if (fresh != null) {
+                  fresh.isCompleted = newIsCompleted;
+                  fresh.leaderChecked = isFullyCompleted && !myEmailChecked;
+                  fresh.completedBy = completedByStr.isEmpty
+                      ? null
+                      : completedByStr;
+                  fresh.totalAssigned = totalAssigned;
+                  fresh.isSynced = true;
+                  await _isar.taskLocals.put(fresh);
+                }
+              });
+
+              // Trigger Widget Sync after team status update
+              final allTasks = await _isar.taskLocals.where().findAll();
+              await WidgetSyncService.syncFocusTodayWidget(allTasks);
+            }
+          } catch (_) {
+            // Server call failed: revert optimistic update to previous known state
             await _isar.writeTxn(() async {
               final fresh = await _isar.taskLocals.get(taskId);
               if (fresh != null) {
-                fresh.isCompleted = newIsCompleted;
-                fresh.leaderChecked = isFullyCompleted && !myEmailChecked;
-                fresh.completedBy = completedByStr.isEmpty ? null : completedByStr;
-                fresh.totalAssigned = totalAssigned;
-                fresh.isSynced = true;
+                fresh.isCompleted = !intendedState; // revert
+                fresh.isSynced = false;
                 await _isar.taskLocals.put(fresh);
               }
             });
-            
-            // Trigger Widget Sync after team status update
-            final allTasks = await _isar.taskLocals.where().findAll();
-            await WidgetSyncService.syncFocusTodayWidget(allTasks);
           }
-        } catch (_) {
-          // Server call failed: revert optimistic update to previous known state
-          await _isar.writeTxn(() async {
-            final fresh = await _isar.taskLocals.get(taskId);
-            if (fresh != null) {
-              fresh.isCompleted = !intendedState; // revert
-              fresh.isSynced = false;
-              await _isar.taskLocals.put(fresh);
-            }
-          });
-        }
-      });
+        },
+      );
     } else {
       // ── PERSONAL TASK ──────────────────────────────────────────────────────
       // For personal tasks: flip immediately, debounce sync to avoid server spam
@@ -317,7 +333,7 @@ class TaskRepository {
         await _isar.taskLocals.put(task);
       });
       await _syncSingleTask(task);
-      
+
       // Trigger Widget Sync
       final allTasks = await _isar.taskLocals.where().findAll();
       await WidgetSyncService.syncFocusTodayWidget(allTasks);
@@ -346,19 +362,24 @@ class TaskRepository {
     await _isar.writeTxn(() async {
       await _isar.taskLocals.delete(task.id);
     });
-    
+
     // Cancel any scheduled local notifications (deadline + global reminders)
     await NotificationHelper.cancelTaskReminders(task.id);
     await GlobalReminderScheduler.cancelBeforeDeadlineForTask(task.id);
-    
+
     // Trigger Widget Sync
     final allTasks = await _isar.taskLocals.where().findAll();
     await WidgetSyncService.syncFocusTodayWidget(allTasks);
   }
 
-  Future<void> fetchTasksFromServer(String userEmail, {bool force = false}) async {
+  Future<void> fetchTasksFromServer(
+    String userEmail, {
+    bool force = false,
+  }) async {
     final now = DateTime.now();
-    if (!force && _lastServerFetch != null && now.difference(_lastServerFetch!) < _fetchCooldown) {
+    if (!force &&
+        _lastServerFetch != null &&
+        now.difference(_lastServerFetch!) < _fetchCooldown) {
       return;
     }
     _lastServerFetch = now;
@@ -368,10 +389,10 @@ class TaskRepository {
 
     while (hasNextPage) {
       try {
-        final response = await _api.get('todos', queryParameters: {
-          'page': currentPage,
-          'assigned_only': 1,
-        });
+        final response = await _api.get(
+          'todos',
+          queryParameters: {'page': currentPage, 'assigned_only': 1},
+        );
         final dynamic rawData = response.data;
 
         if (rawData is! Map || rawData['status'] != 'success') {
@@ -379,12 +400,16 @@ class TaskRepository {
           break;
         }
 
-        final List<dynamic> todos = (rawData['todos'] is List) ? rawData['todos'] : [];
+        final List<dynamic> todos = (rawData['todos'] is List)
+            ? rawData['todos']
+            : [];
         final pagination = rawData['pagination'];
 
         if (pagination is Map) {
-          final int currentPageVal = (pagination['current_page'] as num?)?.toInt() ?? currentPage;
-          final int lastPageVal = (pagination['last_page'] as num?)?.toInt() ?? currentPage;
+          final int currentPageVal =
+              (pagination['current_page'] as num?)?.toInt() ?? currentPage;
+          final int lastPageVal =
+              (pagination['last_page'] as num?)?.toInt() ?? currentPage;
           hasNextPage = currentPageVal < lastPageVal;
           if (hasNextPage) currentPage++;
         } else {
@@ -392,14 +417,17 @@ class TaskRepository {
         }
 
         if (todos.isEmpty) {
-            hasNextPage = false;
-            break;
+          hasNextPage = false;
+          break;
         }
 
         await _isar.writeTxn(() async {
           for (var todo in todos) {
             final int apiId = todo['id'];
-            final existing = await _isar.taskLocals.filter().apiIdEqualTo(apiId).findFirst();
+            final existing = await _isar.taskLocals
+                .filter()
+                .apiIdEqualTo(apiId)
+                .findFirst();
 
             final task = existing ?? TaskLocal();
 
@@ -414,15 +442,18 @@ class TaskRepository {
             task.title = todo['judul'] ?? 'Untitled';
             task.description = todo['deskripsi'];
             task.priority = todo['priority'] ?? 'medium';
-            
+
             // Map individual completion for team tasks
             if (todo['team_id'] != null) {
               final completedByRaw = todo['completed_by'];
-              final List<dynamic> completedBy =
-                  completedByRaw is List ? completedByRaw : <dynamic>[];
+              final List<dynamic> completedBy = completedByRaw is List
+                  ? completedByRaw
+                  : <dynamic>[];
               final bool isFullyCompleted = todo['is_completed'] == true;
-              final bool myEmailChecked = completedBy.any((e) =>
-                e.toString().toLowerCase().trim() == userEmail.toLowerCase().trim()
+              final bool myEmailChecked = completedBy.any(
+                (e) =>
+                    e.toString().toLowerCase().trim() ==
+                    userEmail.toLowerCase().trim(),
               );
               // If owner checked (is_completed=true), semua member ikut ter-checked di lokal
               task.isCompleted = isFullyCompleted || myEmailChecked;
@@ -433,7 +464,9 @@ class TaskRepository {
                   .map((e) => e.toString().toLowerCase().trim())
                   .join(',');
               final assignedEmailsRaw = todo['assigned_emails'];
-              task.totalAssigned = assignedEmailsRaw is List ? assignedEmailsRaw.length : 0;
+              task.totalAssigned = assignedEmailsRaw is List
+                  ? assignedEmailsRaw.length
+                  : 0;
             } else {
               task.isCompleted = todo['is_completed'] ?? false;
               task.leaderChecked = false;
@@ -442,15 +475,19 @@ class TaskRepository {
             task.isSynced = true;
             task.teamId = todo['team_id'];
 
-            if (todo['assigned_emails'] != null && todo['assigned_emails'] is List) {
-              final List<dynamic> assignedList = todo['assigned_emails'] as List;
+            if (todo['assigned_emails'] != null &&
+                todo['assigned_emails'] is List) {
+              final List<dynamic> assignedList =
+                  todo['assigned_emails'] as List;
               task.assignedEmails = assignedList.join(',');
               // Build display names: prefer name from user object if available,
               // otherwise extract the part before '@' from the email
               final assignedNames = assignedList.map((e) {
                 final emailStr = e.toString().trim();
                 // email prefix as fallback username
-                return emailStr.contains('@') ? emailStr.split('@').first : emailStr;
+                return emailStr.contains('@')
+                    ? emailStr.split('@').first
+                    : emailStr;
               }).toList();
               task.assignedUsernames = assignedNames.join(',');
             }
@@ -501,7 +538,6 @@ class TaskRepository {
             }
           }
         });
-
       } catch (e) {
         // Stop on error to prevent infinite loops
         hasNextPage = false;
@@ -655,7 +691,7 @@ class TaskRepository {
           'judul': task.title,
           'deskripsi': task.description,
           'is_completed': task.isCompleted,
-          'deadline': task.dueDate != null 
+          'deadline': task.dueDate != null
               ? '${DateFormat('yyyy-MM-dd').format(task.dueDate!)} ${task.dueTime ?? '23:59:00'}'
               : null,
           'priority': task.priority,
@@ -666,15 +702,15 @@ class TaskRepository {
       }).toList();
 
       final response = await _api.post('todos/bulk', data: {'tasks': payload});
-      
+
       if (response.statusCode == 201 || response.statusCode == 200) {
         final List<dynamic> results = response.data['results'];
-        
+
         await _isar.writeTxn(() async {
           for (var result in results) {
             final int localId = result['local_id'];
             final int apiId = result['api_id'];
-            
+
             final task = await _isar.taskLocals.get(localId);
             if (task != null) {
               task.apiId = apiId;

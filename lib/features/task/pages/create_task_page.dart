@@ -5,6 +5,7 @@ import '../../../../core/utils/error_handler.dart';
 import '../../auth/services/auth_service.dart';
 import '../models/task_local.dart';
 import '../services/task_repository.dart';
+import '../widgets/priority_badge.dart';
 import 'package:intl/intl.dart';
 
 class CreateTaskPage extends StatefulWidget {
@@ -58,7 +59,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final fifteenYearsLater = DateTime(now.year + 15, now.month, now.day);
-    
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
@@ -346,46 +347,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 ),
                 const SizedBox(height: 12),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: ['High', 'Medium', 'Low'].map((p) {
-                    final isSelected = _selectedPriority == p;
-                    return GestureDetector(
+                    return TaskPriorityOption(
+                      priority: p,
+                      isSelected: _selectedPriority == p,
                       onTap: _isSaving
                           ? null
                           : () => setState(() => _selectedPriority = p),
-                      child: Container(
-                        width: MediaQuery.of(context).size.width * 0.25,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? Colors.transparent
-                              : AppColors.surface,
-                          border: Border.all(
-                            color: isSelected
-                                ? Colors.brown
-                                : Colors.transparent,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              p == 'High'
-                                  ? Icons.error
-                                  : (p == 'Medium'
-                                        ? Icons.warning_amber
-                                        : Icons.rule),
-                              color: p == 'High'
-                                  ? Colors.red
-                                  : (p == 'Medium'
-                                        ? Colors.orange
-                                        : Colors.green),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(p),
-                          ],
-                        ),
-                      ),
                     );
                   }).toList(),
                 ),

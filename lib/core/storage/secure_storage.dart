@@ -5,7 +5,10 @@ import '../../../core/models/user.dart';
 
 class SecureStorage {
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: false),
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: false,
+      resetOnError: true,
+    ),
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
 
@@ -14,6 +17,16 @@ class SecureStorage {
   static const _deviceKey = 'device_id';
   static const _lastFcmTokenKey = 'last_fcm_token';
   static const _lastFcmSyncTimeKey = 'last_fcm_sync_time';
+  static const _chatConversationsCacheKey = 'chat_conversations_cache';
+  static const _chatMessagesCachePrefix = 'chat_messages_cache_';
+
+  static bool _isKeystoreError(Object error) {
+    final message = error.toString();
+    return message.contains('unwrap key failed') ||
+        message.contains('InvalidKeyException') ||
+        message.contains('Keystore') ||
+        message.contains('KeyStore');
+  }
 
   static Future<String> getDeviceId() async {
     try {
@@ -21,24 +34,39 @@ class SecureStorage {
       if (curId != null && curId.isNotEmpty) {
         return curId;
       }
-    } catch (_) {}
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
     final uuid = const Uuid().v4();
     try {
       await _storage.write(key: _deviceKey, value: uuid);
-    } catch (_) {}
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
     return uuid;
   }
 
   static Future<void> saveToken(String token) async {
     try {
       await _storage.write(key: _tokenKey, value: token);
-    } catch (_) {}
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
   }
 
   static Future<String?> getToken() async {
     try {
       return await _storage.read(key: _tokenKey);
-    } catch (_) {
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
       return null;
     }
   }
@@ -56,7 +84,11 @@ class SecureStorage {
     };
     try {
       await _storage.write(key: _userKey, value: jsonEncode(json));
-    } catch (_) {}
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
   }
 
   static Future<User?> getUser() async {
@@ -76,7 +108,10 @@ class SecureStorage {
         ..loginAt = map['loginAt'] != null
             ? DateTime.tryParse(map['loginAt'] as String)
             : null;
-    } catch (_) {
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
       return null;
     }
   }
@@ -94,7 +129,11 @@ class SecureStorage {
       await _storage.delete(key: _lastFcmSyncTimeKey);
       // CRITICAL: We DO NOT delete the device_id here.
       // This allows guest tasks to persist for this device.
-    } catch (_) {}
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
   }
 
   static Future<void> saveLastFcmToken(String? token) async {
@@ -104,28 +143,95 @@ class SecureStorage {
       } else {
         await _storage.write(key: _lastFcmTokenKey, value: token);
       }
-    } catch (_) {}
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
   }
 
   static Future<String?> getLastFcmToken() async {
     try {
       return await _storage.read(key: _lastFcmTokenKey);
-    } catch (_) {
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
       return null;
     }
   }
 
   static Future<void> saveLastFcmSyncTime(DateTime time) async {
     try {
-      await _storage.write(key: _lastFcmSyncTimeKey, value: time.toIso8601String());
-    } catch (_) {}
+      await _storage.write(
+        key: _lastFcmSyncTimeKey,
+        value: time.toIso8601String(),
+      );
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
   }
 
   static Future<DateTime?> getLastFcmSyncTime() async {
     try {
       final str = await _storage.read(key: _lastFcmSyncTimeKey);
       return str != null ? DateTime.tryParse(str) : null;
-    } catch (_) {
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+      return null;
+    }
+  }
+
+  static Future<void> saveChatConversationsCache(String value) async {
+    try {
+      await _storage.write(key: _chatConversationsCacheKey, value: value);
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
+  }
+
+  static Future<String?> getChatConversationsCache() async {
+    try {
+      return await _storage.read(key: _chatConversationsCacheKey);
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+      return null;
+    }
+  }
+
+  static Future<void> saveChatMessagesCache(
+    int conversationId,
+    String value,
+  ) async {
+    try {
+      await _storage.write(
+        key: '$_chatMessagesCachePrefix$conversationId',
+        value: value,
+      );
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
+  }
+
+  static Future<String?> getChatMessagesCache(int conversationId) async {
+    try {
+      return await _storage.read(
+        key: '$_chatMessagesCachePrefix$conversationId',
+      );
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
       return null;
     }
   }
@@ -133,6 +239,20 @@ class SecureStorage {
   static Future<void> clearAll() async {
     try {
       await _storage.deleteAll();
+    } catch (e) {
+      if (_isKeystoreError(e)) {
+        await recoverFromStorageError();
+      }
+    }
+  }
+
+  static Future<void> recoverFromStorageError() async {
+    try {
+      await _storage.deleteAll();
+    } catch (_) {}
+
+    try {
+      await _storage.write(key: _deviceKey, value: const Uuid().v4());
     } catch (_) {}
   }
 

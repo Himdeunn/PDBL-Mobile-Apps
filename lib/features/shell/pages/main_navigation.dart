@@ -1,10 +1,14 @@
 import 'dart:async';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/error_handler.dart';
+import '../../../../core/utils/navigator_service.dart';
 import '../../../../core/utils/notification_helper.dart';
 import '../../../../core/utils/widget_service.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../auth/services/auth_service.dart';
+import '../../chat/pages/chat_room_page.dart';
+import '../../chat/services/chat_service.dart';
 import '../widgets/bottom_navbar.dart';
 import '../../home/pages/home_page.dart';
 import '../../calendar/pages/calendar_page.dart';
@@ -18,7 +22,11 @@ import '../../../../core/widgets/update_dialog.dart';
 class MainNavigation extends StatefulWidget {
   final AuthService authService;
   final Uri? initialWidgetUri;
-  const MainNavigation({super.key, required this.authService, this.initialWidgetUri});
+  const MainNavigation({
+    super.key,
+    required this.authService,
+    this.initialWidgetUri,
+  });
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -36,12 +44,17 @@ class _MainNavigationState extends State<MainNavigation> {
   // Maps bar index → _pages index (index 2 / FAB handled separately)
   static int _pageIndex(int barIndex) {
     switch (barIndex) {
-      case 1:  return 1; // Calendar
-      case 3:  return 2; // Project Team
-      case 4:  return 3; // Profile
-      default: return 0; // Home
+      case 1:
+        return 1; // Calendar
+      case 3:
+        return 2; // Project Team
+      case 4:
+        return 3; // Profile
+      default:
+        return 0; // Home
     }
   }
+
   @override
   void initState() {
     super.initState();
@@ -88,8 +101,14 @@ class _MainNavigationState extends State<MainNavigation> {
   /// Maps FCM/local notification type to a bottom-bar index and switches tab.
   void _handleNotificationTap(Map<String, dynamic> data) {
     final type = (data['type'] as String? ?? '').toLowerCase();
+    final conversationId = int.tryParse(
+      (data['conversation_id'] ?? '').toString(),
+    );
     final int barIndex;
     switch (type) {
+      case 'chat':
+        barIndex = 3;
+        break;
       case 'invite':
       case 'kick':
       case 'ban':
@@ -105,7 +124,41 @@ class _MainNavigationState extends State<MainNavigation> {
       default:
         return; // Unknown type — don't navigate
     }
+    if (conversationId != null) {
+      _openChatNotification(conversationId);
+      return;
+    }
     _onNavTap(barIndex);
+  }
+
+  Future<void> _openChatNotification(int conversationId) async {
+    _onNavTap(3);
+    final currentUser = await widget.authService.getCachedUser();
+    if (!mounted || currentUser == null || currentUser.isGuest) return;
+
+    try {
+      final conversation = await ChatService().getConversation(conversationId);
+      if (!mounted) return;
+      if (conversation == null) {
+        ErrorHandler.showErrorPopup(
+          'Could not open this chat. Please try again.',
+        );
+        return;
+      }
+
+      await NotificationHelper.cancelChatNotification(conversation.id);
+      await NavigatorService.navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => ChatRoomPage(
+            conversation: conversation,
+            currentUser: currentUser,
+            authService: widget.authService,
+          ),
+        ),
+      );
+    } catch (error) {
+      ErrorHandler.handleApiError(error);
+    }
   }
 
   Future<void> _refreshTeamTasksFromServer() async {
@@ -136,9 +189,12 @@ class _MainNavigationState extends State<MainNavigation> {
     // maintenance OFF). Optional updates are already shown at app launch.
     if (RemoteConfigService.forceUpdateEnabled) {
       final packageInfo = await PackageInfo.fromPlatform();
-      final isBelowMin = RemoteConfigService.compareVersions(
-        packageInfo.version, RemoteConfigService.minVersion,
-      ) < 0;
+      final isBelowMin =
+          RemoteConfigService.compareVersions(
+            packageInfo.version,
+            RemoteConfigService.minVersion,
+          ) <
+          0;
       if (!mounted) return;
       if (isBelowMin) {
         await UpdateDialog.show(

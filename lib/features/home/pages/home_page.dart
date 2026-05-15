@@ -15,8 +15,11 @@ import '../widgets/week_strip.dart';
 import '../widgets/daily_task_list.dart';
 import '../../task/models/task_local.dart';
 import '../../task/pages/task_page.dart';
+import '../../task/pages/create_task_page.dart';
 import '../../task/services/task_repository.dart';
+import '../../task/widgets/priority_badge.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/notification_helper.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../profile/pages/notification_page.dart';
@@ -25,11 +28,7 @@ class HomePage extends StatefulWidget {
   final AuthService authService;
   final VoidCallback? onProfileClick;
 
-  const HomePage({
-    super.key,
-    required this.authService,
-    this.onProfileClick,
-  });
+  const HomePage({super.key, required this.authService, this.onProfileClick});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -37,18 +36,18 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   User? _user;
-  int _selectedDayIndex = 30;
+  int _selectedDayIndex = DateTime.now().day - 1;
   DateTime _selectedDate = DateTime.now();
   final TaskRepository _taskRepository = TaskRepository();
-  final _searchDebouncer = Debouncer(milliseconds: 300);
 
   Stream<List<TaskLocal>>? _tasksStream;
   bool _isLoading = true;
-  String _searchQuery = '';
-  bool _isOffline = false;
-  int _taskTab = 0; // 0 = Individu, 1 = Team
+  String _displayName = 'Guest';
+  int _taskTab = 0;
   int _prevTaskTab = 0;
+  bool _isOffline = false;
   StreamSubscription? _connectivitySubscription;
+  StreamSubscription<void>? _widgetDashboardSub;
   StreamSubscription<void>? _teamEventSubscription;
 
   @override
@@ -58,7 +57,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // Set user synchronously from in-memory cache so first frame shows correct data
     _user = widget.authService.currentCachedUser;
     _checkInitialConnection();
-    _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
+    _connectivitySubscription = ConnectionService().isConnectedStream.listen((
+      connected,
+    ) {
       if (mounted) {
         setState(() {
           _isOffline = !connected;
@@ -107,7 +108,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         if (user != null) _user = user;
         _isLoading = true;
-        _tasksStream = _taskRepository.watchTasksForDate(dateToLoad, userEmail);
+        _tasksStream = _taskRepository
+            .watchTasksForDate(dateToLoad, userEmail)
+            .asBroadcastStream();
       });
     }
 
@@ -117,21 +120,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     // fetchTasksFromServer respects a 2-minute cooldown unless force=true (pull-to-refresh)
-    _taskRepository.fetchTasksFromServer(userEmail, force: forceSync).then((_) {
-      if (mounted) setState(() => _isLoading = false);
-    }).catchError((_) {
-      if (mounted) setState(() => _isLoading = false);
-    });
+    _taskRepository
+        .fetchTasksFromServer(userEmail, force: forceSync)
+        .then((_) {
+          if (mounted) setState(() => _isLoading = false);
+        })
+        .catchError((_) {
+          if (mounted) setState(() => _isLoading = false);
+        });
   }
 
   void _onDaySelected(DateTime date) {
     final today = DateTime.now();
-    final start = DateTime(
-      today.year,
-      today.month,
-      today.day,
-    ).subtract(const Duration(days: 30));
-    final diff = date.difference(start).inDays;
+    final firstDay = DateTime(today.year, today.month, 1);
+    final diff = date.difference(firstDay).inDays;
 
     setState(() {
       _selectedDate = date;
@@ -148,7 +150,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           'Sign Out',
-          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         content: const Text(
           'Are you sure you want to sign out of your account?',
@@ -157,7 +162,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -209,7 +217,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     } else {
       await Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ProfilePage(authService: widget.authService)),
+        MaterialPageRoute(
+          builder: (_) => ProfilePage(authService: widget.authService),
+        ),
       );
       // Re-subscribe stream in case user changed, but don't force a server sync
       _loadData(_selectedDate, false);
@@ -225,11 +235,72 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _searchDebouncer.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
-    _teamEventSubscription?.cancel();
+    _widgetDashboardSub?.cancel();
     super.dispose();
+  }
+
+  void _showTaskDetail(TaskLocal task) {
+    final isTeam = task.teamId != null;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => HomeTaskDetailSheet(
+        task: task,
+        currentUserEmail: _user?.email ?? '',
+        onDelete: isTeam
+            ? null
+            : () async {
+                Navigator.pop(ctx);
+                // Delete logic
+                final bool? confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      backgroundColor: AppColors.surface,
+                      title: const Text('Delete Task'),
+                      content: const Text(
+                        'Are you sure you want to delete this task?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    );
+                  },
+                );
+                if (confirm == true) {
+                  await _taskRepository.deleteTask(task);
+                  ErrorHandler.showSuccessPopup('Task deleted successfully');
+                }
+              },
+        onEdit: isTeam
+            ? null
+            : () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CreateTaskPage(
+                      authService: widget.authService,
+                      task: task,
+                    ),
+                  ),
+                );
+              },
+      ),
+    );
   }
 
   @override
@@ -266,249 +337,275 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onProfileTap: _goToProfile,
             ),
             const SizedBox(height: 16),
-            WudiSearchBar(
-              onChanged: (value) {
-                _searchDebouncer.run(() {
-                  if (mounted) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            WeekStrip(
-              selectedIndex: _selectedDayIndex,
-              onDaySelected: _onDaySelected,
-            ),
-            const SizedBox(height: 32),
             StreamBuilder<List<TaskLocal>>(
               stream: _tasksStream,
               builder: (context, snapshot) {
                 final tasks = snapshot.data ?? [];
 
-                final filteredTasks = _searchQuery.isEmpty
-                    ? tasks
-                    : tasks.where((task) {
-                        return task.title.toLowerCase().contains(
-                              _searchQuery.toLowerCase(),
-                            ) ||
-                            (task.description?.toLowerCase().contains(
-                                  _searchQuery.toLowerCase(),
-                                ) ??
-                                false);
-                      }).toList();
-
-                int getWeight(String p) {
-                  switch (p.toLowerCase()) {
-                    case 'high': return 3;
-                    case 'medium': return 2;
-                    case 'low': return 1;
-                    default: return 0;
-                  }
-                }
-
-                List<TaskLocal> sortUncompleted(List<TaskLocal> list) {
-                  final sorted = list.where((t) => !t.isCompleted).toList();
-                  sorted.sort((a, b) {
-                    if (a.dueTime != null && b.dueTime != null) {
-                      final c = a.dueTime!.compareTo(b.dueTime!);
-                      if (c != 0) return c;
-                    } else if (a.dueTime != null) {
-                      return -1;
-                    } else if (b.dueTime != null) {
-                      return 1;
-                    }
-                    return getWeight(b.priority).compareTo(getWeight(a.priority));
-                  });
-                  return sorted;
-                }
-
-                final uncompletedPersonal = sortUncompleted(tasks.where((t) => t.teamId == null).toList());
-                final uncompletedTeam    = sortUncompleted(tasks.where((t) => t.teamId != null).toList());
-
-                // Focus Today: based on selected tab, auto-fallback to other if tab is empty
-                TaskLocal? focusTask;
-                if (_taskTab == 0) {
-                  focusTask = uncompletedPersonal.firstOrNull ?? uncompletedTeam.firstOrNull;
-                } else {
-                  focusTask = uncompletedTeam.firstOrNull ?? uncompletedPersonal.firstOrNull;
-                }
-
-                // Tab filter: individu = no teamId, team = has teamId
-final tabFilteredTasks = _taskTab == 0
-? filteredTasks.where((t) => t.teamId == null).toList()
-: filteredTasks.where((t) => t.teamId != null).toList();
-
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Focus Today',
-                      style: TextStyle(
-                        fontSize: MediaQuery.of(context).size.width > 400
-                            ? 18
-                            : 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
+                    WudiSearchBar(
+                      tasks: tasks,
+                      onSelected: (task) {
+                        _showTaskDetail(task);
+                      },
                     ),
-                    const SizedBox(height: 16),
-                    if (_isLoading && focusTask == null)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    else if (focusTask != null)
-                      _buildFocusCard(focusTask)
-                    else
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 24,
-                          horizontal: 16,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.black.withValues(alpha: 0.06),
-                          ),
-                        ),
-child: Center(
-child: Text(
-'No focus for today yet.',
-style: TextStyle(
-color: AppColors.textSecondary,
-fontSize: 14,
-),
-),
-                        ),
-                      ),
-const SizedBox(height: 32),
-                    // Today Task header + SEE ALL
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Today Task',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => TaskPage(
-                                authService: widget.authService,
-                                filterDate: _selectedDate,
+                    const SizedBox(height: 24),
+                    WeekStrip(
+                      selectedIndex: _selectedDayIndex,
+                      onDaySelected: _onDaySelected,
+                    ),
+                    const SizedBox(height: 32),
+                    Builder(
+                      builder: (context) {
+                        int getWeight(String p) {
+                          switch (p.toLowerCase()) {
+                            case 'high':
+                              return 3;
+                            case 'medium':
+                              return 2;
+                            case 'low':
+                              return 1;
+                            default:
+                              return 0;
+                          }
+                        }
+
+                        List<TaskLocal> sortUncompleted(List<TaskLocal> list) {
+                          final sorted = list
+                              .where((t) => !t.isCompleted)
+                              .toList();
+                          sorted.sort((a, b) {
+                            if (a.dueTime != null && b.dueTime != null) {
+                              final c = a.dueTime!.compareTo(b.dueTime!);
+                              if (c != 0) return c;
+                            } else if (a.dueTime != null) {
+                              return -1;
+                            } else if (b.dueTime != null) {
+                              return 1;
+                            }
+                            return getWeight(
+                              b.priority,
+                            ).compareTo(getWeight(a.priority));
+                          });
+                          return sorted;
+                        }
+
+                        final uncompletedPersonal = sortUncompleted(
+                          tasks.where((t) => t.teamId == null).toList(),
+                        );
+                        final uncompletedTeam = sortUncompleted(
+                          tasks.where((t) => t.teamId != null).toList(),
+                        );
+
+                        // Focus Today: based on selected tab, auto-fallback to other if tab is empty
+                        TaskLocal? focusTask;
+                        if (_taskTab == 0) {
+                          focusTask =
+                              uncompletedPersonal.firstOrNull ??
+                              uncompletedTeam.firstOrNull;
+                        } else {
+                          focusTask =
+                              uncompletedTeam.firstOrNull ??
+                              uncompletedPersonal.firstOrNull;
+                        }
+
+                        // Apply tab filter for DailyTaskList
+                        final tabFilteredTasks = _taskTab == 0
+                            ? tasks.where((t) => t.teamId == null).toList()
+                            : tasks.where((t) => t.teamId != null).toList();
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Focus Today',
+                              style: TextStyle(
+                                fontSize:
+                                    MediaQuery.of(context).size.width > 400
+                                    ? 18
+                                    : 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
                               ),
                             ),
-                          ),
-                          child: const Text(
-                            'SEE ALL',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Individu / Team tab — sliding pill
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        const double pillH = 38.0;
-                        const double padding = 4.0;
-                        final double pillW = (constraints.maxWidth - padding * 2) / 2;
-                        return Container(
-                          height: pillH + padding * 2,
-                          padding: const EdgeInsets.all(padding),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Stack(
-                            children: [
-                              // Sliding active pill
-                              AnimatedPositioned(
-                                duration: const Duration(milliseconds: 240),
-                                curve: Curves.easeInOut,
-                                left: _taskTab == 0 ? 0 : pillW,
-                                top: 0,
-                                bottom: 0,
-                                width: pillW,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary,
-                                    borderRadius: BorderRadius.circular(26),
+                            const SizedBox(height: 16),
+                            if (_isLoading && focusTask == null)
+                              const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 40),
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            else if (focusTask != null)
+                              _buildFocusCard(focusTask)
+                            else
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 24,
+                                  horizontal: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: Colors.black.withValues(alpha: 0.06),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'No focus for today yet.',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ),
                               ),
-                              // Labels
-                              Row(
-                                children: [
-                                  _buildTab('Individu', 0, pillW, pillH),
-                                  _buildTab('Team', 1, pillW, pillH),
-                                ],
+                            const SizedBox(height: 32),
+                            // Today Task header + SEE ALL
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Today Task',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => TaskPage(
+                                        authService: widget.authService,
+                                        filterDate: _selectedDate,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'SEE ALL',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            // Individu / Team tab — sliding pill
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                const double pillH = 38.0;
+                                const double padding = 4.0;
+                                final double pillW =
+                                    (constraints.maxWidth - padding * 2) / 2;
+                                return Container(
+                                  height: pillH + padding * 2,
+                                  padding: const EdgeInsets.all(padding),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      // Sliding active pill
+                                      AnimatedPositioned(
+                                        duration: const Duration(
+                                          milliseconds: 240,
+                                        ),
+                                        curve: Curves.easeInOut,
+                                        left: _taskTab == 0 ? 0 : pillW,
+                                        top: 0,
+                                        bottom: 0,
+                                        width: pillW,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary,
+                                            borderRadius: BorderRadius.circular(
+                                              26,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Labels
+                                      Row(
+                                        children: [
+                                          _buildTab(
+                                            'Individu',
+                                            0,
+                                            pillW,
+                                            pillH,
+                                          ),
+                                          _buildTab('Team', 1, pillW, pillH),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            ClipRect(
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 260),
+                                transitionBuilder: (child, animation) {
+                                  final isForward = _taskTab >= _prevTaskTab;
+                                  final begin = isForward
+                                      ? const Offset(1.0, 0.0)
+                                      : const Offset(-1.0, 0.0);
+                                  final slide =
+                                      Tween<Offset>(
+                                        begin: begin,
+                                        end: Offset.zero,
+                                      ).animate(
+                                        CurvedAnimation(
+                                          parent: animation,
+                                          curve: Curves.easeOutCubic,
+                                        ),
+                                      );
+                                  return SlideTransition(
+                                    position: slide,
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                layoutBuilder:
+                                    (currentChild, previousChildren) => Stack(
+                                      alignment: Alignment.topCenter,
+                                      children: [
+                                        ...previousChildren,
+                                        if (currentChild != null) currentChild,
+                                      ],
+                                    ),
+                                child: KeyedSubtree(
+                                  key: ValueKey<int>(_taskTab),
+                                  child: DailyTaskList(
+                                    tasks: tabFilteredTasks,
+                                    onRefresh: _loadData,
+                                    authService: widget.authService,
+                                    isLoading: _isLoading,
+                                    filterDate: _selectedDate,
+                                    isOffline: _isOffline,
+                                    showHeader: false,
+                                  ),
+                                ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
-                    ClipRect(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        transitionBuilder: (child, animation) {
-                          final isForward = _taskTab >= _prevTaskTab;
-                          final begin = isForward
-                              ? const Offset(1.0, 0.0)
-                              : const Offset(-1.0, 0.0);
-                          final slide = Tween<Offset>(
-                                  begin: begin, end: Offset.zero)
-                              .animate(CurvedAnimation(
-                                  parent: animation,
-                                  curve: Curves.easeOutCubic));
-                          return SlideTransition(
-                            position: slide,
-                            child: FadeTransition(
-                                opacity: animation, child: child),
-                          );
-                        },
-                        layoutBuilder: (currentChild, previousChildren) =>
-                            Stack(
-                          alignment: Alignment.topCenter,
-                          children: [
-                            ...previousChildren,
-                            if (currentChild != null) currentChild,
-                          ],
-                        ),
-                        child: KeyedSubtree(
-                          key: ValueKey<int>(_taskTab),
-                          child: DailyTaskList(
-                            tasks: tabFilteredTasks,
-                            onRefresh: _loadData,
-                            authService: widget.authService,
-                            isLoading: _isLoading,
-                            filterDate: _selectedDate,
-                            isOffline: _isOffline,
-                            showHeader: false,
-                          ),
-                        ),
-                      ),
-                    ),
-],
-);
+                  ],
+                );
               },
             ),
           ],
@@ -543,9 +640,6 @@ const SizedBox(height: 32),
   }
 
   Widget _buildFocusCard(TaskLocal task) {
-    final priorityColor = _getPriorityColor(task.priority);
-    final priorityBgColor = _getPriorityBgColor(task.priority);
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -566,25 +660,23 @@ const SizedBox(height: 32),
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: priorityBgColor,
-                  borderRadius: BorderRadius.circular(20),
+              TaskPriorityBadge(
+                priority: task.priority,
+                iconSize: 13,
+                fontSize: 11,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-                child: Text(
-                  _getPriorityLabel(task.priority),
-                  style: TextStyle(
-                    color: priorityColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                borderRadius: BorderRadius.circular(20),
               ),
               if (task.teamId != null) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE0E7FF),
                     borderRadius: BorderRadius.circular(20),
@@ -648,44 +740,4 @@ const SizedBox(height: 32),
       ),
     );
   }
-
-  String _getPriorityLabel(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return 'High Priority';
-      case 'medium':
-        return 'Medium Priority';
-      case 'low':
-        return 'Low Priority';
-      default:
-        return '${priority.substring(0, 1).toUpperCase()}${priority.substring(1)} Priority';
-    }
-  }
-
-  Color _getPriorityColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return const Color(0xFFE24B4A);
-      case 'medium':
-        return const Color(0xFFBA7517);
-      case 'low':
-        return const Color(0xFF3B6D11);
-      default:
-        return const Color(0xFF8E8E93);
-    }
-  }
-
-  Color _getPriorityBgColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return const Color(0xFFE24B4A).withValues(alpha: 0.25);
-      case 'medium':
-        return const Color(0xFFBA7517).withValues(alpha: 0.25);
-      case 'low':
-        return const Color(0xFF3B6D11).withValues(alpha: 0.15);
-      default:
-        return _getPriorityColor(priority).withValues(alpha: 0.15);
-    }
-  }
-
 }

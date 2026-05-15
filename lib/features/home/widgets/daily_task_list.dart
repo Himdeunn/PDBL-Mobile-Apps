@@ -5,6 +5,7 @@ import '../../task/models/task_local.dart';
 import '../../task/pages/task_page.dart';
 import '../../task/pages/create_task_page.dart';
 import '../../task/services/task_repository.dart';
+import '../../task/widgets/priority_badge.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/time_utils.dart';
 import 'dart:ui';
@@ -89,7 +90,7 @@ class _DailyTaskListState extends State<DailyTaskList> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _HomeTaskDetailSheet(
+      builder: (ctx) => HomeTaskDetailSheet(
         task: task,
         currentUserEmail: _currentUserEmail,
         onDelete: isTeam
@@ -156,8 +157,7 @@ class _DailyTaskListState extends State<DailyTaskList> {
               padding: EdgeInsets.symmetric(vertical: 20),
               child: Text(
                 'No tasks for today.',
-                style:
-                    TextStyle(color: AppColors.textTertiary, fontSize: 13),
+                style: TextStyle(color: AppColors.textTertiary, fontSize: 13),
               ),
             ),
           )
@@ -308,68 +308,52 @@ class _TaskItem extends StatefulWidget {
 class _TaskItemState extends State<_TaskItem> {
   late bool _localCompleted;
   bool _isToggling = false;
+  bool _teamCompletionLocked = false;
 
   @override
   void initState() {
     super.initState();
     _localCompleted = widget.task.isCompleted;
+    _teamCompletionLocked =
+        widget.task.teamId != null && widget.task.isCompleted;
   }
 
   @override
   void didUpdateWidget(_TaskItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_isToggling) _localCompleted = widget.task.isCompleted;
+    if (oldWidget.task.id != widget.task.id) {
+      _teamCompletionLocked =
+          widget.task.teamId != null && widget.task.isCompleted;
+    } else if (widget.task.teamId != null && widget.task.isCompleted) {
+      _teamCompletionLocked = true;
+    }
+    if (!_isToggling)
+      _localCompleted = _teamCompletionLocked || widget.task.isCompleted;
   }
 
   void _handleToggle() {
     if (_isToggling) return;
+    final isTeamTask = widget.task.teamId != null;
+    if (isTeamTask && _teamCompletionLocked) {
+      ErrorHandler.showErrorPopup(
+        'This team task is locked. Ask the team leader to reopen it from Team Task.',
+        title: 'Team Task Locked',
+      );
+      return;
+    }
     _isToggling = true;
-    setState(() => _localCompleted = !_localCompleted);
+    setState(() {
+      if (isTeamTask) {
+        _localCompleted = true;
+        _teamCompletionLocked = true;
+      } else {
+        _localCompleted = !_localCompleted;
+      }
+    });
     widget.onToggle();
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) _isToggling = false;
     });
-  }
-
-  Color _getPriorityColor() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'high':   return const Color(0xFFE24B4A);
-      case 'medium': return const Color(0xFFBA7517);
-      case 'low':    return const Color(0xFF3B6D11);
-      default:       return const Color(0xFF8E8E93);
-    }
-  }
-
-  Color _getPriorityBgColor() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'low':    return const Color(0xFF3B6D11).withValues(alpha: 0.15);
-      case 'medium': return const Color(0xFFBA7517).withValues(alpha: 0.25);
-      case 'high':   return const Color(0xFFE24B4A).withValues(alpha: 0.25);
-      default:       return _getPriorityColor().withValues(alpha: 0.15);
-    }
-  }
-
-  String _getPriorityLabel() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'high':   return 'High Priority';
-      case 'medium': return 'Medium';
-      case 'low':    return 'Low';
-      default:       return widget.task.priority;
-    }
-  }
-
-  Widget _buildPriorityIcon() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'high':
-        return Image.asset('assets/images/icon high priority.png',
-            width: 10, height: 10);
-      case 'low':
-        return Image.asset('assets/images/lowprio.png',
-            width: 10, height: 10);
-      default:
-        return Icon(Icons.priority_high_rounded,
-            size: 10, color: _getPriorityColor());
-    }
   }
 
   // Username chips: show "You" + other usernames (truncated), with +N overflow
@@ -386,13 +370,11 @@ class _TaskItemState extends State<_TaskItem> {
     // Build parallel username list, fall back to email-prefix if missing
     final usernames = rawUsernames.isNotEmpty
         ? rawUsernames
-            .split(',')
-            .map((u) => u.trim())
-            .where((u) => u.isNotEmpty)
-            .toList()
-        : emails
-            .map((e) => e.contains('@') ? e.split('@').first : e)
-            .toList();
+              .split(',')
+              .map((u) => u.trim())
+              .where((u) => u.isNotEmpty)
+              .toList()
+        : emails.map((e) => e.contains('@') ? e.split('@').first : e).toList();
 
     final me = widget.currentUserEmail.toLowerCase().trim();
     final bool hasMe = emails.any((e) => e.toLowerCase().trim() == me);
@@ -440,7 +422,11 @@ class _TaskItemState extends State<_TaskItem> {
     );
   }
 
-  void _showAllMembers(List<String> emails, List<String> usernames, String meEmail) {
+  void _showAllMembers(
+    List<String> emails,
+    List<String> usernames,
+    String meEmail,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -457,8 +443,11 @@ class _TaskItemState extends State<_TaskItem> {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  const Icon(Icons.person_outline,
-                      size: 16, color: AppColors.textSecondary),
+                  const Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -485,12 +474,15 @@ class _TaskItemState extends State<_TaskItem> {
   Widget build(BuildContext context) {
     final isTeam = widget.task.teamId != null;
     // Compute leaderChecked from persisted fields (leaderChecked field is @ignore)
-    final bool leaderChecked = isTeam &&
+    final bool leaderChecked =
+        isTeam &&
         widget.task.isCompleted &&
         widget.currentUserEmail.isNotEmpty &&
         !(widget.task.completedBy ?? '')
             .split(',')
-            .any((e) => e.trim() == widget.currentUserEmail.toLowerCase().trim());
+            .any(
+              (e) => e.trim() == widget.currentUserEmail.toLowerCase().trim(),
+            );
     return AbsorbPointer(
       absorbing: isTeam && widget.isOffline,
       child: GestureDetector(
@@ -542,13 +534,15 @@ class _TaskItemState extends State<_TaskItem> {
                           ),
                           color: _localCompleted
                               ? (leaderChecked
-                                  ? const Color(0xFF6A5ACD)
-                                  : AppColors.calendarSelected)
+                                    ? const Color(0xFF6A5ACD)
+                                    : AppColors.calendarSelected)
                               : Colors.transparent,
                         ),
                         child: _localCompleted
                             ? Icon(
-                                (isTeam && widget.task.isCompleted && !leaderChecked)
+                                (isTeam &&
+                                        widget.task.isCompleted &&
+                                        !leaderChecked)
                                     ? Icons.lock_rounded
                                     : Icons.check,
                                 color: Colors.white,
@@ -601,29 +595,13 @@ class _TaskItemState extends State<_TaskItem> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Priority badge
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getPriorityBgColor(),
-                      borderRadius: BorderRadius.circular(20),
+                  TaskPriorityBadge(
+                    priority: widget.task.priority,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildPriorityIcon(),
-                        const SizedBox(width: 4),
-                        Text(
-                          _getPriorityLabel(),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: _getPriorityColor(),
-                          ),
-                        ),
-                      ],
-                    ),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                 ],
               ),
@@ -639,7 +617,9 @@ class _TaskItemState extends State<_TaskItem> {
                       child: Center(
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(12),
@@ -647,8 +627,11 @@ class _TaskItemState extends State<_TaskItem> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.wifi_off,
-                                  color: Colors.white, size: 14),
+                              Icon(
+                                Icons.wifi_off,
+                                color: Colors.white,
+                                size: 14,
+                              ),
                               SizedBox(width: 8),
                               Text(
                                 "Connection Required",
@@ -753,45 +736,18 @@ class _LeaderCheckedTag extends StatelessWidget {
 
 // ─── Home Task Detail Sheet ───────────────────────────────────────────────────
 
-class _HomeTaskDetailSheet extends StatelessWidget {
+class HomeTaskDetailSheet extends StatelessWidget {
   final TaskLocal task;
   final String currentUserEmail;
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
 
-  const _HomeTaskDetailSheet({
+  const HomeTaskDetailSheet({
     required this.task,
     required this.currentUserEmail,
     this.onDelete,
     this.onEdit,
   });
-
-  Color _priorityColor() {
-    switch (task.priority.toLowerCase()) {
-      case 'high':   return Colors.red;
-      case 'medium': return Colors.orange;
-      case 'low':    return Colors.green;
-      default:       return Colors.grey;
-    }
-  }
-
-  Color _priorityBg() {
-    switch (task.priority.toLowerCase()) {
-      case 'high':   return Colors.red[50]!;
-      case 'medium': return Colors.orange[50]!;
-      case 'low':    return Colors.green[50]!;
-      default:       return Colors.grey[50]!;
-    }
-  }
-
-  String _priorityLabel() {
-    switch (task.priority.toLowerCase()) {
-      case 'high':   return 'High Priority';
-      case 'medium': return 'Medium';
-      case 'low':    return 'Low';
-      default:       return task.priority;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -799,7 +755,8 @@ class _HomeTaskDetailSheet extends StatelessWidget {
         ? AppTimeUtils.formatTo24h(task.dueTime!)
         : 'No time set';
 
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom +
+    final bottomInset =
+        MediaQuery.of(context).viewInsets.bottom +
         MediaQuery.of(context).viewPadding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomInset),
@@ -835,30 +792,12 @@ class _HomeTaskDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Priority badge
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: _priorityBg(),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.error_rounded,
-                    size: 14, color: _priorityColor()),
-                const SizedBox(width: 6),
-                Text(
-                  _priorityLabel(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: _priorityColor(),
-                  ),
-                ),
-              ],
-            ),
+          TaskPriorityBadge(
+            priority: task.priority,
+            iconSize: 14,
+            fontSize: 12,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            borderRadius: BorderRadius.circular(20),
           ),
           const SizedBox(height: 20),
 
@@ -871,8 +810,11 @@ class _HomeTaskDetailSheet extends StatelessWidget {
                   color: Colors.grey[100],
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.access_time_rounded,
-                    size: 18, color: AppColors.textSecondary),
+                child: const Icon(
+                  Icons.access_time_rounded,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
               ),
               const SizedBox(width: 12),
               Column(
@@ -901,7 +843,8 @@ class _HomeTaskDetailSheet extends StatelessWidget {
           ),
 
           // Assigned members (team tasks) — show username (email-prefix fallback)
-          if (task.teamId != null && (task.assignedEmails ?? '').isNotEmpty) ...[
+          if (task.teamId != null &&
+              (task.assignedEmails ?? '').isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
               'Assigned To',
@@ -913,35 +856,37 @@ class _HomeTaskDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Builder(builder: (context) {
-              final emails = task.assignedEmails!
-                  .split(',')
-                  .map((e) => e.trim())
-                  .where((e) => e.isNotEmpty)
-                  .toList();
-              final rawUsernames = task.assignedUsernames ?? '';
-              final usernames = rawUsernames.isNotEmpty
-                  ? rawUsernames.split(',').map((u) => u.trim()).toList()
-                  : emails
-                      .map((e) => e.contains('@') ? e.split('@').first : e)
-                      .toList();
-              return Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: List.generate(emails.length, (i) {
-                  final email = emails[i];
-                  final name = i < usernames.length ? usernames[i] : email;
-                  final isMe = email.toLowerCase().trim() ==
-                      currentUserEmail.toLowerCase().trim();
-                  return _MemberChip(label: isMe ? 'You' : name, isMe: isMe);
-                }),
-              );
-            }),
+            Builder(
+              builder: (context) {
+                final emails = task.assignedEmails!
+                    .split(',')
+                    .map((e) => e.trim())
+                    .where((e) => e.isNotEmpty)
+                    .toList();
+                final rawUsernames = task.assignedUsernames ?? '';
+                final usernames = rawUsernames.isNotEmpty
+                    ? rawUsernames.split(',').map((u) => u.trim()).toList()
+                    : emails
+                          .map((e) => e.contains('@') ? e.split('@').first : e)
+                          .toList();
+                return Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: List.generate(emails.length, (i) {
+                    final email = emails[i];
+                    final name = i < usernames.length ? usernames[i] : email;
+                    final isMe =
+                        email.toLowerCase().trim() ==
+                        currentUserEmail.toLowerCase().trim();
+                    return _MemberChip(label: isMe ? 'You' : name, isMe: isMe);
+                  }),
+                );
+              },
+            ),
           ],
 
           // Description
-          if (task.description != null &&
-              task.description!.isNotEmpty) ...[
+          if (task.description != null && task.description!.isNotEmpty) ...[
             const SizedBox(height: 20),
             Text(
               'Description',
@@ -986,7 +931,8 @@ class _HomeTaskDetailSheet extends StatelessWidget {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                 ),
@@ -1001,7 +947,8 @@ class _HomeTaskDetailSheet extends StatelessWidget {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                 ),

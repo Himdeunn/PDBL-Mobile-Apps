@@ -52,6 +52,33 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     }
   }
 
+  Future<void> _syncMemberTasks() async {
+    if (widget.isOffline) return;
+
+    final rawData = await TeamService().getTeamDetails(widget.teamId);
+    if (rawData is! Map) return;
+
+    final tasksPart = rawData['tasks'];
+    final List<dynamic> tasks = tasksPart is List
+        ? tasksPart
+        : (tasksPart is Map ? tasksPart.values.toList() : []);
+    final String memberEmail =
+        (widget.member['email'] as String?)?.toLowerCase().trim() ?? '';
+
+    final memberTasks = tasks.where((task) {
+      final assignedEmails =
+          (task['assigned_emails'] as List<dynamic>?)?.cast<String>() ?? [];
+      return memberEmail.isNotEmpty &&
+          assignedEmails.any(
+            (email) => email.toLowerCase().trim() == memberEmail,
+          );
+    }).toList();
+
+    if (mounted) {
+      setState(() => _localTasks = memberTasks);
+    }
+  }
+
   void _showTaskDetail(dynamic task) {
     showModalBottomSheet(
       context: context,
@@ -79,8 +106,8 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
       final List<String> completedBy = completedByRaw is List
           ? completedByRaw.cast<String>()
           : (completedByRaw is Map
-              ? completedByRaw.values.cast<String>().toList()
-              : []);
+                ? completedByRaw.values.cast<String>().toList()
+                : []);
       return completedBy.any((e) => e.toLowerCase().trim() == memberEmail);
     }).length;
 
@@ -116,22 +143,34 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-              CircleAvatar(
-                radius: 60,
-                backgroundColor: const Color(0xFFF1E6D2),
-                backgroundImage:
-                    widget.member['avatar_url'] != null || (widget.member['avatar'] != null && widget.member['avatar'].toString().isNotEmpty)
-                    ? CachedNetworkImageProvider(
-                        ImageUtils.getAvatarUrl(widget.member['avatar_url'] ?? widget.member['avatar']),
-                        headers: getNetworkImageHeaders(ImageUtils.getAvatarUrl(widget.member['avatar_url'] ?? widget.member['avatar'])),
-                        cacheManager: WudiCacheManager(),
-                      )
-                    : null,
-                child:
-                    (widget.member['avatar_url'] == null && widget.member['avatar'] == null) ||
-                        (widget.member['avatar_url'] == null && widget.member['avatar'].toString().isEmpty)
-                    ? const Icon(Icons.person, size: 60, color: Colors.grey)
-                    : null,
+              Container(
+                width: 120,
+                height: 120,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFFF1E6D2),
+                ),
+                child: ClipOval(
+                  child: widget.member['avatar_url'] != null ||
+                          (widget.member['avatar'] != null &&
+                              widget.member['avatar'].toString().isNotEmpty)
+                      ? CachedNetworkImage(
+                          imageUrl: ImageUtils.getAvatarUrl(
+                            widget.member['avatar_url'] ??
+                                widget.member['avatar'],
+                          ),
+                          fit: BoxFit.cover,
+                          httpHeaders: getNetworkImageHeaders(
+                            ImageUtils.getAvatarUrl(
+                              widget.member['avatar_url'] ??
+                                  widget.member['avatar'],
+                            ),
+                          ),
+                          cacheManager: WudiCacheManager(),
+                          errorWidget: (_, __, ___) => const Icon(Icons.person, size: 60, color: Colors.grey),
+                        )
+                      : const Icon(Icons.person, size: 60, color: Colors.grey),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
@@ -191,6 +230,7 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
                     task: t,
                     onTap: () => _showTaskDetail(t),
                     isOwner: widget.isOwner,
+                    memberEmail: memberEmail,
                     currentUserEmail: widget.currentUserEmail,
                     isOffline: widget.isOffline,
                     onToggle: () async {
@@ -199,65 +239,140 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
                       if (taskIndex == -1) return;
 
                       final List<String> assignedEmails =
-                          (t['assigned_emails'] as List<dynamic>?)?.cast<String>() ?? [];
-                      final String? currentUserEmailNormalized =
-                          widget.currentUserEmail?.toLowerCase().trim();
+                          (t['assigned_emails'] as List<dynamic>?)
+                              ?.cast<String>() ??
+                          [];
+                      final String? currentUserEmailNormalized = widget
+                          .currentUserEmail
+                          ?.toLowerCase()
+                          .trim();
+                      final bool isOwnMemberDetail =
+                          currentUserEmailNormalized != null &&
+                          currentUserEmailNormalized == memberEmail;
+
+                      if (!widget.isOwner && !isOwnMemberDetail) {
+                        ErrorHandler.showErrorPopup(
+                          'You can only check tasks from your own member detail or the team task list',
+                        );
+                        return;
+                      }
 
                       // Block non-owner from toggling a fully completed task
                       if (t['is_completed'] == true && !widget.isOwner) {
-                        ErrorHandler.showErrorPopup('Task has been completed by the leader and cannot be modified');
+                        ErrorHandler.showErrorPopup(
+                          'Task has been completed by the leader and cannot be modified',
+                        );
                         return;
                       }
 
                       setState(() {
-                        final task = Map<String, dynamic>.from(_localTasks[taskIndex]);
+                        final task = Map<String, dynamic>.from(
+                          _localTasks[taskIndex],
+                        );
+                        final detailMemberEmail = memberEmail;
 
                         if (widget.isOwner) {
-                          // From member detail, owner always force-toggles all assigned
-                          final bool currentlyDone = task['is_completed'] == true;
-                          if (currentlyDone) {
-                            task['completed_by'] = [];
-                            task['is_completed'] = false;
+                          // From member detail, owner toggles only this viewed member.
+                          final dynamic completedByRaw = task['completed_by'];
+                          final List<String> completedBy =
+                              completedByRaw is List
+                              ? List<String>.from(completedByRaw)
+                              : (completedByRaw is Map
+                                    ? List<String>.from(completedByRaw.values)
+                                    : []);
+                          if (completedBy.any(
+                            (e) => e.toLowerCase().trim() == detailMemberEmail,
+                          )) {
+                            completedBy.removeWhere(
+                              (e) =>
+                                  e.toLowerCase().trim() == detailMemberEmail,
+                            );
                           } else {
-                            task['completed_by'] = List<String>.from(assignedEmails);
-                            task['is_completed'] = true;
+                            completedBy.add(detailMemberEmail);
                           }
+                          task['completed_by'] = completedBy;
+                          final int totalAssigned = assignedEmails.isNotEmpty
+                              ? assignedEmails.length
+                              : 1;
+                          task['is_completed'] =
+                              completedBy
+                                  .where(
+                                    (e) => assignedEmails.any(
+                                      (a) =>
+                                          a.toLowerCase().trim() ==
+                                          e.toLowerCase().trim(),
+                                    ),
+                                  )
+                                  .length >=
+                              totalAssigned;
                         } else {
                           // Regular member toggles own entry only
                           final dynamic completedByRaw = task['completed_by'];
-                          final List<String> completedBy = completedByRaw is List
+                          final List<String> completedBy =
+                              completedByRaw is List
                               ? List<String>.from(completedByRaw)
                               : (completedByRaw is Map
-                                  ? List<String>.from(completedByRaw.values)
-                                  : []);
+                                    ? List<String>.from(completedByRaw.values)
+                                    : []);
                           if (currentUserEmailNormalized != null) {
-                            if (completedBy.any((e) =>
-                                e.toLowerCase().trim() == currentUserEmailNormalized)) {
-                              completedBy.removeWhere((e) =>
-                                  e.toLowerCase().trim() == currentUserEmailNormalized);
+                            if (completedBy.any(
+                              (e) =>
+                                  e.toLowerCase().trim() ==
+                                  currentUserEmailNormalized,
+                            )) {
+                              completedBy.removeWhere(
+                                (e) =>
+                                    e.toLowerCase().trim() ==
+                                    currentUserEmailNormalized,
+                              );
                             } else {
                               completedBy.add(widget.currentUserEmail!);
                             }
                           }
                           task['completed_by'] = completedBy;
-                          final int totalAssigned =
-                              assignedEmails.isNotEmpty ? assignedEmails.length : 1;
-                          task['is_completed'] = completedBy.where((e) =>
-                            assignedEmails.any((a) =>
-                                a.toLowerCase().trim() == e.toLowerCase().trim())
-                          ).length >= totalAssigned;
+                          final int totalAssigned = assignedEmails.isNotEmpty
+                              ? assignedEmails.length
+                              : 1;
+                          task['is_completed'] =
+                              completedBy
+                                  .where(
+                                    (e) => assignedEmails.any(
+                                      (a) =>
+                                          a.toLowerCase().trim() ==
+                                          e.toLowerCase().trim(),
+                                    ),
+                                  )
+                                  .length >=
+                              totalAssigned;
                         }
 
                         _localTasks[taskIndex] = task;
                       });
 
                       try {
-                        await TeamService().toggleMemberTaskStatus(
-                          t['id'],
-                          force: widget.isOwner,
-                        );
+                        final response = await TeamService()
+                            .toggleMemberTaskStatus(
+                              t['id'],
+                              targetEmail: widget.isOwner ? memberEmail : null,
+                            );
+                        final updatedTask = response['todo'];
+                        if (updatedTask is Map && mounted) {
+                          setState(() {
+                            final index = _localTasks.indexWhere(
+                              (localTask) =>
+                                  localTask['id'] == updatedTask['id'],
+                            );
+                            if (index != -1) {
+                              _localTasks[index] = Map<String, dynamic>.from(
+                                updatedTask,
+                              );
+                            }
+                          });
+                        }
+                        await _syncMemberTasks();
                         widget.onToggle?.call();
                       } catch (e) {
+                        await _syncMemberTasks();
                         widget.onToggle?.call();
                         ErrorHandler.handleApiError(e);
                       }
@@ -276,6 +391,7 @@ class _MemberTaskCard extends StatefulWidget {
   final dynamic task;
   final VoidCallback onTap;
   final bool isOwner;
+  final String memberEmail;
   final String? currentUserEmail;
   final bool isOffline;
   final VoidCallback? onToggle;
@@ -284,6 +400,7 @@ class _MemberTaskCard extends StatefulWidget {
     required this.task,
     required this.onTap,
     required this.isOwner,
+    required this.memberEmail,
     this.currentUserEmail,
     required this.isOffline,
     this.onToggle,
@@ -316,36 +433,70 @@ class _MemberTaskCardState extends State<_MemberTaskCard> {
     final dynamic assignedRaw = widget.task['assigned_emails'];
     final List<String> assignedEmails = assignedRaw is List
         ? assignedRaw.cast<String>()
-        : (assignedRaw is Map ? assignedRaw.values.cast<String>().toList() : []);
+        : (assignedRaw is Map
+              ? assignedRaw.values.cast<String>().toList()
+              : []);
 
     final dynamic completedByRaw = widget.task['completed_by'];
     final List<String> completedBy = completedByRaw is List
         ? completedByRaw.cast<String>()
-        : (completedByRaw is Map ? completedByRaw.values.cast<String>().toList() : []);
+        : (completedByRaw is Map
+              ? completedByRaw.values.cast<String>().toList()
+              : []);
 
-    final int totalAssigned = assignedEmails.isNotEmpty ? assignedEmails.length : 1;
+    final int totalAssigned = assignedEmails.isNotEmpty
+        ? assignedEmails.length
+        : 1;
     final int totalCompleted = isCompleted
         ? totalAssigned
-        : completedBy.where((e) =>
-            assignedEmails.any((a) => a.toLowerCase().trim() == e.toLowerCase().trim())).length;
-    final double progress = totalAssigned > 0 ? totalCompleted / totalAssigned : 0;
+        : completedBy
+              .where(
+                (e) => assignedEmails.any(
+                  (a) => a.toLowerCase().trim() == e.toLowerCase().trim(),
+                ),
+              )
+              .length;
+    final double progress = totalAssigned > 0
+        ? totalCompleted / totalAssigned
+        : 0;
 
-    final bool currentUserChecked = isCompleted || (widget.currentUserEmail != null &&
-        completedBy.any((e) => e.toLowerCase().trim() == widget.currentUserEmail!.toLowerCase().trim()));
-    
+    final bool detailMemberChecked =
+        isCompleted ||
+        completedBy.any((e) => e.toLowerCase().trim() == widget.memberEmail);
+
     final String? emailNorm = widget.currentUserEmail?.toLowerCase().trim();
-    final bool canToggle = widget.isOwner ||
-        (emailNorm != null && assignedEmails.any((e) => e.toLowerCase().trim() == emailNorm));
+    final bool isOwnMemberDetail =
+        emailNorm != null && emailNorm == widget.memberEmail;
+    final bool canToggle =
+        widget.isOwner ||
+        (isOwnMemberDetail &&
+            assignedEmails.any((e) => e.toLowerCase().trim() == emailNorm));
     final bool checkboxLocked = isCompleted && !widget.isOwner;
 
     // Format time display
     String timeDisplay = '';
     if (dueDate != null) {
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       final dateStr = '${dueDate.day} ${months[dueDate.month - 1]}';
-      final timeStr = AppTimeUtils.formatTo24h(widget.task['due_time']) != '--:--'
+      final timeStr =
+          AppTimeUtils.formatTo24h(widget.task['due_time']) != '--:--'
           ? AppTimeUtils.formatTo24h(widget.task['due_time'])
-          : AppTimeUtils.extractTimeFromDeadline(widget.task['deadline']?.toString());
+          : AppTimeUtils.extractTimeFromDeadline(
+              widget.task['deadline']?.toString(),
+            );
       timeDisplay = '$dateStr | $timeStr';
     }
 
@@ -377,13 +528,17 @@ class _MemberTaskCardState extends State<_MemberTaskCard> {
                     onTap: () {
                       if (widget.isOffline) return;
                       if (checkboxLocked) {
-                        ErrorHandler.showErrorPopup('Task has been completed and cannot be modified');
+                        ErrorHandler.showErrorPopup(
+                          'Task has been completed and cannot be modified',
+                        );
                         return;
                       }
                       if (canToggle) {
                         _handleToggle();
                       } else {
-                        ErrorHandler.showErrorPopup('Only the owner or assigned member can toggle this task');
+                        ErrorHandler.showErrorPopup(
+                          'Only the owner or assigned member can toggle this task',
+                        );
                       }
                     },
                     child: Container(
@@ -393,12 +548,18 @@ class _MemberTaskCardState extends State<_MemberTaskCard> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: currentUserChecked ? Colors.black87 : Colors.black38,
+                          color: detailMemberChecked
+                              ? Colors.black87
+                              : Colors.black38,
                           width: 1.8,
                         ),
                       ),
-                      child: currentUserChecked
-                          ? const Icon(Icons.check, size: 14, color: Colors.black87)
+                      child: detailMemberChecked
+                          ? const Icon(
+                              Icons.check,
+                              size: 14,
+                              color: Colors.black87,
+                            )
                           : null,
                     ),
                   ),
@@ -424,7 +585,10 @@ class _MemberTaskCardState extends State<_MemberTaskCard> {
                         if (timeDisplay.isNotEmpty) ...[
                           RichText(
                             text: TextSpan(
-                              style: const TextStyle(fontSize: 13, color: Colors.black54),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.black54,
+                              ),
                               children: [
                                 const TextSpan(
                                   text: 'Time : ',
@@ -475,7 +639,10 @@ class _MemberTaskCardState extends State<_MemberTaskCard> {
                     color: Colors.white.withValues(alpha: 0.1),
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(12),
@@ -485,7 +652,14 @@ class _MemberTaskCardState extends State<_MemberTaskCard> {
                           children: [
                             Icon(Icons.wifi_off, color: Colors.white, size: 14),
                             SizedBox(width: 8),
-                            Text("Offline", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                            Text(
+                              "Offline",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -525,13 +699,23 @@ class _MemberTaskCardState extends State<_MemberTaskCard> {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 10, color: textColor),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textColor)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
         ],
       ),
     );
@@ -789,7 +973,9 @@ Color _getPriorityColor(String priority) {
 Color _getPriorityBgColor(String priority) {
   switch (priority.toLowerCase()) {
     case 'medium':
-      return const Color(0xFFD4EA0C).withValues(alpha: 0.15); // Light Yellow/Lime Tint
+      return const Color(
+        0xFFD4EA0C,
+      ).withValues(alpha: 0.15); // Light Yellow/Lime Tint
     default:
       return _getPriorityColor(priority).withValues(alpha: 0.15);
   }

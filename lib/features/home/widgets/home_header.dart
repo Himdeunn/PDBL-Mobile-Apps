@@ -64,13 +64,24 @@ class HomeHeader extends StatelessWidget {
         // Avatar Profile
         GestureDetector(
           onTap: onProfileTap,
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor: AppColors.surface,
-            backgroundImage: avatarUrl != null ? CachedNetworkImageProvider(avatarUrl!, headers: getNetworkImageHeaders(avatarUrl!), cacheManager: WudiCacheManager()) : null,
-            child: avatarUrl == null 
-                ? const Icon(Icons.person, color: AppColors.primary) 
-                : null,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surface,
+            ),
+            child: ClipOval(
+              child: avatarUrl != null 
+                  ? CachedNetworkImage(
+                      imageUrl: avatarUrl!,
+                      fit: BoxFit.cover,
+                      cacheManager: WudiCacheManager(),
+                      httpHeaders: getNetworkImageHeaders(avatarUrl!),
+                      errorWidget: (_, __, ___) => const Icon(Icons.person, color: AppColors.primary),
+                    )
+                  : const Icon(Icons.person, color: AppColors.primary),
+            ),
           ),
         ),
       ],

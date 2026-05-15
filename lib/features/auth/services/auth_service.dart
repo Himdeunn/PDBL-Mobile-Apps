@@ -1,4 +1,7 @@
 // lib/features/auth/services/auth_service.dart
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:dio/dio.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -32,7 +35,10 @@ class AuthService {
     _cachedUser ??= await SecureStorage.getUser();
 
     // 3. If force refresh or no user at all, fetch from API
-    if (forceRefresh || (_cachedUser != null && !_cachedUser!.isGuest && _cachedUser!.loginAt == null)) {
+    if (forceRefresh ||
+        (_cachedUser != null &&
+            !_cachedUser!.isGuest &&
+            _cachedUser!.loginAt == null)) {
       await refreshUser();
     } else if (_cachedUser != null && !_cachedUser!.isGuest) {
       // Just background sync if we have a basic user object
@@ -60,22 +66,28 @@ class AuthService {
       final response = await _api.get('user');
       final userData = response.data;
       if (userData != null && userData['id'] != null) {
+        await _signInToFirebase(userData['firebase_custom_token'] as String?);
+
         final existingUser = _cachedUser ?? User();
         existingUser.id = userData['id'] as int?;
         existingUser.name = userData['name'] as String? ?? existingUser.name;
         existingUser.email = userData['email'] as String? ?? existingUser.email;
-        existingUser.avatar = userData['avatar_url'] as String? ?? existingUser.avatar;
-        existingUser.avatarUrl = (userData['avatar_url'] as String?) ?? existingUser.avatarUrl;
-        existingUser.todayTarget = (userData['today_target'] as num?)?.toInt() ?? existingUser.todayTarget;
+        existingUser.avatar =
+            userData['avatar_url'] as String? ?? existingUser.avatar;
+        existingUser.avatarUrl =
+            (userData['avatar_url'] as String?) ?? existingUser.avatarUrl;
+        existingUser.todayTarget =
+            (userData['today_target'] as num?)?.toInt() ??
+            existingUser.todayTarget;
         existingUser.emailVerifiedAt = userData['email_verified_at'] != null
             ? DateTime.tryParse(userData['email_verified_at'] as String)
             : null;
         existingUser.googleId = userData['google_id'] as String?;
         existingUser.isGuest = false;
-        
+
         _cachedUser = existingUser;
         await SecureStorage.saveUser(existingUser);
-        
+
         // Background sync-up FCM Token if logged in
         syncFcmToken();
       }
@@ -136,10 +148,14 @@ class AuthService {
 
   Future<User> _handleAuthSuccess(Map<String, dynamic> data) async {
     final token = data['token'] as String?;
+    final firebaseCustomToken = data['firebase_custom_token'] as String?;
     final userData = data['user'] as Map<String, dynamic>?;
 
     // Detect if we were previously in Guest Mode to trigger migration
-    final wasGuest = _cachedUser?.isGuest ?? (await SecureStorage.getUser())?.isGuest ?? false;
+    final wasGuest =
+        _cachedUser?.isGuest ??
+        (await SecureStorage.getUser())?.isGuest ??
+        false;
 
     final user = User()
       ..id = userData?['id'] as int?
@@ -156,28 +172,36 @@ class AuthService {
 
     // Save token first so migration sync can use it
     if (token == null || token.isEmpty) {
-      throw Exception('Failed to obtain access session from server. (Token is empty)');
+      throw Exception(
+        'Failed to obtain access session from server. (Token is empty)',
+      );
     }
-    
+
     await SecureStorage.saveToken(token);
-    
+
+    await _signInToFirebase(firebaseCustomToken);
+
     _cachedUser = user;
     await SecureStorage.saveUser(user);
 
-    // Sync FCM Token with the backend
-    await syncFcmToken();
-    
+    // Sync FCM Token with the backend without blocking login/navigation.
+    unawaited(syncFcmToken());
+
     // Check if we need to sync local tasks to server
     if (wasGuest && user.email != null) {
-      try {
-        final taskRepo = TaskRepository();
-        await taskRepo.migrateGuestTasksToUser(user.email!);
-      } catch (e) {
-        // Migration failed
-      }
+      unawaited(_migrateGuestTasks(user.email!));
     }
 
     return user;
+  }
+
+  Future<void> _migrateGuestTasks(String email) async {
+    try {
+      final taskRepo = TaskRepository();
+      await taskRepo.migrateGuestTasksToUser(email);
+    } catch (e) {
+      // Migration failed
+    }
   }
 
   Future<User> enterGuestMode() async {
@@ -194,6 +218,11 @@ class AuthService {
 
   Future<void> logout() async {
     await SecureStorage.clearAll();
+    try {
+      await firebase_auth.FirebaseAuth.instance.signOut();
+    } catch (_) {
+      // Ignore if Firebase Auth is not initialized or already signed out
+    }
     try {
       await GoogleSignIn().signOut();
     } catch (_) {
@@ -228,7 +257,7 @@ class AuthService {
         // Token still valid (< 21 days), just couldn't refresh — continue
       }
     }
-    
+
     return true;
   }
 
@@ -242,9 +271,13 @@ class AuthService {
   Future<void> refreshToken() async {
     final response = await _api.post('refresh');
     final newToken = response.data['token'] as String?;
+    final firebaseCustomToken =
+        response.data['firebase_custom_token'] as String?;
     if (newToken != null && newToken.isNotEmpty) {
       await SecureStorage.saveToken(newToken);
-      
+
+      await _signInToFirebase(firebaseCustomToken);
+
       // Update loginAt to reset the day counter
       if (_cachedUser != null) {
         _cachedUser!.loginAt = DateTime.now();
@@ -267,12 +300,17 @@ class AuthService {
       final lastSync = await SecureStorage.getLastFcmSyncTime();
       final now = DateTime.now();
 
-      if (token == lastToken && lastSync != null && now.difference(lastSync).inHours < 4) {
+      if (token == lastToken &&
+          lastSync != null &&
+          now.difference(lastSync).inHours < 4) {
         // Already synced recently with the same token
         return;
       }
 
-      final response = await _api.post('auth/register-fcm-token', data: {'token': token});
+      final response = await _api.post(
+        'auth/register-fcm-token',
+        data: {'token': token},
+      );
       if (response.statusCode == 200) {
         await SecureStorage.saveLastFcmToken(token);
         await SecureStorage.saveLastFcmSyncTime(now);
@@ -288,6 +326,7 @@ class AuthService {
     _cachedUser = user;
     await SecureStorage.saveUser(user);
   }
+
   /// True if the last googleLogin call converted a regular account to Google-only.
   bool _lastGoogleLoginConverted = false;
   bool get lastGoogleLoginConverted => _lastGoogleLoginConverted;
@@ -329,8 +368,13 @@ class AuthService {
   }
 
   /// Returns response data including `retry_after` seconds.
-  Future<Map<String, dynamic>> resendVerificationWithCooldown(String email) async {
-    final response = await _api.post('auth/resend-verification', data: {'email': email});
+  Future<Map<String, dynamic>> resendVerificationWithCooldown(
+    String email,
+  ) async {
+    final response = await _api.post(
+      'auth/resend-verification',
+      data: {'email': email},
+    );
     return response.data as Map<String, dynamic>;
   }
 
@@ -347,16 +391,35 @@ class AuthService {
     required String otp,
     required String password,
   }) async {
-    await _api.post('auth/reset-password', data: {
-      'email': email,
-      'otp': otp,
-      'password': password,
-      'password_confirmation': password,
-    });
+    await _api.post(
+      'auth/reset-password',
+      data: {
+        'email': email,
+        'otp': otp,
+        'password': password,
+        'password_confirmation': password,
+      },
+    );
   }
 
   /// Clears the in-memory cache.
   void clearUserCache() {
     _cachedUser = null;
+  }
+
+  Future<void> _signInToFirebase(String? customToken) async {
+    if (customToken == null || customToken.isEmpty) return;
+
+    try {
+      final firebaseAuth = firebase_auth.FirebaseAuth.instance;
+      final currentUser = firebaseAuth.currentUser;
+      final localUserId = _cachedUser?.id?.toString();
+      if (currentUser != null && currentUser.uid == localUserId) return;
+
+      await firebaseAuth.signInWithCustomToken(customToken);
+    } catch (e) {
+      // Firebase auth failed, perhaps API is disabled or config is wrong.
+      // Do not block normal Laravel login!
+    }
   }
 }

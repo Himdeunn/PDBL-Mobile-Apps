@@ -11,6 +11,7 @@ import 'package:wudi/features/task/services/task_repository.dart';
 import 'package:wudi/features/splash/pages/splash_page.dart';
 import 'package:wudi/core/utils/navigator_service.dart';
 import 'package:wudi/core/utils/widget_service.dart';
+import 'package:wudi/core/services/connection_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -82,8 +83,32 @@ void _rescheduleNotificationsOnStartup() {
   });
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ConnectionService().resumeRefresh();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

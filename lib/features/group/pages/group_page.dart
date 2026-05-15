@@ -13,6 +13,8 @@ import '../../auth/services/auth_service.dart';
 import 'team_detail_page.dart';
 import 'create_team_page.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../chat/pages/chat_list_page.dart';
+import '../../chat/services/chat_service.dart';
 
 class GroupPage extends StatefulWidget {
   final AuthService? authService;
@@ -24,14 +26,17 @@ class GroupPage extends StatefulWidget {
 
 class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
   final TeamService _teamService = TeamService();
+  final ChatService _chatService = ChatService();
   late final AuthService _authService;
   List<dynamic> _teams = [];
   List<dynamic> _invitations = [];
   bool _isLoading = true;
   Timer? _refreshTimer;
   StreamSubscription<void>? _teamEventSub;
+  StreamSubscription? _chatSubscription;
   final ConnectionService _connectionService = ConnectionService();
   int? _currentUserId;
+  int _unreadChatCount = 0;
   bool _isOffline = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -45,7 +50,9 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _authService = widget.authService ?? AuthService();
     _searchController.addListener(() {
-      if (mounted) setState(() => _searchQuery = _searchController.text.toLowerCase());
+      if (mounted) {
+        setState(() => _searchQuery = _searchController.text.toLowerCase());
+      }
     });
     _teamEventSub = NotificationHelper.onTeamEvent.listen((_) {
       if (mounted) {
@@ -55,6 +62,7 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
     });
     _initWithCache();
     _startRefreshTimer();
+    _watchUnreadChatCount();
   }
 
   @override
@@ -83,13 +91,17 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
       final user = await _authService.getCurrentUser();
       final currentEmail = user?.email;
       final cachedEmail = data['user_email'] as String?;
-      if (currentEmail != null && cachedEmail != null && currentEmail != cachedEmail) {
+      if (currentEmail != null &&
+          cachedEmail != null &&
+          currentEmail != cachedEmail) {
         await _clearCache();
         return false;
       }
 
       final cachedAt = data['cached_at'] as int? ?? 0;
-      final age = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(cachedAt));
+      final age = DateTime.now().difference(
+        DateTime.fromMillisecondsSinceEpoch(cachedAt),
+      );
       if (mounted) {
         setState(() {
           _teams = (data['teams'] as List?) ?? [];
@@ -103,15 +115,22 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _saveToCache(List<dynamic> teams, List<dynamic> invitations, {String? userEmail}) async {
+  Future<void> _saveToCache(
+    List<dynamic> teams,
+    List<dynamic> invitations, {
+    String? userEmail,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey, jsonEncode({
-        'teams': teams,
-        'invitations': invitations,
-        'cached_at': DateTime.now().millisecondsSinceEpoch,
-        'user_email': userEmail,
-      }));
+      await prefs.setString(
+        _cacheKey,
+        jsonEncode({
+          'teams': teams,
+          'invitations': invitations,
+          'cached_at': DateTime.now().millisecondsSinceEpoch,
+          'user_email': userEmail,
+        }),
+      );
     } catch (_) {}
   }
 
@@ -126,6 +145,7 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _teamEventSub?.cancel();
+    _chatSubscription?.cancel();
     _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -145,7 +165,13 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
   Future<void> _fetchData({bool silent = false}) async {
     final isGuest = await _authService.isGuest();
     if (isGuest) {
-      if (mounted) setState(() { _teams = []; _invitations = []; _isLoading = false; });
+      if (mounted) {
+        setState(() {
+          _teams = [];
+          _invitations = [];
+          _isLoading = false;
+        });
+      }
       return;
     }
 
@@ -155,7 +181,10 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
     final isOnline = await _connectionService.isConnected();
     if (!isOnline) {
       if (mounted) {
-        setState(() { _isLoading = false; _isOffline = true; });
+        setState(() {
+          _isLoading = false;
+          _isOffline = true;
+        });
         if (!silent && _teams.isEmpty) {
           ErrorHandler.showErrorPopup(
             "No internet connection. Showing cached data if available.",
@@ -216,7 +245,7 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
     if (!isOnline) {
       ErrorHandler.showErrorPopup(
         "Sorry, you don't have internet. Please connect to internet to create or see the team.",
-        title: "No Internet Connection"
+        title: "No Internet Connection",
       );
       return;
     }
@@ -281,6 +310,10 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
 
     showModalBottomSheet(
       context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -323,6 +356,26 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
     );
   }
 
+  void _openChatList() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatListPage(authService: _authService),
+      ),
+    );
+  }
+
+  void _watchUnreadChatCount() {
+    _chatSubscription?.cancel();
+    _chatSubscription = _chatService.watchConversations().listen((chats) {
+      final unreadCount = chats.fold<int>(
+        0,
+        (total, chat) => total + chat.unreadCount,
+      );
+      if (mounted) setState(() => _unreadChatCount = unreadCount);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -337,26 +390,79 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Center(
-                  child: Text(
-                    'Project Team',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Project Team',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                     ),
-                  ),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          onPressed: _openChatList,
+                          icon: const Icon(
+                            Icons.chat_bubble_outline,
+                            color: AppColors.textPrimary,
+                          ),
+                          tooltip: 'List Chat',
+                        ),
+                        if (_unreadChatCount > 0)
+                          Positioned(
+                            right: 4,
+                            top: 4,
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: AppColors.background,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Text(
+                                _unreadChatCount > 99
+                                    ? '99+'
+                                    : _unreadChatCount.toString(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 24),
                 // Search Bar Placeholder
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEEE8E0),
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: TextField(
                     controller: _searchController,
-                    onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+                    onChanged: (value) =>
+                        setState(() => _searchQuery = value.toLowerCase()),
                     decoration: const InputDecoration(
                       hintText: 'Search Project / Team',
                       hintStyle: TextStyle(
@@ -473,23 +579,28 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    ..._invitations.where((invite) {
-                      final name = (invite['name'] ?? '').toString().toLowerCase();
-                      return name.contains(_searchQuery);
-                    }).map(
-                      (invite) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: InvitationCard(
-                          title: invite['name'] ?? 'Team',
-                          description: invite['description'] ?? '',
-                          inviter: invite['owner']['name'] ?? 'Unknown',
-                          icon: Icons.group_add_rounded,
-                          onAccept: () => _handleInvitation(invite['id'], true),
-                          onReject: () =>
-                              _handleInvitation(invite['id'], false),
+                    ..._invitations
+                        .where((invite) {
+                          final name = (invite['name'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          return name.contains(_searchQuery);
+                        })
+                        .map(
+                          (invite) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: InvitationCard(
+                              title: invite['name'] ?? 'Team',
+                              description: invite['description'] ?? '',
+                              inviter: invite['owner']['name'] ?? 'Unknown',
+                              icon: Icons.group_add_rounded,
+                              onAccept: () =>
+                                  _handleInvitation(invite['id'], true),
+                              onReject: () =>
+                                  _handleInvitation(invite['id'], false),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
                     const SizedBox(height: 20),
                   ],
 
@@ -514,43 +625,57 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
                       ),
                     )
                   else
-                    ..._teams.where((team) {
-                      final name = (team['name'] ?? '').toString().toLowerCase();
-                      final desc = (team['description'] ?? '').toString().toLowerCase();
-                      return name.contains(_searchQuery) || desc.contains(_searchQuery);
-                    }).map(
-                      (team) => Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: GroupCard(
-                          title: team['name'] ?? '',
-                          description: team['description'] ?? 'Team Project',
-                          icon: Icons.groups_rounded,
-                          progress: (team['progress'] ?? 0).toDouble() / 100.0,
-                          memberCount: (team['members'] as List?)?.length ?? 0,
-                          memberAvatars: ((team['members'] as List?) ?? [])
-                              .map((m) => ImageUtils.getAvatarUrl(m['avatar_url'] ?? m['avatar']))
-                              .toList(),
-                          teamAvatarUrl: team['avatar_url'] as String?,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => TeamDetailPage(
-                                  teamId: team['id'],
-                                  authService: _authService,
-                                ),
-                              ),
-                            ).then((_) => _fetchData());
-                          },
-                          onMoreTap:
-                              team['created_by']?.toString() ==
-                                  _currentUserId?.toString()
-                              ? () => _showTeamOptions(team)
-                              : null, // Only show if owner
+                    ..._teams
+                        .where((team) {
+                          final name = (team['name'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          final desc = (team['description'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          return name.contains(_searchQuery) ||
+                              desc.contains(_searchQuery);
+                        })
+                        .map(
+                          (team) => Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: GroupCard(
+                              title: team['name'] ?? '',
+                              description:
+                                  team['description'] ?? 'Team Project',
+                              icon: Icons.groups_rounded,
+                              progress:
+                                  (team['progress'] ?? 0).toDouble() / 100.0,
+                              memberCount:
+                                  (team['members'] as List?)?.length ?? 0,
+                              memberAvatars: ((team['members'] as List?) ?? [])
+                                  .map(
+                                    (m) => ImageUtils.getAvatarUrl(
+                                      m['avatar_url'] ?? m['avatar'],
+                                    ),
+                                  )
+                                  .toList(),
+                              teamAvatarUrl: team['avatar_url'] as String?,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => TeamDetailPage(
+                                      teamId: team['id'],
+                                      authService: _authService,
+                                    ),
+                                  ),
+                                ).then((_) => _fetchData());
+                              },
+                              onMoreTap:
+                                  team['created_by']?.toString() ==
+                                      _currentUserId?.toString()
+                                  ? () => _showTeamOptions(team)
+                                  : null, // Only show if owner
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  
+
                   // Guest Mode Message
                   FutureBuilder<bool>(
                     future: _authService.isGuest(),
@@ -561,7 +686,11 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
                           child: Center(
                             child: Column(
                               children: [
-                                const Icon(Icons.lock_outline_rounded, size: 48, color: AppColors.textTertiary),
+                                const Icon(
+                                  Icons.lock_outline_rounded,
+                                  size: 48,
+                                  color: AppColors.textTertiary,
+                                ),
                                 const SizedBox(height: 16),
                                 const Text(
                                   'Login required to use\nTeam Project features',
@@ -584,14 +713,13 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
               ],
             ),
           ),
-),
+        ),
       ),
       floatingActionButton: FutureBuilder<bool>(
         future: _authService.isGuest(),
         builder: (context, snapshot) {
           if (snapshot.data == true) {
-            return const SizedBox.shrink(
-    );
+            return const SizedBox.shrink();
           }
           return FloatingActionButton(
             backgroundColor: AppColors.primary,

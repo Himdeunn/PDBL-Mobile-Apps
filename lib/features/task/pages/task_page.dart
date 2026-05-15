@@ -6,11 +6,13 @@ import '../models/task_local.dart';
 import '../services/task_repository.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/utils/notification_helper.dart';
 import 'dart:async';
 import 'dart:ui';
 import '../../../../core/utils/time_utils.dart';
 import 'create_task_page.dart';
 import '../services/reminder_service.dart';
+import '../widgets/priority_badge.dart';
 
 class TaskPage extends StatefulWidget {
   final AuthService? authService;
@@ -22,19 +24,26 @@ class TaskPage extends StatefulWidget {
   State<TaskPage> createState() => _TaskPageState();
 }
 
-class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
+class _TaskPageState extends State<TaskPage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final TaskRepository _repository = TaskRepository();
   List<TaskLocal> _tasks = [];
   bool _isLoading = true;
   bool _isOffline = false;
   StreamSubscription? _connectivitySubscription;
+  StreamSubscription<void>? _teamEventSubscription;
+  StreamSubscription<List<TaskLocal>>? _tasksSubscription;
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addObserver(this);
     _checkInitialConnection();
-    _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
+    _connectivitySubscription = ConnectionService().isConnectedStream.listen((
+      connected,
+    ) {
       if (mounted) {
         setState(() {
           _isOffline = !connected;
@@ -44,9 +53,14 @@ class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
         }
       }
     });
+    _teamEventSubscription = NotificationHelper.onTeamEvent.listen((_) {
+      if (mounted && !_isOffline) _loadTasks(forceSync: true);
+    });
     _loadTasks().then((_) {
       if (widget.taskId != null) {
-        final task = _tasks.where((t) => t.id.toString() == widget.taskId).firstOrNull;
+        final task = _tasks
+            .where((t) => t.id.toString() == widget.taskId)
+            .firstOrNull;
         if (task != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _showTaskDetails(task);
@@ -74,34 +88,42 @@ class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _tabController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
+    _teamEventSubscription?.cancel();
+    _tasksSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadTasks() async {
+  Future<void> _loadTasks({bool forceSync = false}) async {
     setState(() => _isLoading = true);
     final user = await widget.authService?.getCurrentUser();
     final userEmail = user?.email ?? 'guest';
 
-    final tasks = widget.filterDate != null
-        ? await _repository.getTasksForDate(widget.filterDate!, userEmail)
-        : await _repository.getAllTasks(userEmail);
-    if (mounted) {
-      setState(() {
-        _tasks = tasks;
-        _isLoading = false;
-      });
+    await _tasksSubscription?.cancel();
+    final taskStream = widget.filterDate != null
+        ? _repository.watchTasksForDate(widget.filterDate!, userEmail)
+        : _repository.watchAllTasks(userEmail);
+    _tasksSubscription = taskStream.listen((tasks) {
+      if (mounted) {
+        setState(() {
+          _tasks = tasks;
+          _isLoading = false;
+        });
+      }
+    });
+
+    if (userEmail != 'guest') {
+      await _repository.fetchTasksFromServer(userEmail, force: forceSync);
     }
   }
 
   Future<void> _toggleTask(TaskLocal task) async {
     final user = await widget.authService?.getCurrentUser();
     final userEmail = user?.email ?? 'guest';
-    
+
     await _repository.toggleTaskStatus(task, userEmail);
-    // Refresh the list to reflect changes
-    setState(() {});
   }
 
   Future<void> _deleteTask(TaskLocal task) async {
@@ -139,20 +161,25 @@ class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
   }
 
   void _showTaskDetails(TaskLocal task) {
+    final isTeam = task.teamId != null;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _TaskDetailSheet(
         task: task,
-        onDelete: () {
-          Navigator.pop(context);
-          _deleteTask(task);
-        },
-        onEdit: () {
-          Navigator.pop(context);
-          _navigateToEdit(task);
-        },
+        onDelete: isTeam
+            ? null
+            : () {
+                Navigator.pop(context);
+                _deleteTask(task);
+              },
+        onEdit: isTeam
+            ? null
+            : () {
+                Navigator.pop(context);
+                _navigateToEdit(task);
+              },
       ),
     );
   }
@@ -180,10 +207,8 @@ class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // Separate into uncompleted and completed
-    final uncompletedTasks = _tasks.where((t) => !t.isCompleted).toList();
-    final completedTasks = _tasks.where((t) => t.isCompleted).toList();
-    final sortedTasks = [...uncompletedTasks, ...completedTasks];
+    final personalTasks = _tasks.where((t) => t.teamId == null).toList();
+    final teamTasks = _tasks.where((t) => t.teamId != null).toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -207,32 +232,27 @@ class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
             color: AppColors.textPrimary,
           ),
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.primary,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textTertiary,
+          tabs: const [
+            Tab(text: 'Individu'),
+            Tab(text: 'Team'),
+          ],
+        ),
       ),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
             )
-          : sortedTasks.isEmpty
-          ? _buildEmptyState()
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
-              itemCount: sortedTasks.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 14),
-              itemBuilder: (context, index) {
-                final task = sortedTasks[index];
-                return _TodayTaskCard(
-                  task: task,
-                  onToggle: () {
-                    if (_isOffline && task.teamId != null) return;
-                    _toggleTask(task);
-                  },
-                  onTap: () {
-                    if (_isOffline && task.teamId != null) return;
-                    _showTaskDetails(task);
-                  },
-                  isOffline: _isOffline,
-                );
-              },
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildTaskList(personalTasks),
+                _buildTaskList(teamTasks),
+              ],
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToCreate,
@@ -240,6 +260,37 @@ class _TaskPageState extends State<TaskPage> with WidgetsBindingObserver {
         elevation: 6,
         child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
+    );
+  }
+
+  Widget _buildTaskList(List<TaskLocal> tasks) {
+    if (tasks.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    final uncompleted = tasks.where((t) => !t.isCompleted).toList();
+    final completed = tasks.where((t) => t.isCompleted).toList();
+    final sortedTasks = [...uncompleted, ...completed];
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+      itemCount: sortedTasks.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final task = sortedTasks[index];
+        return _TodayTaskCard(
+          task: task,
+          onToggle: () {
+            if (_isOffline && task.teamId != null) return;
+            _toggleTask(task);
+          },
+          onTap: () {
+            if (_isOffline && task.teamId != null) return;
+            _showTaskDetails(task);
+          },
+          isOffline: _isOffline,
+        );
+      },
     );
   }
 
@@ -295,97 +346,53 @@ class _TodayTaskCard extends StatefulWidget {
 class _TodayTaskCardState extends State<_TodayTaskCard> {
   late bool _localCompleted;
   bool _isToggling = false;
+  bool _teamCompletionLocked = false;
 
   @override
   void initState() {
     super.initState();
     _localCompleted = widget.task.isCompleted;
+    _teamCompletionLocked =
+        widget.task.teamId != null && widget.task.isCompleted;
   }
 
   @override
   void didUpdateWidget(_TodayTaskCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.task.id != widget.task.id) {
+      _teamCompletionLocked =
+          widget.task.teamId != null && widget.task.isCompleted;
+    } else if (widget.task.teamId != null && widget.task.isCompleted) {
+      _teamCompletionLocked = true;
+    }
     if (!_isToggling) {
-      _localCompleted = widget.task.isCompleted;
+      _localCompleted = _teamCompletionLocked || widget.task.isCompleted;
     }
   }
 
   void _handleToggle() {
     if (_isToggling) return;
+    final isTeamTask = widget.task.teamId != null;
+    if (isTeamTask && _teamCompletionLocked) {
+      ErrorHandler.showErrorPopup(
+        'This team task is locked. Ask the team leader to reopen it from Team Task.',
+        title: 'Team Task Locked',
+      );
+      return;
+    }
     _isToggling = true;
-    setState(() => _localCompleted = !_localCompleted);
+    setState(() {
+      if (isTeamTask) {
+        _localCompleted = true;
+        _teamCompletionLocked = true;
+      } else {
+        _localCompleted = !_localCompleted;
+      }
+    });
     widget.onToggle();
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) _isToggling = false;
     });
-  }
-
-  Color _getPriorityBgColor() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'high':
-        return Colors.red[50]!;
-      case 'medium':
-        return Colors.yellow[50]!;
-      case 'low':
-        return Colors.green[50]!;
-      default:
-        return Colors.grey[50]!;
-    }
-  }
-
-  Color _getPriorityTextColor() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'high':
-        return Colors.red[700]!;
-      case 'medium':
-        return Colors.orange[700]!;
-      case 'low':
-        return Colors.green[700]!;
-      default:
-        return Colors.grey[700]!;
-    }
-  }
-
-  Widget _buildPriorityIcon() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'high':
-        return Image.asset(
-          'assets/images/icon high priority.png',
-          width: 12,
-          height: 12,
-        );
-      case 'low':
-        return Image.asset(
-          'assets/images/lowprio.png',
-          width: 12,
-          height: 12,
-        );
-      case 'medium':
-        return Icon(
-          Icons.warning_amber_rounded,
-          size: 12,
-          color: _getPriorityTextColor(),
-        );
-      default:
-        return Icon(
-          Icons.circle_outlined,
-          size: 12,
-          color: _getPriorityTextColor(),
-        );
-    }
-  }
-
-  String _getPriorityLabel() {
-    switch (widget.task.priority.toLowerCase()) {
-      case 'high':
-        return 'High Priority';
-      case 'medium':
-        return 'Medium';
-      case 'low':
-        return 'Low';
-      default:
-        return widget.task.priority;
-    }
   }
 
   String _formatTime() {
@@ -432,7 +439,11 @@ class _TodayTaskCardState extends State<_TodayTaskCard> {
                               : Colors.transparent,
                         ),
                         child: _localCompleted
-                            ? const Icon(Icons.check, color: Colors.white, size: 18)
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              )
                             : null,
                       ),
                     ),
@@ -458,40 +469,16 @@ class _TodayTaskCardState extends State<_TodayTaskCard> {
                           const SizedBox(height: 6),
                           Row(
                             children: [
-                              // Priority badge
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _getPriorityBgColor(),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _buildPriorityIcon(),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _getPriorityLabel(),
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: _getPriorityTextColor(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              TaskPriorityBadge(priority: widget.task.priority),
                               const SizedBox(width: 10),
                               // Date if exists
                               if (widget.task.dueDate != null)
                                 Padding(
                                   padding: const EdgeInsets.only(right: 10),
                                   child: Text(
-                                    DateFormat('d MMM yyyy')
-                                        .format(widget.task.dueDate!),
+                                    DateFormat(
+                                      'd MMM yyyy',
+                                    ).format(widget.task.dueDate!),
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
@@ -589,53 +576,10 @@ class _TodayTaskCardState extends State<_TodayTaskCard> {
 
 class _TaskDetailSheet extends StatelessWidget {
   final TaskLocal task;
-  final VoidCallback onDelete;
-  final VoidCallback onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback? onEdit;
 
-  const _TaskDetailSheet({
-    required this.task,
-    required this.onDelete,
-    required this.onEdit,
-  });
-
-  Color _getPriorityColor() {
-    switch (task.priority.toLowerCase()) {
-      case 'high':
-        return Colors.red;
-      case 'medium':
-        return Colors.orange;
-      case 'low':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  Color _getPriorityBgColor() {
-    switch (task.priority.toLowerCase()) {
-      case 'high':
-        return Colors.red[50]!;
-      case 'medium':
-        return Colors.orange[50]!;
-      case 'low':
-        return Colors.green[50]!;
-      default:
-        return Colors.grey[50]!;
-    }
-  }
-
-  String _getPriorityLabel() {
-    switch (task.priority.toLowerCase()) {
-      case 'high':
-        return 'High Priority';
-      case 'medium':
-        return 'Medium';
-      case 'low':
-        return 'Low';
-      default:
-        return task.priority;
-    }
-  }
+  const _TaskDetailSheet({required this.task, this.onDelete, this.onEdit});
 
   String _formatTime() {
     return AppTimeUtils.formatTo24h(task.dueTime);
@@ -678,27 +622,12 @@ class _TaskDetailSheet extends StatelessWidget {
           const SizedBox(height: 12),
 
           // ── Priority Badge ──
-          Container(
+          TaskPriorityBadge(
+            priority: task.priority,
+            iconSize: 16,
+            fontSize: 13,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: _getPriorityBgColor(),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.error_rounded, size: 16, color: _getPriorityColor()),
-                const SizedBox(width: 6),
-                Text(
-                  _getPriorityLabel(),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: _getPriorityColor(),
-                  ),
-                ),
-              ],
-            ),
+            borderRadius: BorderRadius.circular(20),
           ),
           const SizedBox(height: 20),
 
@@ -732,7 +661,9 @@ class _TaskDetailSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    DateFormat('MMM dd, yyyy').format(task.dueDate ?? DateTime.now()),
+                    DateFormat(
+                      'MMM dd, yyyy',
+                    ).format(task.dueDate ?? DateTime.now()),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -817,75 +748,83 @@ class _TaskDetailSheet extends StatelessWidget {
           const SizedBox(height: 28),
 
           // ── Action Buttons ──
-          Row(
-            children: [
-              // Delete Button
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Delete Task'),
-                        content: const Text('Are you sure you want to delete this task?'),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-                          ),
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(context); // Close dialog
-                              onDelete(); // Then perform original onDelete
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red[400],
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+          if (onDelete != null || onEdit != null)
+            Row(
+              children: [
+                if (onDelete != null)
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Delete Task'),
+                            content: const Text(
+                              'Are you sure you want to delete this task?',
                             ),
-                            child: const Text('Delete'),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(context); // Close dialog
+                                  onDelete
+                                      ?.call(); // Then perform original onDelete
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red[400],
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text('Delete'),
+                              ),
+                            ],
                           ),
-                        ],
+                        );
+                      },
+                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                      label: const Text('Delete'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red[400],
+                        side: BorderSide(color: Colors.red[300]!),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                  label: const Text('Delete'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red[400],
-                    side: BorderSide(color: Colors.red[300]!),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              // Edit Button
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_rounded, size: 20),
-                  label: const Text('Edit'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryDark,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                if (onDelete != null && onEdit != null)
+                  const SizedBox(width: 14),
+                if (onEdit != null)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit_rounded, size: 20),
+                      label: const Text('Edit'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryDark,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
                     ),
-                    elevation: 0,
                   ),
-                ),
-              ),
-            ],
-          ),
+              ],
+            ),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
         ],
       ),

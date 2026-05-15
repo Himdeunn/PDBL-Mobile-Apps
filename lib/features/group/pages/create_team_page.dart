@@ -70,7 +70,7 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
   Future<void> _addEmail() async {
     if (_maxMembers <= 1) {
       ErrorHandler.showErrorPopup(
-          'Maximum members is set to 1. Only the leader can be in this team.',
+          'Minimum members is 2. Add at least one member besides the leader.',
           title: 'Invitation Disabled');
       return;
     }
@@ -143,7 +143,7 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
         description: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
-        maxMembers: maxMembers.clamp(1, 100),
+        maxMembers: maxMembers.clamp(2, 100),
       );
 
       final int teamId = response['team']['id'];
@@ -398,7 +398,7 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                       ),
 
                       const SizedBox(height: 14),
-                      _label('Max Members (1–100)'),
+                      _label('Max Members (2–100)'),
                       TextFormField(
                         controller: _maxMembersController,
                         enabled: !_isSaving,
@@ -418,8 +418,8 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                         ),
                         validator: (v) {
                           final n = int.tryParse(v ?? '');
-                          if (n == null || n < 1 || n > 100) {
-                            return 'Please enter a number between 1 and 100';
+                          if (n == null || n < 2 || n > 100) {
+                            return 'Please enter a number between 2 and 100';
                           }
                           return null;
                         },
@@ -428,8 +428,8 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                       const SizedBox(height: 14),
                       Builder(builder: (context) {
                         final maxM = int.tryParse(_maxMembersController.text) ?? 100;
-                        final currentCount = 1 + _invitedEmails.length; // 1 (Leader) + invited
-                        final canInvite = currentCount < maxM;
+                          final currentCount = 1 + _invitedEmails.length; // 1 (Leader) + invited
+                          final canInvite = currentCount < maxM;
                         
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

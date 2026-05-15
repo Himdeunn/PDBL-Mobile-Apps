@@ -23,10 +23,8 @@ class _WeekStripState extends State<WeekStrip> {
   void initState() {
     super.initState();
     _weekDates = _getWeekDates();
-    // 30 days back + today + 14 days forward = 45 days
-    // Each item is 60 width + 12 separator = 72
-    // We want to center today (index 30)
-    final initialOffset = (30 * 72.0) - 20.0; // Subtract a bit of padding
+    final todayIndex = _weekDates.indexWhere((date) => _isSameDay(date, DateTime.now()));
+    final initialOffset = todayIndex > 0 ? (todayIndex * 72.0) - 20.0 : 0.0;
     _scrollController = ScrollController(initialScrollOffset: initialOffset);
   }
 
@@ -36,11 +34,17 @@ class _WeekStripState extends State<WeekStrip> {
     super.dispose();
   }
 
-  // Get 45 days: 30 days before today, today, and 14 days after today
   List<DateTime> _getWeekDates() {
     final today = DateTime.now();
-    final start = today.subtract(const Duration(days: 30));
-    return List.generate(45, (index) => start.add(Duration(days: index)));
+    final daysInMonth = DateUtils.getDaysInMonth(today.year, today.month);
+    return List.generate(
+      daysInMonth,
+      (index) => DateTime(today.year, today.month, index + 1),
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   String _formatDay(int weekday) {

@@ -5,6 +5,7 @@ import '../../../../core/utils/error_handler.dart';
 import 'package:intl/intl.dart';
 import '../../task/models/task_local.dart';
 import '../../task/services/task_repository.dart';
+import '../../task/widgets/priority_badge.dart';
 
 class CreateTeamTaskPage extends StatefulWidget {
   final int teamId;
@@ -54,9 +55,9 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
     if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_selectedMemberEmails.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please select at least one member')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one member')),
+      );
       return;
     }
 
@@ -72,7 +73,11 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
       task.userEmail = widget.userEmail;
       task.teamId = widget.teamId;
 
-      await _taskRepository.createTeamTask(task, widget.userEmail, _selectedMemberEmails);
+      await _taskRepository.createTeamTask(
+        task,
+        widget.userEmail,
+        _selectedMemberEmails,
+      );
 
       if (mounted) {
         ErrorHandler.showSuccessPopup('Task assigned successfully!');
@@ -127,7 +132,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
                     validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
                   ),
                   const SizedBox(height: 24),
-    
+
                   _buildLabel('Assign To *'),
                   Container(
                     width: double.infinity,
@@ -141,23 +146,35 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
                       runSpacing: 8,
                       children: widget.members.map((m) {
                         final email = m['email'] as String;
-                        final isSelected = _selectedMemberEmails.contains(email);
+                        final isSelected = _selectedMemberEmails.contains(
+                          email,
+                        );
                         return FilterChip(
                           label: Text(m['name'] ?? email),
                           selected: isSelected,
-                          onSelected: _isSaving ? null : (_) => _toggleMember(email),
-                          selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                          onSelected: _isSaving
+                              ? null
+                              : (_) => _toggleMember(email),
+                          selectedColor: AppColors.primary.withValues(
+                            alpha: 0.2,
+                          ),
                           checkmarkColor: AppColors.primary,
                           backgroundColor: Colors.white.withValues(alpha: 0.5),
                           labelStyle: TextStyle(
-                            color: isSelected ? AppColors.primary : Colors.black87,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.black87,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             fontSize: 12,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
                             side: BorderSide(
-                              color: isSelected ? AppColors.primary : Colors.transparent,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : Colors.transparent,
                             ),
                           ),
                         );
@@ -165,7 +182,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-    
+
                   _buildLabel('Description (optional)'),
                   _buildTextField(
                     _descriptionController,
@@ -174,7 +191,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
                     maxLines: 3,
                   ),
                   const SizedBox(height: 24),
-    
+
                   Row(
                     children: [
                       Expanded(
@@ -187,31 +204,46 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
                               text: DateFormat(
                                 'MMM dd, yyyy',
                               ).format(_selectedDate),
-                              onTap: _isSaving ? () {} : () async {
-                                final now = DateTime.now();
-                                final today = DateTime(now.year, now.month, now.day);
-                                final fifteenYearsLater = DateTime(now.year + 15, now.month, now.day);
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
-                                  firstDate: today,
-                                  lastDate: fifteenYearsLater,
-                                  builder: (ctx, child) => Theme(
-                                    data: ThemeData.light().copyWith(
-                                      colorScheme: const ColorScheme.light(
-                                        primary: AppColors.primary,
-                                        onPrimary: Colors.white,
-                                        surface: AppColors.surface,
-                                        onSurface: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    child: child!,
-                                  ),
-                                );
-                                if (picked != null) {
-                                  setState(() => _selectedDate = picked);
-                                }
-                              },
+                              onTap: _isSaving
+                                  ? () {}
+                                  : () async {
+                                      final now = DateTime.now();
+                                      final today = DateTime(
+                                        now.year,
+                                        now.month,
+                                        now.day,
+                                      );
+                                      final fifteenYearsLater = DateTime(
+                                        now.year + 15,
+                                        now.month,
+                                        now.day,
+                                      );
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate:
+                                            _selectedDate.isBefore(today)
+                                            ? today
+                                            : _selectedDate,
+                                        firstDate: today,
+                                        lastDate: fifteenYearsLater,
+                                        builder: (ctx, child) => Theme(
+                                          data: ThemeData.light().copyWith(
+                                            colorScheme:
+                                                const ColorScheme.light(
+                                                  primary: AppColors.primary,
+                                                  onPrimary: Colors.white,
+                                                  surface: AppColors.surface,
+                                                  onSurface:
+                                                      AppColors.textPrimary,
+                                                ),
+                                          ),
+                                          child: child!,
+                                        ),
+                                      );
+                                      if (picked != null) {
+                                        setState(() => _selectedDate = picked);
+                                      }
+                                    },
                             ),
                           ],
                         ),
@@ -224,42 +256,68 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
                             _buildLabel('Time *'),
                             _buildPickerTile(
                               icon: Icons.access_time,
-                              text: "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}",
-                              onTap: _isSaving ? () {} : () async {
-                                final picked = await showTimePicker(
-                                  context: context,
-                                  initialTime: _selectedTime,
-                                  builder: (BuildContext context, Widget? child) {
-                                    return Theme(
-                                      data: ThemeData.light().copyWith(
-                                        colorScheme: const ColorScheme.light(
-                                          primary: AppColors.primary,
-                                          onPrimary: Colors.white,
-                                          surface: AppColors.surface,
-                                          onSurface: AppColors.textPrimary,
-                                        ),
-                                      ),
-                                      child: MediaQuery(
-                                        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-                                        child: child!,
-                                      ),
-                                    );
-                                  },
-                                );
-                                if (picked != null) {
-                                  final now = DateTime.now();
-                                  final today = DateTime(now.year, now.month, now.day);
-                                  if (_selectedDate.year == today.year && _selectedDate.month == today.month && _selectedDate.day == today.day) {
-                                    if (picked.hour < now.hour || (picked.hour == now.hour && picked.minute < now.minute)) {
-                                      if (mounted) {
-                                        ErrorHandler.showErrorPopup('Time cannot be in the past');
+                              text:
+                                  "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}",
+                              onTap: _isSaving
+                                  ? () {}
+                                  : () async {
+                                      final picked = await showTimePicker(
+                                        context: context,
+                                        initialTime: _selectedTime,
+                                        builder:
+                                            (
+                                              BuildContext context,
+                                              Widget? child,
+                                            ) {
+                                              return Theme(
+                                                data: ThemeData.light().copyWith(
+                                                  colorScheme:
+                                                      const ColorScheme.light(
+                                                        primary:
+                                                            AppColors.primary,
+                                                        onPrimary: Colors.white,
+                                                        surface:
+                                                            AppColors.surface,
+                                                        onSurface: AppColors
+                                                            .textPrimary,
+                                                      ),
+                                                ),
+                                                child: MediaQuery(
+                                                  data: MediaQuery.of(context)
+                                                      .copyWith(
+                                                        alwaysUse24HourFormat:
+                                                            true,
+                                                      ),
+                                                  child: child!,
+                                                ),
+                                              );
+                                            },
+                                      );
+                                      if (picked != null) {
+                                        final now = DateTime.now();
+                                        final today = DateTime(
+                                          now.year,
+                                          now.month,
+                                          now.day,
+                                        );
+                                        if (_selectedDate.year == today.year &&
+                                            _selectedDate.month ==
+                                                today.month &&
+                                            _selectedDate.day == today.day) {
+                                          if (picked.hour < now.hour ||
+                                              (picked.hour == now.hour &&
+                                                  picked.minute < now.minute)) {
+                                            if (mounted) {
+                                              ErrorHandler.showErrorPopup(
+                                                'Time cannot be in the past',
+                                              );
+                                            }
+                                            return;
+                                          }
+                                        }
+                                        setState(() => _selectedTime = picked);
                                       }
-                                      return;
-                                    }
-                                  }
-                                  setState(() => _selectedTime = picked);
-                                }
-                              },
+                                    },
                             ),
                           ],
                         ),
@@ -294,52 +352,12 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
 
   Widget _buildPriorityPicker() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: ["High", "Medium", "Low"].map((p) {
         final bool isSelected = _selectedPriority == p;
-        Color iconColor;
-        IconData icon;
-        
-        if (p == "High") {
-          iconColor = const Color(0xFFFF5252);
-          icon = Icons.error_rounded;
-        } else if (p == "Medium") {
-          iconColor = const Color(0xFFFFD700);
-          icon = Icons.priority_high_rounded;
-        } else {
-          iconColor = const Color(0xFF4CAF50);
-          icon = Icons.sync_rounded;
-        }
-
-        return Expanded(
-          child: GestureDetector(
-            onTap: _isSaving ? null : () => setState(() => _selectedPriority = p),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isSelected ? const Color(0xFF8B7E74) : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Icon(icon, color: iconColor, size: 28),
-                  const SizedBox(height: 8),
-                  Text(
-                    p,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? Colors.black : Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return TaskPriorityOption(
+          priority: p,
+          isSelected: isSelected,
+          onTap: _isSaving ? null : () => setState(() => _selectedPriority = p),
         );
       }).toList(),
     );
@@ -413,4 +431,3 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
     );
   }
 }
-

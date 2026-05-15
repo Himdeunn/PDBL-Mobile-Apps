@@ -38,7 +38,7 @@ class GroupCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFFE5DDD5),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(

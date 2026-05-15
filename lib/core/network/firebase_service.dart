@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:wudi/firebase_options.dart';
@@ -7,18 +9,28 @@ import '../../features/auth/services/auth_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   if (message.notification != null || message.data.isNotEmpty) {
+    final type = (message.data['type'] ?? '').toString().toLowerCase();
+    final conversationId = int.tryParse(
+      (message.data['conversation_id'] ?? '').toString(),
+    );
     NotificationHelper.showNotification(
-      id: message.messageId.hashCode,
-      title: message.notification?.title ?? message.data['title'] ?? 'WUDI Reminder',
-      body: message.notification?.body ?? message.data['body'] ?? 'You have a task deadline approaching.',
+      id: type == 'chat' && conversationId != null
+          ? NotificationHelper.chatNotificationId(conversationId)
+          : message.messageId.hashCode,
+      title:
+          message.notification?.title ??
+          message.data['title'] ??
+          'WUDI Reminder',
+      body:
+          message.notification?.body ??
+          message.data['body'] ??
+          'You have a task deadline approaching.',
       priority: message.data['priority'] ?? 'medium',
       description: message.data['description'] ?? message.data['deskripsi'],
-      payload: message.data.toString(),
+      payload: jsonEncode(message.data),
     );
   }
 }
@@ -50,22 +62,8 @@ class FirebaseService {
       // Background message handler
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      // Foreground message handler
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        RemoteNotification? notification = message.notification;
-        AndroidNotification? android = message.notification?.android;
-
-        if (notification != null && android != null) {
-          NotificationHelper.showNotification(
-            id: notification.hashCode,
-            title: notification.title ?? '',
-            body: notification.body ?? '',
-            priority: message.data['priority'] ?? 'medium',
-            description: message.data['description'] ?? message.data['deskripsi'],
-            payload: message.data.toString(),
-          );
-        }
-      });
+      // Foreground notifications are handled once by NotificationHelper so chat
+      // suppression, formatting, and deep-link payload parsing stay consistent.
     } catch (_) {
       // Silently fail on Firebase initialization error
     }

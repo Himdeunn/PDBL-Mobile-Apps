@@ -71,7 +71,9 @@ class _LoginPageState extends State<LoginPage> {
     try {
       // Check network connection
       if (!await ConnectionService().isConnected()) {
-        ErrorHandler.showErrorPopup('No internet connection. Please check your connection.');
+        ErrorHandler.showErrorPopup(
+          'No internet connection. Please check your connection.',
+        );
         if (mounted) setState(() => _isLoading = false);
         return;
       }
@@ -101,17 +103,16 @@ class _LoginPageState extends State<LoginPage> {
         final status = data is Map ? data['status'] : null;
         final email = data is Map ? data['email'] as String? : null;
 
-        if (status == 'email_not_verified' && email != null && email.isNotEmpty) {
+        if (status == 'email_not_verified' &&
+            email != null &&
+            email.isNotEmpty) {
           _failedAttempts = 0;
           _lockoutUntil = null;
           ErrorHandler.showSuccessPopup('Verification code sent to $email');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => VerifyEmailPage(
-                email: email,
-                canSkip: false,
-              ),
+              builder: (_) => VerifyEmailPage(email: email, canSkip: false),
             ),
           );
           return;
@@ -119,7 +120,8 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       // Only count failed attempts on credential errors (422)
-      final isCredentialError = e is! DioException || e.response?.statusCode == 422;
+      final isCredentialError =
+          e is! DioException || e.response?.statusCode == 422;
       if (isCredentialError) {
         _failedAttempts++;
       }
@@ -143,6 +145,7 @@ class _LoginPageState extends State<LoginPage> {
       MaterialPageRoute(builder: (context) => const RegisterPage()),
     );
   }
+
   Future<void> _onGoogleSignIn() async {
     if (!await ConnectionService().isConnected()) {
       ErrorHandler.showErrorPopup('No internet connection.');
@@ -172,7 +175,9 @@ class _LoginPageState extends State<LoginPage> {
       }
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => MainNavigation(authService: authService)),
+        MaterialPageRoute(
+          builder: (_) => MainNavigation(authService: authService),
+        ),
         (_) => false,
       );
     } catch (e) {
@@ -181,7 +186,6 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) setState(() => _isGoogleLoading = false);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -259,7 +263,9 @@ class _LoginPageState extends State<LoginPage> {
                               if (value == null || value.isEmpty) {
                                 return 'Email is required';
                               }
-                              final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                              final emailRegex = RegExp(
+                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                              );
                               if (!emailRegex.hasMatch(value)) {
                                 return 'Please enter a valid email address';
                               }
@@ -306,7 +312,9 @@ class _LoginPageState extends State<LoginPage> {
                       ? const SizedBox(
                           height: 52,
                           child: Center(
-                            child: CircularProgressIndicator(color: AppColors.primary),
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                            ),
                           ),
                         )
                       : PrimaryButton(label: 'Login', onPressed: _onLogin),
@@ -320,7 +328,8 @@ class _LoginPageState extends State<LoginPage> {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const ForgotPasswordPage()),
+                          builder: (_) => const ForgotPasswordPage(),
+                        ),
                       ),
                       child: const Text(
                         'Forget Password?',
@@ -339,14 +348,22 @@ class _LoginPageState extends State<LoginPage> {
                   // Divider
                   Row(
                     children: [
-                      const Expanded(child: Divider(color: AppColors.textTertiary)),
+                      const Expanded(
+                        child: Divider(color: AppColors.textTertiary),
+                      ),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('or',
-                            style: TextStyle(
-                                fontSize: 13, color: AppColors.textTertiary)),
+                        child: Text(
+                          'or',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
                       ),
-                      const Expanded(child: Divider(color: AppColors.textTertiary)),
+                      const Expanded(
+                        child: Divider(color: AppColors.textTertiary),
+                      ),
                     ],
                   ),
 
@@ -358,7 +375,8 @@ class _LoginPageState extends State<LoginPage> {
                           height: 54,
                           child: Center(
                             child: CircularProgressIndicator(
-                                color: AppColors.primary),
+                              color: AppColors.primary,
+                            ),
                           ),
                         )
                       : SizedBox(
@@ -367,7 +385,9 @@ class _LoginPageState extends State<LoginPage> {
                           child: OutlinedButton.icon(
                             onPressed: _onGoogleSignIn,
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: AppColors.textTertiary),
+                              side: const BorderSide(
+                                color: AppColors.textTertiary,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(50),
                               ),
