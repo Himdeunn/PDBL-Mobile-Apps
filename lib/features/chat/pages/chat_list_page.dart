@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../../core/models/user.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
+import '../../../../core/utils/image_cache_manager.dart';
 import '../../../../core/utils/notification_helper.dart';
 import '../../../../core/widgets/auth_required_dialog.dart';
 import '../../auth/services/auth_service.dart';
@@ -202,7 +204,7 @@ class _ChatListPageState extends State<ChatListPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'List Chat',
+          'Room Chat',
           style: TextStyle(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.bold,
@@ -224,7 +226,7 @@ class _ChatListPageState extends State<ChatListPage> {
               _openInitialConversationIfNeeded(conversations);
               final filteredChats = conversations.where((chat) {
                 final isTeam = chat.type == 'team';
-                if (_selectedFilter == 'Personal' && isTeam) return false;
+                if (_selectedFilter == 'Individu' && isTeam) return false;
                 if (_selectedFilter == 'Team' && !isTeam) return false;
 
                 final query = _searchQuery.toLowerCase();
@@ -261,21 +263,76 @@ class _ChatListPageState extends State<ChatListPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _FilterBubble(
-                        label: 'Team',
-                        selected: _selectedFilter == 'Team',
-                        onTap: () => setState(() => _selectedFilter = 'Team'),
-                      ),
-                      const SizedBox(width: 10),
-                      _FilterBubble(
-                        label: 'Personal',
-                        selected: _selectedFilter == 'Personal',
-                        onTap: () =>
-                            setState(() => _selectedFilter = 'Personal'),
-                      ),
-                    ],
+                  Container(
+                    height: 50,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: Stack(
+                      children: [
+                        AnimatedAlign(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeInOut,
+                          alignment: _selectedFilter == 'Team'
+                              ? Alignment.centerLeft
+                              : Alignment.centerRight,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.5,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(21),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () =>
+                                    setState(() => _selectedFilter = 'Team'),
+                                child: Center(
+                                  child: Text(
+                                    'Team',
+                                    style: TextStyle(
+                                      color: _selectedFilter == 'Team'
+                                          ? Colors.white
+                                          : AppColors.textSecondary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => setState(
+                                  () => _selectedFilter = 'Individu',
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'Individu',
+                                    style: TextStyle(
+                                      color: _selectedFilter == 'Individu'
+                                          ? Colors.white
+                                          : AppColors.textSecondary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 18),
                   if (_isGuest)
@@ -307,6 +364,8 @@ class _ChatListPageState extends State<ChatListPage> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _ChatTile(
                           data: chat,
+                          currentUserId: _currentUser?.id,
+                          currentUserName: _currentUser?.name,
                           onTap: () async {
                             if (_isGuest) {
                               AuthRequiredDialog.show(context);
@@ -381,9 +440,16 @@ class _FilterBubble extends StatelessWidget {
 
 class _ChatTile extends StatelessWidget {
   final ChatConversation data;
+  final int? currentUserId;
+  final String? currentUserName;
   final VoidCallback onTap;
 
-  const _ChatTile({required this.data, required this.onTap});
+  const _ChatTile({
+    required this.data,
+    required this.currentUserId,
+    required this.currentUserName,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -391,6 +457,25 @@ class _ChatTile extends StatelessWidget {
     final preview = data.lastMessage == null
         ? 'Tap to start chatting'
         : '${data.lastSenderName ?? 'Someone'}: ${data.lastMessage}';
+    final lastMessage = data.lastMessage?.toLowerCase() ?? '';
+    final currentName = currentUserName?.trim().toLowerCase();
+    final firstName = currentName?.split(RegExp(r'\s+')).first;
+    final isMentionedByText =
+        lastMessage.contains('@all') ||
+        (currentName != null &&
+            currentName.isNotEmpty &&
+            lastMessage.contains('@$currentName')) ||
+        (firstName != null &&
+            firstName.isNotEmpty &&
+            lastMessage.contains('@$firstName'));
+    final isMentioned =
+        data.type == 'team' &&
+        data.unreadCount > 0 &&
+        (data.lastMessageMentionsAll ||
+            data.hasUnreadMention ||
+            (currentUserId != null &&
+                data.lastMessageMentionedUserIds.contains(currentUserId)) ||
+            isMentionedByText);
 
     return GestureDetector(
       onTap: onTap,
@@ -405,15 +490,28 @@ class _ChatTile extends StatelessWidget {
             CircleAvatar(
               radius: 24,
               backgroundColor: const Color(0xFFD6C5B0),
-              backgroundImage: data.avatarUrl != null
-                  ? NetworkImage(data.avatarUrl!)
-                  : null,
-              child: data.avatarUrl == null
-                  ? Icon(
-                      data.type == 'team' ? Icons.groups_rounded : Icons.person,
-                      color: AppColors.primaryDark,
-                    )
-                  : null,
+              child: ClipOval(
+                child: data.avatarUrl == null
+                    ? Icon(
+                        data.type == 'team'
+                            ? Icons.groups_rounded
+                            : Icons.person,
+                        color: AppColors.primaryDark,
+                      )
+                    : CachedNetworkImage(
+                        imageUrl: data.avatarUrl!,
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.cover,
+                        cacheManager: WudiCacheManager(),
+                        errorWidget: (context, url, error) => Icon(
+                          data.type == 'team'
+                              ? Icons.groups_rounded
+                              : Icons.person,
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -473,26 +571,58 @@ class _ChatTile extends StatelessWidget {
                           ),
                           if (data.unreadCount > 0) ...[
                             const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF2D2438),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                data.unreadCount > 99
-                                    ? '99+'
-                                    : data.unreadCount.toString(),
-                                style: const TextStyle(
-                                  color: Color(0xFFEADBC8),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  height: 20,
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2D2438),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    data.unreadCount > 99
+                                        ? '99+'
+                                        : data.unreadCount.toString(),
+                                    style: const TextStyle(
+                                      color: Color(0xFFEADBC8),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                if (isMentioned) ...[
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(
+                                        alpha: 0.14,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Text(
+                                      '@',
+                                      style: TextStyle(
+                                        color: AppColors.primary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
+                          ] else ...[
+                            const SizedBox(height: 6),
+                            const SizedBox(height: 20),
                           ],
                         ],
                       ),

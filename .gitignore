@@ -3,6 +3,8 @@
 *.log
 *.pyc
 *.swp
+*.tmp
+*.bak
 .DS_Store
 .atom/
 .build/
@@ -27,12 +29,14 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.packages
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
 build/
 /coverage/
+.shorebird/
 .claude
 
 # Android-specific
@@ -42,8 +46,13 @@ android/key.properties
 android/app/key.properties
 android/app/google-services.json
 android/app/src/main/res/raw/google_services.json
+android/app/src/debug/google-services.json
+android/app/src/profile/google-services.json
+android/app/src/release/google-services.json
 *.jks
 *.keystore
+*.p12
+*.pem
 upload-keystore.jks
 android/hs_err_pid*.log
 android/replay_pid*.log
@@ -60,12 +69,16 @@ ios/DerivedData/
 ios/Runner/GeneratedPluginRegistrant.h
 ios/Runner/GeneratedPluginRegistrant.m
 ios/Runner/GeneratedPluginRegistrant.swift
+ios/Runner/GoogleService-Info.plist
+ios/Runner/Secrets.xcconfig
+ios/**/*.mobileprovision
 
 # web related
 **/web/index.html
 
 # Tools
 tmp_flutter/
+tool/.dart_tool/
 
 # Symbolication related
 app.*.symbols
@@ -81,5 +94,15 @@ app.*.map.json
 # Dotenv variables
 .env
 **/.env
+!.env.example
 **/flutter_assets/.env
 backend.env
+
+# Firebase and local generated configuration
+lib/firebase_options.dart.local
+firebase_app_id_file.json
+
+# Desktop generated artifacts
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/

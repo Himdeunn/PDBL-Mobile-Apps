@@ -131,7 +131,7 @@ class _TaskPageState extends State<TaskPage>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Delete Task'),
+        title: Text('Delete Task'),
         content: const Text('Are you sure you want to delete this task?'),
         actions: [
           TextButton(
@@ -224,41 +224,113 @@ class _TaskPageState extends State<TaskPage>
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
-        title: const Text(
-          'Today Task',
+        title: Text(
+          widget.filterDate == null ? 'All Task' : 'Today Task',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: AppColors.textPrimary,
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.primary,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textTertiary,
-          tabs: const [
-            Tab(text: 'Individu'),
-            Tab(text: 'Team'),
-          ],
-        ),
       ),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
             )
-          : TabBarView(
-              controller: _tabController,
+          : Column(
               children: [
-                _buildTaskList(personalTasks),
-                _buildTaskList(teamTasks),
+                AnimatedBuilder(
+                  animation: _tabController,
+                  builder: (context, _) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          const double pillH = 38.0;
+                          const double padding = 4.0;
+                          final double pillW =
+                              (constraints.maxWidth - padding * 2) / 2;
+                          return Container(
+                            height: pillH + padding * 2,
+                            padding: const EdgeInsets.all(padding),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: Stack(
+                              children: [
+                                AnimatedPositioned(
+                                  duration: const Duration(milliseconds: 240),
+                                  curve: Curves.easeInOut,
+                                  left: _tabController.index == 0 ? 0 : pillW,
+                                  top: 0,
+                                  bottom: 0,
+                                  width: pillW,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.circular(26),
+                                    ),
+                                  ),
+                                ),
+                                Row(
+                                  children: [
+                                    _buildPillTab('Individu', 0, pillW, pillH),
+                                    _buildPillTab('Team', 1, pillW, pillH),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildTaskList(personalTasks),
+                      _buildTaskList(teamTasks),
+                    ],
+                  ),
+                ),
               ],
             ),
+
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToCreate,
         backgroundColor: AppColors.primaryDark,
         elevation: 6,
         child: const Icon(Icons.add, color: Colors.white, size: 28),
+      ),
+    );
+  }
+
+  Widget _buildPillTab(String label, int index, double width, double height) {
+    final isActive = _tabController.index == index;
+    return GestureDetector(
+      onTap: () {
+        _tabController.animateTo(index);
+      },
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isActive ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -613,7 +685,7 @@ class _TaskDetailSheet extends StatelessWidget {
           // ── Title ──
           Text(
             task.title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
               color: AppColors.textPrimary,
@@ -664,7 +736,7 @@ class _TaskDetailSheet extends StatelessWidget {
                     DateFormat(
                       'MMM dd, yyyy',
                     ).format(task.dueDate ?? DateTime.now()),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
@@ -707,7 +779,7 @@ class _TaskDetailSheet extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     _formatTime(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
@@ -738,7 +810,7 @@ class _TaskDetailSheet extends StatelessWidget {
             ),
             child: Text(
               task.description ?? 'No description provided.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 color: AppColors.textPrimary,
                 height: 1.5,
@@ -758,7 +830,7 @@ class _TaskDetailSheet extends StatelessWidget {
                         showDialog(
                           context: context,
                           builder: (context) => AlertDialog(
-                            title: const Text('Delete Task'),
+                            title: Text('Delete Task'),
                             content: const Text(
                               'Are you sure you want to delete this task?',
                             ),

@@ -62,6 +62,167 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   int _memberPage = 0;
   static const int _membersPerPage = 5;
 
+  bool _isTeamLeaderMember(Map<dynamic, dynamic> member) {
+    if (member['is_leader'] == true || member['isLeader'] == true) return true;
+
+    final role = member['role']?.toString().toLowerCase().replaceAll('_', ' ').trim();
+    if (role == 'leader' ||
+        role == 'team leader' ||
+        role == 'team owner' ||
+        role == 'owner' ||
+        role == 'admin') {
+      return true;
+    }
+
+    final memberUser = member['user'];
+    final memberId = (member['id'] ??
+            member['user_id'] ??
+            member['userId'] ??
+            (memberUser is Map ? memberUser['id'] : null))
+        ?.toString();
+    final createdBy = _teamData?['created_by'] ?? _teamData?['createdBy'];
+    final ownerId = (createdBy is Map
+            ? createdBy['id'] ?? createdBy['user_id'] ?? createdBy['userId']
+            : createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
+        ?.toString();
+    if (memberId != null && ownerId != null && memberId == ownerId) return true;
+
+    final owner = _teamData?['owner'];
+    if (owner is Map) {
+      final ownerUser = owner['user'];
+      final ownerMemberId = (owner['id'] ??
+              owner['user_id'] ??
+              owner['userId'] ??
+              (ownerUser is Map ? ownerUser['id'] : null))
+          ?.toString();
+      if (memberId != null && ownerMemberId != null && memberId == ownerMemberId) {
+        return true;
+      }
+
+      final memberEmail = (member['email'] ??
+              (memberUser is Map ? memberUser['email'] : null))
+          ?.toString()
+          .toLowerCase()
+          .trim();
+      final ownerEmail = (owner['email'] ??
+              owner['leader_email'] ??
+              owner['leaderEmail'] ??
+              (ownerUser is Map ? ownerUser['email'] : null))
+          ?.toString()
+          .toLowerCase()
+          .trim();
+      if (memberEmail != null &&
+          memberEmail.isNotEmpty &&
+          ownerEmail != null &&
+          memberEmail == ownerEmail) {
+        return true;
+      }
+    }
+
+    final leader = _teamData?['leader'] ?? _teamData?['team_leader'] ?? _teamData?['teamLeader'];
+    if (leader is Map) {
+      final leaderUser = leader['user'];
+      final leaderId = (leader['id'] ??
+              leader['user_id'] ??
+              leader['userId'] ??
+              (leaderUser is Map ? leaderUser['id'] : null))
+          ?.toString();
+      if (memberId != null && leaderId != null && memberId == leaderId) {
+        return true;
+      }
+
+      final memberEmail = (member['email'] ??
+              (memberUser is Map ? memberUser['email'] : null))
+          ?.toString()
+          .toLowerCase()
+          .trim();
+      final leaderEmail = (leader['email'] ??
+              leader['leader_email'] ??
+              leader['leaderEmail'] ??
+              (leaderUser is Map ? leaderUser['email'] : null))
+          ?.toString()
+          .toLowerCase()
+          .trim();
+      if (memberEmail != null &&
+          memberEmail.isNotEmpty &&
+          leaderEmail != null &&
+          memberEmail == leaderEmail) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Map<dynamic, dynamic> _normalizeMember(dynamic rawMember) {
+    final member = rawMember is Map<dynamic, dynamic>
+        ? Map<dynamic, dynamic>.from(rawMember)
+        : <dynamic, dynamic>{'name': rawMember.toString(), 'email': rawMember.toString()};
+
+    if (_isTeamLeaderMember(member)) {
+      member['role'] = 'Team Leader';
+      member['is_leader'] = true;
+    } else {
+      member['role'] = _readMemberRole(member);
+    }
+
+    return member;
+  }
+
+  String _readMemberRole(Map<dynamic, dynamic> member) {
+    if (_isTeamLeaderMember(member)) return 'Team Leader';
+    final role = member['role']?.toString();
+    if (role == null || role.isEmpty) return 'Member';
+    final normalized = role.toLowerCase().replaceAll('_', ' ').trim();
+    if (normalized == 'member') return 'Member';
+    return role;
+  }
+
+  String? get _teamLeaderId {
+    final createdBy = _teamData?['created_by'] ?? _teamData?['createdBy'];
+    if (createdBy is Map) {
+      return (createdBy['id'] ?? createdBy['user_id'] ?? createdBy['userId'])
+          ?.toString();
+    }
+    final directId = (createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
+        ?.toString();
+    if (directId != null) return directId;
+
+    for (final key in ['owner', 'leader', 'team_leader', 'teamLeader']) {
+      final value = _teamData?[key];
+      if (value is Map) {
+        final user = value['user'];
+        final id = (value['id'] ??
+                value['user_id'] ??
+                value['userId'] ??
+                (user is Map ? user['id'] : null))
+            ?.toString();
+        if (id != null) return id;
+      }
+    }
+
+    return null;
+  }
+
+  String? get _teamLeaderEmail {
+    for (final key in ['owner', 'leader', 'team_leader', 'teamLeader']) {
+      final value = _teamData?[key];
+      if (value is Map) {
+        final user = value['user'];
+        final email = (value['email'] ??
+                value['leader_email'] ??
+                value['leaderEmail'] ??
+                (user is Map ? user['email'] : null))
+            ?.toString()
+            .toLowerCase()
+            .trim();
+        if (email != null && email.isNotEmpty) return email;
+      }
+    }
+
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -128,7 +289,23 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           _isOffline = false;
           // Robust parsing for the top-level object
           if (rawData is Map) {
-            _teamData = rawData['team'] is Map ? rawData['team'] : null;
+            _teamData = rawData['team'] is Map
+                ? {
+                    ...Map<String, dynamic>.from(rawData['team'] as Map),
+                    if (rawData['owner'] != null) 'owner': rawData['owner'],
+                    if (rawData['leader'] != null) 'leader': rawData['leader'],
+                    if (rawData['team_leader'] != null)
+                      'team_leader': rawData['team_leader'],
+                    if (rawData['teamLeader'] != null)
+                      'teamLeader': rawData['teamLeader'],
+                    if (rawData['created_by'] != null)
+                      'created_by': rawData['created_by'],
+                    if (rawData['createdBy'] != null)
+                      'createdBy': rawData['createdBy'],
+                    if (rawData['owner_id'] != null) 'owner_id': rawData['owner_id'],
+                    if (rawData['ownerId'] != null) 'ownerId': rawData['ownerId'],
+                  }
+                : Map<String, dynamic>.from(rawData);
 
             // Robust parsing for members
             final List<dynamic> memberList = [];
@@ -149,16 +326,17 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       m is Map &&
                       m['email']?.toString().toLowerCase() == ownerEmail,
                 );
-                if (!exists) {
-                  memberList.insert(0, owner);
-                }
+              if (!exists) {
+                memberList.insert(0, {
+                  ...owner,
+                  'role': 'Team Leader',
+                  'is_leader': true,
+                });
               }
             }
+          }
 
-            _members = memberList.map((m) {
-              if (m is Map) return m;
-              return {'name': m.toString(), 'email': m.toString()};
-            }).toList();
+            _members = memberList.map(_normalizeMember).toList();
 
             // Robust parsing for tasks
             final tasksPart = rawData['tasks'];
@@ -920,7 +1098,11 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
               const SizedBox(height: 12),
               Builder(
                 builder: (context) {
-                  final String? ownerId = _teamData?['created_by']?.toString();
+                  final createdBy = _teamData?['created_by'] ?? _teamData?['createdBy'];
+                  final String? ownerId = (createdBy is Map
+                          ? createdBy['id'] ?? createdBy['user_id'] ?? createdBy['userId']
+                          : createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
+                      ?.toString();
                   final String? myId = _currentUserId?.toString();
                   final bool isOwner =
                       ownerId != null && myId != null && ownerId == myId;
@@ -956,11 +1138,13 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                             m['email']?.toString().toLowerCase().trim() ==
                             _currentUserEmail?.toLowerCase().trim();
 
+                        final member = _normalizeMember(m);
+
                         return _MemberTile(
-                          name: m['name'] ?? '',
-                          role: m['role'] ?? 'Member',
+                          name: member['name'] ?? '',
+                          role: _readMemberRole(member),
                           avatarUrl: ImageUtils.getAvatarUrl(
-                            m['avatar_url'] ?? m['avatar'],
+                            member['avatar_url'] ?? member['avatar'],
                           ),
                           onTap: () {
                             Navigator.push(
@@ -968,13 +1152,13 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                               MaterialPageRoute(
                                 builder: (context) => MemberDetailPage(
                                   teamId: widget.teamId,
-                                  member: m,
+                                  member: member,
                                   memberTasks: _tasks.where((t) {
                                     final assignedEmails =
                                         (t['assigned_emails'] as List<dynamic>?)
                                             ?.cast<String>() ??
                                         [];
-                                    final memberEmail = m['email']
+                                    final memberEmail = member['email']
                                         ?.toString()
                                         .toLowerCase()
                                         .trim();
@@ -987,6 +1171,8 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                                   }).toList(),
                                   teamMembers: _members,
                                   currentUserEmail: _currentUserEmail,
+                                  teamLeaderId: _teamLeaderId,
+                                  teamLeaderEmail: _teamLeaderEmail,
                                   onToggle: () => _loadData(showLoading: false),
                                   isOwner: isOwner,
                                 ),
@@ -994,7 +1180,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                             ).then((_) => _loadData());
                           },
                           onMore: (isOwner && !isMe)
-                              ? () => _showMemberOptions(m)
+                              ? () => _showMemberOptions(member)
                               : null,
                         );
                       }),
@@ -1304,6 +1490,7 @@ class _MemberTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLeader = role.toLowerCase().replaceAll('_', ' ').trim() == 'team leader';
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1343,9 +1530,28 @@ class _MemberTile extends StatelessWidget {
                     name,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Text(
-                    role,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: isLeader
+                              ? AppColors.primary
+                              : AppColors.textTertiary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        role,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

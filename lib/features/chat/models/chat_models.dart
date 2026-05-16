@@ -32,12 +32,14 @@ class ChatMember {
   final String name;
   final String? email;
   final String? avatarUrl;
+  final String? role;
 
   const ChatMember({
     required this.id,
     required this.name,
     this.email,
     this.avatarUrl,
+    this.role,
   });
 
   factory ChatMember.fromJson(Map<String, dynamic> json) => ChatMember(
@@ -45,7 +47,26 @@ class ChatMember {
     name: (json['name'] ?? json['display_name'] ?? 'Unknown').toString(),
     email: (json['email'] ?? json['email_address']) as String?,
     avatarUrl: (json['avatar_url'] ?? json['avatarUrl']) as String?,
+    role: _readMemberRole(json),
   );
+
+  static String? _readMemberRole(Map<dynamic, dynamic> json) {
+    if (json['is_leader'] == true || json['isLeader'] == true) {
+      return 'Team Leader';
+    }
+    final role = json['role']?.toString();
+    if (role == null || role.isEmpty) return null;
+    final normalized = role.toLowerCase().replaceAll('_', ' ').trim();
+    if (normalized == 'leader' ||
+        normalized == 'team leader' ||
+        normalized == 'team owner' ||
+        normalized == 'owner' ||
+        normalized == 'admin') {
+      return 'Team Leader';
+    }
+    if (normalized == 'member') return 'Member';
+    return role;
+  }
 
   Map<String, dynamic> toFirestore() => {
     'id': id,
@@ -59,6 +80,7 @@ class ChatMember {
     'name': name,
     'email': email,
     'avatarUrl': avatarUrl,
+    'role': role,
   };
 
   factory ChatMember.fromFirestore(Map<String, dynamic> data) => ChatMember(
@@ -66,6 +88,7 @@ class ChatMember {
     name: (data['name'] ?? 'Unknown').toString(),
     email: data['email'] as String?,
     avatarUrl: data['avatarUrl'] as String?,
+    role: _readMemberRole(data),
   );
 }
 
@@ -80,6 +103,10 @@ class ChatConversation {
   final String? lastSenderName;
   final DateTime? updatedAt;
   final int unreadCount;
+  final bool lastMessageMentionsAll;
+  final List<int> lastMessageMentionedUserIds;
+  final bool hasUnreadMention;
+  final bool canModerateMessages;
 
   const ChatConversation({
     required this.id,
@@ -92,6 +119,10 @@ class ChatConversation {
     this.lastSenderName,
     this.updatedAt,
     this.unreadCount = 0,
+    this.lastMessageMentionsAll = false,
+    this.lastMessageMentionedUserIds = const [],
+    this.hasUnreadMention = false,
+    this.canModerateMessages = false,
   });
 
   factory ChatConversation.fromJson(Map<String, dynamic> json) {
@@ -111,6 +142,57 @@ class ChatConversation {
           (lastMessage?['sender_name'] ?? json['lastSenderName']) as String?,
       updatedAt: _readApiDateTime(json['updated_at'] ?? json['updatedAt']),
       unreadCount: _readInt(json['unread_count'] ?? json['unreadCount']) ?? 0,
+      lastMessageMentionsAll:
+          lastMessage?['mentions_all'] == true ||
+          lastMessage?['mentionsAll'] == true ||
+          json['lastMessageMentionsAll'] == true,
+      lastMessageMentionedUserIds: _readIntList(
+        lastMessage?['mentioned_user_ids'] ??
+            lastMessage?['mentionedUserIds'] ??
+            json['lastMessageMentionedUserIds'],
+      ).toList(),
+      hasUnreadMention:
+          json['has_unread_mention'] == true ||
+          json['hasUnreadMention'] == true,
+      canModerateMessages:
+          json['can_moderate_messages'] == true ||
+          json['canModerateMessages'] == true,
+    );
+  }
+
+  ChatConversation copyWith({
+    int? id,
+    String? type,
+    int? teamId,
+    String? name,
+    String? avatarUrl,
+    List<ChatMember>? members,
+    String? lastMessage,
+    String? lastSenderName,
+    DateTime? updatedAt,
+    int? unreadCount,
+    bool? lastMessageMentionsAll,
+    List<int>? lastMessageMentionedUserIds,
+    bool? hasUnreadMention,
+    bool? canModerateMessages,
+  }) {
+    return ChatConversation(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      teamId: teamId ?? this.teamId,
+      name: name ?? this.name,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      members: members ?? this.members,
+      lastMessage: lastMessage ?? this.lastMessage,
+      lastSenderName: lastSenderName ?? this.lastSenderName,
+      updatedAt: updatedAt ?? this.updatedAt,
+      unreadCount: unreadCount ?? this.unreadCount,
+      lastMessageMentionsAll:
+          lastMessageMentionsAll ?? this.lastMessageMentionsAll,
+      lastMessageMentionedUserIds:
+          lastMessageMentionedUserIds ?? this.lastMessageMentionedUserIds,
+      hasUnreadMention: hasUnreadMention ?? this.hasUnreadMention,
+      canModerateMessages: canModerateMessages ?? this.canModerateMessages,
     );
   }
 
@@ -126,6 +208,9 @@ class ChatConversation {
     'memberIds': members.map((member) => member.id).toList(),
     'lastMessage': lastMessage,
     'lastSenderName': lastSenderName,
+    'lastMessageMentionsAll': lastMessageMentionsAll,
+    'lastMessageMentionedUserIds': lastMessageMentionedUserIds,
+    'hasUnreadMention': hasUnreadMention,
     'updatedAt': updatedAt != null
         ? Timestamp.fromDate(updatedAt!)
         : FieldValue.serverTimestamp(),
@@ -140,8 +225,12 @@ class ChatConversation {
     'members': members.map((member) => member.toJson()).toList(),
     'lastMessage': lastMessage,
     'lastSenderName': lastSenderName,
+    'lastMessageMentionsAll': lastMessageMentionsAll,
+    'lastMessageMentionedUserIds': lastMessageMentionedUserIds,
+    'hasUnreadMention': hasUnreadMention,
     'updatedAt': updatedAt?.toIso8601String(),
     'unreadCount': unreadCount,
+    'canModerateMessages': canModerateMessages,
   };
 
   factory ChatConversation.fromFirestore(
@@ -162,6 +251,12 @@ class ChatConversation {
       lastSenderName: data['lastSenderName'] as String?,
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate().toLocal(),
       unreadCount: _readInt(data['unreadCount'] ?? data['unread_count']) ?? 0,
+      lastMessageMentionsAll: data['lastMessageMentionsAll'] == true,
+      lastMessageMentionedUserIds: _readIntList(
+        data['lastMessageMentionedUserIds'],
+      ).toList(),
+      hasUnreadMention: data['hasUnreadMention'] == true,
+      canModerateMessages: data['canModerateMessages'] == true,
     );
   }
 }
@@ -177,6 +272,12 @@ class ChatMessage {
   final bool mentionsAll;
   final List<int> mentionedUserIds;
   final DateTime createdAt;
+  final int? replyToId;
+  final String? replySenderName;
+  final String? replyBody;
+  final DateTime? editedAt;
+  final DateTime? deletedAt;
+  final String? deleteReason;
 
   const ChatMessage({
     required this.id,
@@ -189,7 +290,16 @@ class ChatMessage {
     required this.createdAt,
     this.senderEmail,
     this.senderAvatarUrl,
+    this.replyToId,
+    this.replySenderName,
+    this.replyBody,
+    this.editedAt,
+    this.deletedAt,
+    this.deleteReason,
   });
+
+  bool get isEdited => editedAt != null;
+  bool get isDeleted => deletedAt != null;
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
     id: (json['id'] as num).toInt(),
@@ -206,9 +316,45 @@ class ChatMessage {
     mentionedUserIds: _readIntList(
       json['mentioned_user_ids'] ?? json['mentionedUserIds'],
     ).toList(),
+    replyToId: _readInt(json['reply_to_id'] ?? json['replyToId']),
+    replySenderName:
+        (json['reply_sender_name'] ?? json['replySenderName']) as String?,
+    replyBody: (json['reply_body'] ?? json['replyBody']) as String?,
+    editedAt: _readApiDateTime(json['edited_at'] ?? json['editedAt']),
+    deletedAt: _readApiDateTime(json['deleted_at'] ?? json['deletedAt']),
+    deleteReason: (json['delete_reason'] ?? json['deleteReason']) as String?,
     createdAt:
         _readApiDateTime(json['created_at'] ?? json['createdAt']) ??
         DateTime.now(),
+  );
+
+  ChatMessage copyWith({
+    String? body,
+    bool? mentionsAll,
+    List<int>? mentionedUserIds,
+    int? replyToId,
+    String? replySenderName,
+    String? replyBody,
+    DateTime? editedAt,
+    DateTime? deletedAt,
+    String? deleteReason,
+  }) => ChatMessage(
+    id: id,
+    conversationId: conversationId,
+    senderId: senderId,
+    senderName: senderName,
+    senderEmail: senderEmail,
+    senderAvatarUrl: senderAvatarUrl,
+    body: body ?? this.body,
+    mentionsAll: mentionsAll ?? this.mentionsAll,
+    mentionedUserIds: mentionedUserIds ?? this.mentionedUserIds,
+    createdAt: createdAt,
+    replyToId: replyToId ?? this.replyToId,
+    replySenderName: replySenderName ?? this.replySenderName,
+    replyBody: replyBody ?? this.replyBody,
+    editedAt: editedAt ?? this.editedAt,
+    deletedAt: deletedAt ?? this.deletedAt,
+    deleteReason: deleteReason ?? this.deleteReason,
   );
 
   Map<String, dynamic> toFirestore() => {
@@ -221,6 +367,12 @@ class ChatMessage {
     'body': body,
     'mentionsAll': mentionsAll,
     'mentionedUserIds': mentionedUserIds,
+    'replyToId': replyToId,
+    'replySenderName': replySenderName,
+    'replyBody': replyBody,
+    'editedAt': editedAt == null ? null : Timestamp.fromDate(editedAt!),
+    'deletedAt': deletedAt == null ? null : Timestamp.fromDate(deletedAt!),
+    'deleteReason': deleteReason,
     'createdAt': Timestamp.fromDate(createdAt),
   };
 
@@ -234,6 +386,12 @@ class ChatMessage {
     'body': body,
     'mentionsAll': mentionsAll,
     'mentionedUserIds': mentionedUserIds,
+    'replyToId': replyToId,
+    'replySenderName': replySenderName,
+    'replyBody': replyBody,
+    'editedAt': editedAt?.toIso8601String(),
+    'deletedAt': deletedAt?.toIso8601String(),
+    'deleteReason': deleteReason,
     'createdAt': createdAt.toIso8601String(),
   };
 
@@ -251,6 +409,12 @@ class ChatMessage {
       body: (data['body'] ?? '').toString(),
       mentionsAll: data['mentionsAll'] == true,
       mentionedUserIds: _readIntList(data['mentionedUserIds']).toList(),
+      replyToId: _readInt(data['replyToId']),
+      replySenderName: data['replySenderName'] as String?,
+      replyBody: data['replyBody'] as String?,
+      editedAt: (data['editedAt'] as Timestamp?)?.toDate().toLocal(),
+      deletedAt: (data['deletedAt'] as Timestamp?)?.toDate().toLocal(),
+      deleteReason: data['deleteReason'] as String?,
       createdAt:
           (data['createdAt'] as Timestamp?)?.toDate().toLocal() ??
           DateTime.now(),

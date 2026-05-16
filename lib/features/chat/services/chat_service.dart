@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_client.dart';
@@ -13,6 +14,8 @@ class ChatService {
   static bool _firestoreAvailable = true;
   static List<ChatConversation>? _conversationCache;
   static final Map<int, List<ChatMessage>> _messageCache = {};
+  static DateTime? _lastSendAt;
+  static const Duration _pollingInterval = Duration(seconds: 5);
 
   CollectionReference<Map<String, dynamic>> get _chatCollection =>
       _firestore.collection('chats');
@@ -22,8 +25,15 @@ class ChatService {
     return user?.id;
   }
 
+  Future<String?> _currentUserName() async {
+    final user = await SecureStorage.getUser();
+    return user?.name;
+  }
+
   Future<List<ChatConversation>> getConversations() async {
     final conversations = <ChatConversation>[];
+    final currentUserId = await _currentUserId();
+    final currentUserName = await _currentUserName();
 
     try {
       final response = await _api.get('chat/conversations');
@@ -47,8 +57,104 @@ class ChatService {
       syncConversation(conversation).catchError((_) {});
     }
 
-    _saveConversationCache(conversations);
-    return conversations;
+    await _warmUnreadMentionMessages(conversations);
+
+    final enriched = conversations
+        .map(
+          (conversation) => _withUnreadMentionState(
+            conversation,
+            currentUserId: currentUserId,
+            currentUserName: currentUserName,
+          ),
+        )
+        .toList();
+
+    _saveConversationCache(enriched);
+    return enriched;
+  }
+
+  Future<void> _warmUnreadMentionMessages(
+    List<ChatConversation> conversations,
+  ) async {
+    for (final conversation in conversations) {
+      if (conversation.type != 'team' || conversation.unreadCount <= 0) {
+        continue;
+      }
+      if (_cachedMessagesForConversation(conversation).isNotEmpty) continue;
+
+      try {
+        await _getMessagesFromApi(conversation.id);
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint('Unread mention message warmup failed: $error');
+        }
+      }
+    }
+  }
+
+  List<ChatMessage> _cachedMessagesForConversation(
+    ChatConversation conversation,
+  ) {
+    return _messageCache[conversation.id] ??
+        (conversation.id < 0 && conversation.teamId != null
+            ? _messageCache[conversation.teamId]
+            : null) ??
+        const <ChatMessage>[];
+  }
+
+  ChatConversation _withUnreadMentionState(
+    ChatConversation conversation, {
+    required int? currentUserId,
+    required String? currentUserName,
+  }) {
+    final previousConversation = _conversationCache
+        ?.where((cached) => cached.id == conversation.id)
+        .firstOrNull;
+
+    if (conversation.type != 'team' || conversation.unreadCount <= 0) {
+      return conversation.copyWith(hasUnreadMention: false);
+    }
+
+    final messages = _cachedMessagesForConversation(conversation);
+    final recentUnread = messages.length <= conversation.unreadCount
+        ? messages
+        : messages.sublist(messages.length - conversation.unreadCount);
+    final hasUnreadMention =
+        conversation.hasUnreadMention ||
+        previousConversation?.hasUnreadMention == true ||
+        conversation.lastMessageMentionsAll ||
+        (currentUserId != null &&
+            conversation.lastMessageMentionedUserIds.contains(currentUserId)) ||
+        recentUnread.any(
+          (message) => _messageMentionsUser(
+            message,
+            currentUserId: currentUserId,
+            currentUserName: currentUserName,
+          ),
+        );
+
+    return conversation.copyWith(hasUnreadMention: hasUnreadMention);
+  }
+
+  bool _messageMentionsUser(
+    ChatMessage message, {
+    required int? currentUserId,
+    required String? currentUserName,
+  }) {
+    if (message.mentionsAll) return true;
+    if (currentUserId != null &&
+        message.mentionedUserIds.contains(currentUserId)) {
+      return true;
+    }
+
+    final body = message.body.toLowerCase();
+    final name = currentUserName?.trim().toLowerCase();
+    final firstName = name?.split(RegExp(r'\s+')).first;
+    return body.contains('@all') ||
+        (name != null && name.isNotEmpty && body.contains('@$name')) ||
+        (firstName != null &&
+            firstName.isNotEmpty &&
+            body.contains('@$firstName'));
   }
 
   Future<List<ChatMessage>> _getMessagesFromApi(int conversationId) async {
@@ -87,6 +193,7 @@ class ChatService {
             lastMessage: chat.lastMessage,
             lastSenderName: chat.lastSenderName,
             updatedAt: chat.updatedAt,
+            canModerateMessages: chat.canModerateMessages,
           )
         else
           chat,
@@ -130,15 +237,22 @@ class ChatService {
         if (kDebugMode) {
           debugPrint('Chat polling fallback failed: $error');
         }
-        // Yield error so UI can display exactly why it's failing
-        yield* Stream.error(
-          Exception(
-            'Gagal terhubung ke backend REST API ($error). Pastikan backend di Cloud Run benar-benar sudah menggunakan kode terbaru.',
-          ),
-        );
+        final cached = _messageCache[conversationId];
+        if (cached != null) yield cached;
+        if (!_isTransientPollingError(error)) {
+          yield* Stream.error(
+            Exception(
+              'Gagal terhubung ke backend REST API ($error). Pastikan backend di Cloud Run benar-benar sudah menggunakan kode terbaru.',
+            ),
+          );
+        }
       }
-      await Future<void>.delayed(const Duration(seconds: 3));
+      await Future<void>.delayed(_pollingInterval);
     }
+  }
+
+  Stream<List<ChatMessage>> cachedMessageStream(int conversationId) {
+    return watchMessagesWithFallback(conversationId).distinct(_sameMessages);
   }
 
   Future<List<ChatConversation>> _getTeamConversationsFallback() async {
@@ -201,8 +315,17 @@ class ChatService {
           debugPrint('Chat conversations polling fallback failed: $error');
         }
       }
-      await Future<void>.delayed(const Duration(seconds: 2));
+      await Future<void>.delayed(_pollingInterval);
     }
+  }
+
+  bool _isTransientPollingError(Object error) {
+    return error is DioException &&
+        (error.response?.statusCode == 429 ||
+            error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.sendTimeout ||
+            error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.connectionError);
   }
 
   Stream<List<ChatMessage>> watchMessages(String conversationId) {
@@ -234,13 +357,31 @@ class ChatService {
     return messages;
   }
 
-  Future<ChatMessage> sendMessage(int conversationId, String body) async {
+  Future<ChatMessage> sendMessage(
+    int conversationId,
+    String body, {
+    int? replyToId,
+  }) async {
+    final now = DateTime.now();
+    final lastSendAt = _lastSendAt;
+    if (lastSendAt != null && now.difference(lastSendAt).inMilliseconds < 250) {
+      throw Exception('Please wait before sending another message.');
+    }
+    _lastSendAt = now;
+
     final resolvedConversationId = await _resolveConversationId(conversationId);
 
     try {
+      final data = <String, dynamic>{
+        'body': body,
+        'client_nonce':
+            '${resolvedConversationId}_${now.microsecondsSinceEpoch}',
+      };
+      if (replyToId != null) data['reply_to_id'] = replyToId;
+
       final response = await _api.post(
         'chat/conversations/$resolvedConversationId/messages',
-        data: {'body': body},
+        data: data,
       );
       final message = ChatMessage.fromJson(
         response.data['message'] as Map<String, dynamic>,
@@ -259,6 +400,58 @@ class ChatService {
     }
   }
 
+  Future<ChatMessage> editMessage(
+    int conversationId,
+    ChatMessage message,
+    String body,
+  ) async {
+    final resolvedConversationId = await _resolveConversationId(conversationId);
+    final response = await _api.patch(
+      'chat/conversations/$resolvedConversationId/messages/${message.id}',
+      data: {'body': body},
+    );
+    final updated = ChatMessage.fromJson(
+      response.data['message'] as Map<String, dynamic>,
+    );
+    _replaceCachedMessage(resolvedConversationId, conversationId, updated);
+    _syncMessageToFirestore(resolvedConversationId, updated).catchError((_) {});
+    return updated;
+  }
+
+  Future<ChatMessage?> deleteMessage(
+    int conversationId,
+    ChatMessage message, {
+    required bool forEveryone,
+  }) async {
+    final resolvedConversationId = await _resolveConversationId(conversationId);
+    final response = await _api.delete(
+      'chat/conversations/$resolvedConversationId/messages/${message.id}',
+      data: {'scope': forEveryone ? 'everyone' : 'me'},
+    );
+
+    final payload = response.data is Map ? response.data['message'] : null;
+    if (payload is Map<String, dynamic>) {
+      final updated = ChatMessage.fromJson(payload);
+      _replaceCachedMessage(resolvedConversationId, conversationId, updated);
+      _syncMessageToFirestore(
+        resolvedConversationId,
+        updated,
+      ).catchError((_) {});
+      return updated;
+    }
+
+    _removeCachedMessage(resolvedConversationId, conversationId, message.id);
+    if (_firestoreAvailable) {
+      _chatCollection
+          .doc(resolvedConversationId.toString())
+          .collection('messages')
+          .doc(message.id.toString())
+          .delete()
+          .catchError((_) {});
+    }
+    return null;
+  }
+
   Future<ChatConversation> startPrivateChat(int userId) async {
     final response = await _api.post('chat/private/$userId');
     final conversation = ChatConversation.fromJson(
@@ -273,10 +466,10 @@ class ChatService {
           .set(conversation.toFirestore(), SetOptions(merge: true))
           .timeout(const Duration(seconds: 3))
           .catchError((e) {
-        if (e is Exception && _isFirestoreUnavailable(e)) {
-          _firestoreAvailable = false;
-        }
-      });
+            if (e is Exception && _isFirestoreUnavailable(e)) {
+              _firestoreAvailable = false;
+            }
+          });
     }
 
     return conversation;
@@ -304,6 +497,8 @@ class ChatService {
       await convoRef.set({
         'lastMessage': message.body,
         'lastSenderName': message.senderName,
+        'lastMessageMentionsAll': message.mentionsAll,
+        'lastMessageMentionedUserIds': message.mentionedUserIds,
         'updatedAt': Timestamp.fromDate(message.createdAt),
         'lastSenderId': message.senderId,
         'lastSentAt': Timestamp.fromDate(message.createdAt),
@@ -377,5 +572,53 @@ class ChatService {
         (error.code == 'permission-denied' ||
             error.code == 'unavailable' ||
             error.code == 'failed-precondition');
+  }
+
+  void _replaceCachedMessage(
+    int resolvedConversationId,
+    int requestedConversationId,
+    ChatMessage message,
+  ) {
+    for (final id in {resolvedConversationId, requestedConversationId}) {
+      final current = _messageCache[id] ?? const <ChatMessage>[];
+      final updated = [
+        for (final cached in current)
+          if (cached.id == message.id) message else cached,
+      ];
+      if (!updated.any((cached) => cached.id == message.id)) {
+        updated.add(message);
+      }
+      updated.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      _saveMessageCache(id, updated);
+    }
+  }
+
+  void _removeCachedMessage(
+    int resolvedConversationId,
+    int requestedConversationId,
+    int messageId,
+  ) {
+    for (final id in {resolvedConversationId, requestedConversationId}) {
+      final current = _messageCache[id] ?? const <ChatMessage>[];
+      _saveMessageCache(
+        id,
+        current.where((message) => message.id != messageId).toList(),
+      );
+    }
+  }
+
+  bool _sameMessages(List<ChatMessage> previous, List<ChatMessage> next) {
+    if (previous.length != next.length) return false;
+    for (var i = 0; i < previous.length; i++) {
+      final a = previous[i];
+      final b = next[i];
+      if (a.id != b.id ||
+          a.body != b.body ||
+          a.editedAt != b.editedAt ||
+          a.deletedAt != b.deletedAt) {
+        return false;
+      }
+    }
+    return true;
   }
 }

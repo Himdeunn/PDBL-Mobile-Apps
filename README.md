@@ -43,6 +43,7 @@ Cross-platform task management application built with Flutter. Designed for dail
 - **Offline-First Architecture** -- Local Isar database stores all tasks and notifications. The app works fully without internet and syncs when connectivity is restored.
 - **Guest Mode** -- Complete task management without account creation. Tasks are identified by a unique device ID and automatically migrate to the account on registration or login.
 - **Team Collaboration** -- Create teams, invite members by email, assign tasks to specific members, and track per-member completion progress. Role-based management with owner and member roles.
+- **Chat** -- Personal and team chat with message history, replies, edits, deletion controls, mention highlighting, unread indicators, read marking, cached message state, and REST polling fallback.
 - **Calendar View** -- Monthly calendar with color-coded priority indicators. Interactive navigation for date-based task browsing.
 - **Push Notifications** -- Firebase Cloud Messaging integration for real-time alerts. Local notifications for deadline reminders with configurable reminder days and time.
 - **Notification Center** -- In-app notification list with read/unread state, swipe-to-delete, and real-time updates for team invitations, member removals, and deadline alerts.
@@ -98,7 +99,7 @@ The application follows a **feature-first architecture** with a shared core laye
 ```
 lib/
 |-- core/           # Shared infrastructure (network, storage, theme, utils)
-|-- features/       # Feature modules (auth, home, task, group, calendar, profile, shell, splash)
+|-- features/       # Feature modules (auth, home, task, group, chat, calendar, profile, shell, splash)
 |-- main.dart        # Entry point, Firebase init, notification setup
 |-- firebase_options.dart  # Firebase configuration (generated)
 ```
@@ -211,6 +212,15 @@ lib/
 |   |   |-- widgets/
 |   |       |-- group_card.dart          # Team summary card with progress indicator
 |   |       |-- invitation_card.dart     # Pending invitation card with accept/decline
+|   |
+|   |-- chat/
+|   |   |-- models/
+|   |   |   |-- chat_models.dart       # Conversation, member, and message models
+|   |   |-- pages/
+|   |   |   |-- chat_list_page.dart    # Conversation inbox with unread state
+|   |   |   |-- chat_room_page.dart    # Message room, composer, replies, editing, deletion
+|   |   |-- services/
+|   |       |-- chat_service.dart      # REST/Firestore chat sync, cache, polling fallback
 |   |
 |   |-- calendar/
 |   |   |-- pages/
@@ -402,6 +412,19 @@ If Shorebird reports that the release version already exists, bump the `version`
 - Member detail view showing individual task statistics
 - Owner privileges: invite, remove, and manage members
 
+
+### Chat
+
+- Conversation inbox for team and personal chats
+- Chat room with message history, sender metadata, timestamps, and reply previews
+- Message composer with multiline input, 2000-character guidance, mention suggestions, and send cooldown handling
+- Message actions: reply, copy, edit within the allowed window, and delete for self or everyone when permitted
+- Team mentions with `@all` and member-name highlighting
+- Read-state updates through the backend and unread counters in the conversation list
+- Local message cache through secure storage so recent conversations remain visible during transient network errors
+- REST polling fallback for reliable message delivery when Firestore is unavailable or delayed
+- Firebase Cloud Messaging integration for chat notifications outside the active conversation
+
 ### Calendar
 
 - Monthly calendar grid with navigation
@@ -509,9 +532,10 @@ The application communicates with the PDBL-BACKEND via REST API:
 | Profile       | POST `/profile/avatar|password|email|update` | JWT      |
 | Notifications | GET/POST/DELETE `/notifications`          | JWT         |
 | Settings      | GET/POST `/notification-settings`         | JWT         |
+| Chat          | GET/POST/PATCH/DELETE `/chat/...`         | JWT         |
 | Email Check   | GET `/users/check-email`                  | JWT         |
 
-**Hybrid Auth** endpoints accept either JWT Bearer token (registered users) or X-Device-ID header (guest users).
+**Hybrid Auth** endpoints accept either JWT Bearer token (registered users) or X-Device-ID header (guest users). Chat endpoints require JWT authentication because conversations are tied to registered users and team membership.
 
 ---
 

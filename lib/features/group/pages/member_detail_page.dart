@@ -2,6 +2,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/utils/image_cache_manager.dart';
 import '../../../../core/utils/network_utils.dart';
 import 'package:flutter/material.dart';
+import '../../chat/pages/chat_room_page.dart';
+import '../../chat/services/chat_service.dart';
+import '../../auth/services/auth_service.dart';
+import '../../../../core/utils/notification_helper.dart';
 import 'edit_team_task_page.dart';
 import '../services/team_service.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -15,6 +19,8 @@ class MemberDetailPage extends StatefulWidget {
   final List<dynamic> memberTasks;
   final List<dynamic> teamMembers;
   final String? currentUserEmail;
+  final String? teamLeaderId;
+  final String? teamLeaderEmail;
   final VoidCallback? onToggle;
   final bool isOwner;
   final bool isOffline;
@@ -26,6 +32,8 @@ class MemberDetailPage extends StatefulWidget {
     required this.memberTasks,
     this.teamMembers = const [],
     this.currentUserEmail,
+    this.teamLeaderId,
+    this.teamLeaderEmail,
     this.onToggle,
     this.isOwner = false,
     this.isOffline = false,
@@ -37,6 +45,49 @@ class MemberDetailPage extends StatefulWidget {
 
 class _MemberDetailPageState extends State<MemberDetailPage> {
   late List<dynamic> _localTasks;
+
+  String _readMemberRole(Map<dynamic, dynamic> member) {
+    if (member['is_leader'] == true || member['isLeader'] == true) {
+      return 'Team Leader';
+    }
+    final memberUser = member['user'];
+    final memberId = (member['id'] ??
+            member['user_id'] ??
+            member['userId'] ??
+            (memberUser is Map ? memberUser['id'] : null))
+        ?.toString();
+    if (memberId != null &&
+        widget.teamLeaderId != null &&
+        memberId == widget.teamLeaderId) {
+      return 'Team Leader';
+    }
+
+    final memberEmail = (member['email'] ??
+            (memberUser is Map ? memberUser['email'] : null))
+        ?.toString()
+        .toLowerCase()
+        .trim();
+    final leaderEmail = widget.teamLeaderEmail?.toLowerCase().trim();
+    if (memberEmail != null &&
+        memberEmail.isNotEmpty &&
+        leaderEmail != null &&
+        memberEmail == leaderEmail) {
+      return 'Team Leader';
+    }
+
+    final role = member['role']?.toString();
+    if (role == null || role.isEmpty) return 'Member';
+    final normalized = role.toLowerCase().replaceAll('_', ' ').trim();
+    if (normalized == 'leader' ||
+        normalized == 'team leader' ||
+        normalized == 'team owner' ||
+        normalized == 'owner' ||
+        normalized == 'admin') {
+      return 'Team Leader';
+    }
+    if (normalized == 'member') return 'Member';
+    return role;
+  }
 
   @override
   void initState() {
@@ -94,6 +145,43 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     });
   }
 
+  Future<void> _openPrivateChat(BuildContext context) async {
+    try {
+      final authService = AuthService();
+      final currentUser = await authService.getCachedUser();
+      if (!context.mounted || currentUser == null) return;
+      final currentUserId = currentUser.id;
+      if (currentUserId == null) return;
+      final memberId = (widget.member['id'] as num).toInt();
+      if (memberId == currentUserId) return;
+
+      final chatService = ChatService();
+      final privateChat = await chatService.startPrivateChat(memberId);
+
+      if (!context.mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatRoomPage(
+            conversation: privateChat,
+            currentUser: currentUser,
+            authService: authService,
+          ),
+        ),
+      );
+
+      if (privateChat.id != 0) {
+        await NotificationHelper.cancelChatNotification(privateChat.id);
+        await chatService.markConversationRead(privateChat.id);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ErrorHandler.handleApiError(e);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final String memberEmail =
@@ -114,7 +202,13 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     final int progress = totalTasks > 0
         ? ((completedTasks / totalTasks) * 100).round()
         : 0;
-    final String role = widget.member['role'] ?? 'Member';
+    final String role = _readMemberRole(widget.member as Map<dynamic, dynamic>);
+    final String? currentUserEmailNormalized = widget.currentUserEmail
+        ?.toLowerCase()
+        .trim();
+    final bool isOwnMemberDetail =
+        currentUserEmailNormalized != null &&
+        currentUserEmailNormalized == memberEmail;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -129,14 +223,36 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Member Details',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Flexible(
+              child: Text(
+                'Member Details',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
         centerTitle: true,
+        actions: isOwnMemberDetail
+            ? null
+            : [
+                IconButton(
+                  icon: const Icon(
+                    Icons.chat_outlined,
+                    color: AppColors.textPrimary,
+                    size: 28,
+                  ),
+                  onPressed: () => _openPrivateChat(context),
+                ),
+                const SizedBox(width: 8),
+              ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -151,7 +267,8 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
                   color: Color(0xFFF1E6D2),
                 ),
                 child: ClipOval(
-                  child: widget.member['avatar_url'] != null ||
+                  child:
+                      widget.member['avatar_url'] != null ||
                           (widget.member['avatar'] != null &&
                               widget.member['avatar'].toString().isNotEmpty)
                       ? CachedNetworkImage(
@@ -167,7 +284,11 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
                             ),
                           ),
                           cacheManager: WudiCacheManager(),
-                          errorWidget: (_, __, ___) => const Icon(Icons.person, size: 60, color: Colors.grey),
+                          errorWidget: (_, __, ___) => const Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Colors.grey,
+                          ),
                         )
                       : const Icon(Icons.person, size: 60, color: Colors.grey),
                 ),
