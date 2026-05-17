@@ -379,7 +379,8 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+        backgroundColor: AppColors.background,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _fetchData,
@@ -721,21 +722,43 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
           if (snapshot.data == true) {
             return const SizedBox.shrink();
           }
-          return FloatingActionButton(
-            backgroundColor: AppColors.primary,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.add, color: Colors.white),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CreateTeamPage(
-                    authService: widget.authService,
-                    onSuccess: () => _fetchData(),
-                  ),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Material(
+              color: Colors.transparent,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: Ink(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.22),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
-              );
-            },
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CreateTeamPage(
+                          authService: widget.authService,
+                          onSuccess: () => _fetchData(),
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
+              ),
+            ),
           );
         },
       ),

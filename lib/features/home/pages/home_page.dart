@@ -1,9 +1,9 @@
 import 'dart:async';
 import '../../../../core/theme/app_theme.dart';
-
 import '../../../../core/utils/debouncer.dart';
 import '../../../../core/utils/time_utils.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/models/user.dart';
 import '../../auth/services/auth_service.dart';
 import '../../auth/pages/welcome_page.dart';
@@ -23,6 +23,8 @@ import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/notification_helper.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../profile/pages/notification_page.dart';
+import '../../ai_chat/screens/wudi_ai_screen.dart';
+import '../../ai_chat/widgets/wudi_ai_card.dart';
 
 class HomePage extends StatefulWidget {
   final AuthService authService;
@@ -49,6 +51,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   StreamSubscription? _connectivitySubscription;
   StreamSubscription<void>? _widgetDashboardSub;
   StreamSubscription<void>? _teamEventSubscription;
+  bool _showWudiIntroCard = true;
 
   @override
   void initState() {
@@ -56,6 +59,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // Set user synchronously from in-memory cache so first frame shows correct data
     _user = widget.authService.currentCachedUser;
+    _loadWudiIntroCardState();
     _checkInitialConnection();
     _connectivitySubscription = ConnectionService().isConnectedStream.listen((
       connected,
@@ -73,6 +77,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _loadData(_selectedDate, true);
     });
     _loadData(_selectedDate);
+  }
+
+  Future<void> _loadWudiIntroCardState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _showWudiIntroCard =
+          !(prefs.getBool('wudi_ai_home_card_opened') ?? false);
+    });
   }
 
   Future<void> _checkInitialConnection() async {
@@ -233,6 +246,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _openWudiAi({
+    String? prompt,
+    bool dismissIntroCard = false,
+  }) async {
+    if (dismissIntroCard && _showWudiIntroCard) {
+      setState(() => _showWudiIntroCard = false);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('wudi_ai_home_card_opened', true);
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => WudiAiScreen(initialPrompt: prompt)),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -314,305 +344,342 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ? screenWidth * 0.08
         : 20.0;
 
-    return RefreshIndicator(
-      onRefresh: () => _loadData(_selectedDate, true),
-      color: AppColors.primary,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(
-          horizontalPadding,
-          MediaQuery.of(context).padding.top + 16.0,
-          horizontalPadding,
-          120 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            HomeHeader(
-              displayName: displayName,
-              avatarUrl: _user?.avatarUrl,
-              isGuest: isGuest,
-              todayTarget: _user?.todayTarget ?? 0,
-              onNotificationTap: _goToNotifications,
-              onProfileTap: _goToProfile,
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<List<TaskLocal>>(
-              stream: _tasksStream,
-              builder: (context, snapshot) {
-                final tasks = snapshot.data ?? [];
+    return Scaffold(
+        backgroundColor: AppColors.background,
+      floatingActionButton: FloatingActionButton.small(
+        heroTag: 'wudi-ai-home-fab',
+        elevation: 4,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        onPressed: () => _openWudiAi(),
+        child: const Icon(Icons.auto_awesome_rounded),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => _loadData(_selectedDate, true),
+        color: AppColors.primary,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            MediaQuery.of(context).padding.top + 16.0,
+            horizontalPadding,
+            120 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              HomeHeader(
+                displayName: displayName,
+                avatarUrl: _user?.avatarUrl,
+                isGuest: isGuest,
+                todayTarget: _user?.todayTarget ?? 0,
+                onNotificationTap: _goToNotifications,
+                onProfileTap: _goToProfile,
+              ),
+              const SizedBox(height: 16),
+              StreamBuilder<List<TaskLocal>>(
+                stream: _tasksStream,
+                builder: (context, snapshot) {
+                  final tasks = snapshot.data ?? [];
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    WudiSearchBar(
-                      tasks: tasks,
-                      onSelected: (task) {
-                        _showTaskDetail(task);
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    WeekStrip(
-                      selectedIndex: _selectedDayIndex,
-                      onDaySelected: _onDaySelected,
-                    ),
-                    const SizedBox(height: 32),
-                    Builder(
-                      builder: (context) {
-                        int getWeight(String p) {
-                          switch (p.toLowerCase()) {
-                            case 'high':
-                              return 3;
-                            case 'medium':
-                              return 2;
-                            case 'low':
-                              return 1;
-                            default:
-                              return 0;
-                          }
-                        }
-
-                        List<TaskLocal> sortUncompleted(List<TaskLocal> list) {
-                          final sorted = list
-                              .where((t) => !t.isCompleted)
-                              .toList();
-                          sorted.sort((a, b) {
-                            if (a.dueTime != null && b.dueTime != null) {
-                              final c = a.dueTime!.compareTo(b.dueTime!);
-                              if (c != 0) return c;
-                            } else if (a.dueTime != null) {
-                              return -1;
-                            } else if (b.dueTime != null) {
-                              return 1;
-                            }
-                            return getWeight(
-                              b.priority,
-                            ).compareTo(getWeight(a.priority));
-                          });
-                          return sorted;
-                        }
-
-                        final uncompletedPersonal = sortUncompleted(
-                          tasks.where((t) => t.teamId == null).toList(),
-                        );
-                        final uncompletedTeam = sortUncompleted(
-                          tasks.where((t) => t.teamId != null).toList(),
-                        );
-
-                        // Focus Today: based on selected tab, auto-fallback to other if tab is empty
-                        TaskLocal? focusTask;
-                        if (_taskTab == 0) {
-                          focusTask =
-                              uncompletedPersonal.firstOrNull ??
-                              uncompletedTeam.firstOrNull;
-                        } else {
-                          focusTask =
-                              uncompletedTeam.firstOrNull ??
-                              uncompletedPersonal.firstOrNull;
-                        }
-
-                        // Apply tab filter for DailyTaskList
-                        final tabFilteredTasks = _taskTab == 0
-                            ? tasks.where((t) => t.teamId == null).toList()
-                            : tasks.where((t) => t.teamId != null).toList();
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Focus Today',
-                              style: TextStyle(
-                                fontSize:
-                                    MediaQuery.of(context).size.width > 400
-                                    ? 18
-                                    : 16,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            if (_isLoading && focusTask == null)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 40),
-                                  child: CircularProgressIndicator(),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      WudiSearchBar(
+                        tasks: tasks,
+                        onSelected: (task) {
+                          _showTaskDetail(task);
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: _showWudiIntroCard
+                            ? Padding(
+                                key: const ValueKey('wudi-ai-home-card'),
+                                padding: const EdgeInsets.only(bottom: 24),
+                                child: WudiAiCard(
+                                  onTap: () =>
+                                      _openWudiAi(dismissIntroCard: true),
                                 ),
                               )
-                            else if (focusTask != null)
-                              _buildFocusCard(focusTask)
-                            else
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 24,
-                                  horizontal: 16,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: Colors.black.withValues(alpha: 0.06),
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'No focus for today yet.',
-                                    style: TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 14,
-                                    ),
-                                  ),
+                            : const SizedBox.shrink(
+                                key: ValueKey('wudi-ai-home-card-hidden'),
+                              ),
+                      ),
+                      WeekStrip(
+                        selectedIndex: _selectedDayIndex,
+                        onDaySelected: _onDaySelected,
+                      ),
+                      const SizedBox(height: 32),
+                      Builder(
+                        builder: (context) {
+                          int getWeight(String p) {
+                            switch (p.toLowerCase()) {
+                              case 'high':
+                                return 3;
+                              case 'medium':
+                                return 2;
+                              case 'low':
+                                return 1;
+                              default:
+                                return 0;
+                            }
+                          }
+
+                          List<TaskLocal> sortUncompleted(
+                            List<TaskLocal> list,
+                          ) {
+                            final sorted = list
+                                .where((t) => !t.isCompleted)
+                                .toList();
+                            sorted.sort((a, b) {
+                              if (a.dueTime != null && b.dueTime != null) {
+                                final c = a.dueTime!.compareTo(b.dueTime!);
+                                if (c != 0) return c;
+                              } else if (a.dueTime != null) {
+                                return -1;
+                              } else if (b.dueTime != null) {
+                                return 1;
+                              }
+                              return getWeight(
+                                b.priority,
+                              ).compareTo(getWeight(a.priority));
+                            });
+                            return sorted;
+                          }
+
+                          final uncompletedPersonal = sortUncompleted(
+                            tasks.where((t) => t.teamId == null).toList(),
+                          );
+                          final uncompletedTeam = sortUncompleted(
+                            tasks.where((t) => t.teamId != null).toList(),
+                          );
+
+                          // Focus Today: based on selected tab, auto-fallback to other if tab is empty
+                          TaskLocal? focusTask;
+                          if (_taskTab == 0) {
+                            focusTask =
+                                uncompletedPersonal.firstOrNull ??
+                                uncompletedTeam.firstOrNull;
+                          } else {
+                            focusTask =
+                                uncompletedTeam.firstOrNull ??
+                                uncompletedPersonal.firstOrNull;
+                          }
+
+                          // Apply tab filter for DailyTaskList
+                          final tabFilteredTasks = _taskTab == 0
+                              ? tasks.where((t) => t.teamId == null).toList()
+                              : tasks.where((t) => t.teamId != null).toList();
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Focus Today',
+                                style: TextStyle(
+                                  fontSize:
+                                      MediaQuery.of(context).size.width > 400
+                                      ? 18
+                                      : 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
-                            const SizedBox(height: 32),
-                            // Today Task header + SEE ALL
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Today Task',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary,
+                              const SizedBox(height: 16),
+                              if (_isLoading && focusTask == null)
+                                const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 40),
+                                    child: CircularProgressIndicator(),
                                   ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => TaskPage(
-                                        authService: widget.authService,
-                                        filterDate: _selectedDate,
+                                )
+                              else if (focusTask != null)
+                                _buildFocusCard(focusTask)
+                              else
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 24,
+                                    horizontal: 16,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.06,
                                       ),
                                     ),
                                   ),
-                                  child: const Text(
-                                    'SEE ALL',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey,
-                                      fontWeight: FontWeight.bold,
+                                  child: Center(
+                                    child: Text(
+                                      'No focus for today yet.',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 14,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            // Individu / Team tab — sliding pill
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                const double pillH = 38.0;
-                                const double padding = 4.0;
-                                final double pillW =
-                                    (constraints.maxWidth - padding * 2) / 2;
-                                return Container(
-                                  height: pillH + padding * 2,
-                                  padding: const EdgeInsets.all(padding),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    borderRadius: BorderRadius.circular(30),
+                              const SizedBox(height: 32),
+                              // Today Task header + SEE ALL
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Today Task',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textPrimary,
+                                    ),
                                   ),
-                                  child: Stack(
-                                    children: [
-                                      // Sliding active pill
-                                      AnimatedPositioned(
-                                        duration: const Duration(
-                                          milliseconds: 240,
+                                  GestureDetector(
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => TaskPage(
+                                          authService: widget.authService,
+                                          filterDate: _selectedDate,
                                         ),
-                                        curve: Curves.easeInOut,
-                                        left: _taskTab == 0 ? 0 : pillW,
-                                        top: 0,
-                                        bottom: 0,
-                                        width: pillW,
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: AppColors.primary,
-                                            borderRadius: BorderRadius.circular(
-                                              26,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'SEE ALL',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              // Individu / Team tab — sliding pill
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  const double pillH = 38.0;
+                                  const double padding = 4.0;
+                                  final double pillW =
+                                      (constraints.maxWidth - padding * 2) / 2;
+                                  return Container(
+                                    height: pillH + padding * 2,
+                                    padding: const EdgeInsets.all(padding),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                        // Sliding active pill
+                                        AnimatedPositioned(
+                                          duration: const Duration(
+                                            milliseconds: 240,
+                                          ),
+                                          curve: Curves.easeInOut,
+                                          left: _taskTab == 0 ? 0 : pillW,
+                                          top: 0,
+                                          bottom: 0,
+                                          width: pillW,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary,
+                                              borderRadius:
+                                                  BorderRadius.circular(26),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                      // Labels
-                                      Row(
-                                        children: [
-                                          _buildTab(
-                                            'Individu',
-                                            0,
-                                            pillW,
-                                            pillH,
-                                          ),
-                                          _buildTab('Team', 1, pillW, pillH),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            ClipRect(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 260),
-                                transitionBuilder: (child, animation) {
-                                  final isForward = _taskTab >= _prevTaskTab;
-                                  final begin = isForward
-                                      ? const Offset(1.0, 0.0)
-                                      : const Offset(-1.0, 0.0);
-                                  final slide =
-                                      Tween<Offset>(
-                                        begin: begin,
-                                        end: Offset.zero,
-                                      ).animate(
-                                        CurvedAnimation(
-                                          parent: animation,
-                                          curve: Curves.easeOutCubic,
+                                        // Labels
+                                        Row(
+                                          children: [
+                                            _buildTab(
+                                              'Individu',
+                                              0,
+                                              pillW,
+                                              pillH,
+                                            ),
+                                            _buildTab('Team', 1, pillW, pillH),
+                                          ],
                                         ),
-                                      );
-                                  return SlideTransition(
-                                    position: slide,
-                                    child: FadeTransition(
-                                      opacity: animation,
-                                      child: child,
+                                      ],
                                     ),
                                   );
                                 },
-                                layoutBuilder:
-                                    (currentChild, previousChildren) => Stack(
-                                      alignment: Alignment.topCenter,
-                                      children: [
-                                        ...previousChildren,
-                                        if (currentChild != null) currentChild,
-                                      ],
+                              ),
+                              const SizedBox(height: 16),
+                              ClipRect(
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 260),
+                                  transitionBuilder: (child, animation) {
+                                    final isForward = _taskTab >= _prevTaskTab;
+                                    final begin = isForward
+                                        ? const Offset(1.0, 0.0)
+                                        : const Offset(-1.0, 0.0);
+                                    final slide =
+                                        Tween<Offset>(
+                                          begin: begin,
+                                          end: Offset.zero,
+                                        ).animate(
+                                          CurvedAnimation(
+                                            parent: animation,
+                                            curve: Curves.easeOutCubic,
+                                          ),
+                                        );
+                                    return SlideTransition(
+                                      position: slide,
+                                      child: FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  layoutBuilder:
+                                      (currentChild, previousChildren) => Stack(
+                                        alignment: Alignment.topCenter,
+                                        children: [
+                                          ...previousChildren,
+                                          if (currentChild != null)
+                                            currentChild,
+                                        ],
+                                      ),
+                                  child: KeyedSubtree(
+                                    key: ValueKey<int>(_taskTab),
+                                    child: DailyTaskList(
+                                      tasks: tabFilteredTasks,
+                                      onRefresh: _loadData,
+                                      authService: widget.authService,
+                                      isLoading: _isLoading,
+                                      filterDate: _selectedDate,
+                                      isOffline: _isOffline,
+                                      showHeader: false,
                                     ),
-                                child: KeyedSubtree(
-                                  key: ValueKey<int>(_taskTab),
-                                  child: DailyTaskList(
-                                    tasks: tabFilteredTasks,
-                                    onRefresh: _loadData,
-                                    authService: widget.authService,
-                                    isLoading: _isLoading,
-                                    filterDate: _selectedDate,
-                                    isOffline: _isOffline,
-                                    showHeader: false,
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
-    );
+      );
+    
+    
   }
+
 
   Widget _buildTab(String label, int index, double width, double height) {
     final isActive = _taskTab == index;

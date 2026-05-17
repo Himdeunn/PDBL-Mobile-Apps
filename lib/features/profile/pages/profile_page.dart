@@ -638,9 +638,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final isGoogleUser = _isGoogleUser == true;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Profile'),
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: AppColors.textPrimary,

@@ -19,6 +19,7 @@ Cross-platform task management application built with Flutter. Designed for dail
 - [Feature Modules](#feature-modules)
   - [Authentication](#authentication)
   - [Task Management](#task-management)
+  - [WUDI AI Assistant](#wudi-ai-assistant)
   - [Team Collaboration](#team-collaboration)
   - [Calendar](#calendar)
   - [Notifications](#notifications)
@@ -52,6 +53,7 @@ Cross-platform task management application built with Flutter. Designed for dail
 - **Optimistic UI Updates** -- Instant state transitions for task completion and status changes. The UI updates immediately while the server request processes in the background.
 - **Global Search** -- Real-time task filtering from the home screen search bar with debounced input.
 - **Daily Dashboard** -- Home screen with week strip navigation, daily task list, focus card showing progress, and quick task creation.
+- **WUDI AI Assistant** -- Dedicated task-focused assistant surface for asking about deadlines, priorities, overdue tasks, summaries, and guided task actions without mixing AI responses into personal or team chats.
 - **Client-Side Rate Limiting** -- Login and registration forms enforce cooldown periods after repeated failed attempts.
 - **Automatic Token Refresh** -- Dio interceptor handles JWT expiration with concurrent request deduplication to prevent 401 storms.
 - **Connection Monitoring** -- Real-time connectivity detection with automatic sync when connection is restored.
@@ -99,7 +101,7 @@ The application follows a **feature-first architecture** with a shared core laye
 ```
 lib/
 |-- core/           # Shared infrastructure (network, storage, theme, utils)
-|-- features/       # Feature modules (auth, home, task, group, chat, calendar, profile, shell, splash)
+|-- features/       # Feature modules (auth, home, task, group, chat, calendar, profile, ai_chat, shell, splash)
 |-- main.dart        # Entry point, Firebase init, notification setup
 |-- firebase_options.dart  # Firebase configuration (generated)
 ```
@@ -117,6 +119,8 @@ Services (business logic, API calls)
     +--> Local Database (Isar) --> Offline storage
     |
     +--> Secure Storage --> Tokens, credentials
+    |
+    +--> AI Chat Service --> Authenticated AI endpoints
 ```
 
 **Key Design Patterns:**
@@ -125,6 +129,7 @@ Services (business logic, API calls)
 - Isar watchers provide reactive streams for automatic UI updates
 - Optimistic updates: UI changes immediately, server sync happens in background
 - Error handler provides centralized, user-friendly error reporting
+- The AI assistant is isolated in a dedicated feature module and communicates only with authenticated backend AI endpoints
 
 ---
 
@@ -226,6 +231,19 @@ lib/
 |   |   |-- pages/
 |   |       |-- calendar_page.dart       # Monthly calendar with task indicators
 |   |
+|   |-- ai_chat/
+|   |   |-- cache/
+|   |   |   |-- ai_chat_cache.dart       # Short-lived in-memory chat state
+|   |   |-- models/
+|   |   |   |-- ai_chat_message.dart      # AI chat message model with metadata
+|   |   |-- screens/
+|   |   |   |-- wudi_ai_screen.dart       # Dedicated AI assistant conversation screen
+|   |   |-- services/
+|   |   |   |-- ai_chat_service.dart      # AI history, chat, and cancellation API client
+|   |   |-- widgets/
+|   |       |-- wudi_ai_card.dart         # Home entry card for the AI assistant
+|   |       |-- ai_typing_indicator.dart  # Assistant response loading indicator
+|   |
 |   |-- profile/
 |   |   |-- models/
 |   |   |   |-- notification_local.dart  # Isar schema for local notification cache
@@ -257,6 +275,22 @@ lib/
 |-- main.dart                            # Entry point: Firebase init, Isar init, notification channels
 |-- firebase_options.dart                # Generated Firebase configuration
 ```
+
+---
+
+### WUDI AI Assistant
+
+The mobile application includes a dedicated WUDI AI assistant module for task-focused productivity support. The assistant is intentionally separated from personal and team chat so AI interactions remain distinct from human conversations.
+
+Frontend responsibilities include:
+
+- Providing a dedicated assistant screen with persistent conversation history.
+- Rendering structured assistant responses such as task cards, summaries, recommendations, and action confirmations.
+- Offering quick prompts for common productivity questions, including deadlines, overdue tasks, priorities, and summaries.
+- Sending authenticated requests to backend AI endpoints for conversation history, message processing, and cancellation.
+- Preserving a clean mobile experience through a Home entry card and compact assistant access without adding an additional bottom navigation tab.
+
+The frontend does not store AI provider credentials and does not call external AI providers directly. All AI processing is routed through the backend API.
 
 ---
 

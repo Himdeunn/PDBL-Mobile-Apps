@@ -8,7 +8,12 @@ import '../utils/error_handler.dart';
 
 class ApiClient {
   static String get baseUrl {
-    var url = dotenv.env['API_URL'] ?? '';
+    String url;
+    try {
+      url = dotenv.env['API_URL'] ?? '';
+    } catch (_) {
+      url = '';
+    }
 
     if (url.isEmpty) {
       // Return a dummy but valid looking URL to avoid crashes before env is loaded,
@@ -66,8 +71,18 @@ class ApiClient {
     return await _dio.get(path, queryParameters: queryParameters);
   }
 
-  Future<Response> post(String path, {dynamic data, Options? options}) async {
-    return await _dio.post(path, data: data, options: options);
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
+    return await _dio.post(
+      path,
+      data: data,
+      options: options,
+      cancelToken: cancelToken,
+    );
   }
 
   Future<Response> put(String path, {dynamic data}) async {
