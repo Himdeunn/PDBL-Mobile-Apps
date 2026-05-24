@@ -10,13 +10,18 @@ class AppTimeUtils {
 
     try {
       // 1. If it contains AM/PM, parse it accordingly
-      if (timeStr.toUpperCase().contains('AM') || timeStr.toUpperCase().contains('PM')) {
+      if (timeStr.toUpperCase().contains('AM') ||
+          timeStr.toUpperCase().contains('PM')) {
         try {
           final date = DateFormat.jm().parse(timeStr);
           return DateFormat('HH:mm').format(date);
         } catch (e) {
           // If jm() fails (e.g. "13:00 AM"), strip the suffixes and continue to ":" parsing
-          timeStr = timeStr.toUpperCase().replaceAll('AM', '').replaceAll('PM', '').trim();
+          timeStr = timeStr
+              .toUpperCase()
+              .replaceAll('AM', '')
+              .replaceAll('PM', '')
+              .trim();
         }
       }
 
@@ -24,12 +29,14 @@ class AppTimeUtils {
       if (timeStr.contains(':')) {
         final parts = timeStr.split(':');
         final hour = parts[0].trim().padLeft(2, '0');
-        final minute = parts.length > 1 ? parts[1].trim().padLeft(2, '0') : '00';
-        
+        final minute = parts.length > 1
+            ? parts[1].trim().padLeft(2, '0')
+            : '00';
+
         // Final validation to ensure they are numbers
         int.parse(hour);
         int.parse(minute);
-        
+
         return '$hour:$minute';
       }
 

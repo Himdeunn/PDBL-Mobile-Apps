@@ -29,9 +29,10 @@ class _SplashPageState extends State<SplashPage>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
     _controller.forward();
     _initializeApp();
   }
@@ -49,10 +50,10 @@ class _SplashPageState extends State<SplashPage>
 
     // Run auth check, remote config fetch, and package info in parallel
     final authService = AuthService();
-    
+
     // We fetch remote config and package info in parallel
     final packageInfoFuture = PackageInfo.fromPlatform();
-    
+
     final results = await Future.wait<dynamic>([
       authService.isLoggedIn(),
       packageInfoFuture,
@@ -127,18 +128,16 @@ class _SplashPageState extends State<SplashPage>
 
     // Logged in — get fresh user data from API to check verification status
     final currentUser = await authService.getCurrentUser(forceRefresh: true);
-    
+
     if (currentUser != null && !currentUser.isEmailVerified) {
       if (!mounted) return;
-      
+
       // Navigate to verification only if STILL unverified after fresh check
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => VerifyEmailPage(
-            email: currentUser.email ?? '',
-            canSkip: false,
-          ),
+          builder: (_) =>
+              VerifyEmailPage(email: currentUser.email ?? '', canSkip: false),
         ),
       );
       return;

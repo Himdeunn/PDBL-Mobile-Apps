@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../../core/models/user.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/image_cache_manager.dart';
 import '../../../../core/utils/notification_helper.dart';
@@ -28,6 +29,8 @@ class ChatListPage extends StatefulWidget {
 }
 
 class _ChatListPageState extends State<ChatListPage> {
+  static const int _chatsPerPage = 5;
+
   final TextEditingController _searchController = TextEditingController();
   final ChatService _chatService = ChatService();
   final TeamService _teamService = TeamService();
@@ -39,6 +42,7 @@ class _ChatListPageState extends State<ChatListPage> {
   String? _errorMessage;
   bool _openedInitialConversation = false;
   bool _isGuest = false;
+  int _currentChatPage = 1;
 
   @override
   void initState() {
@@ -239,26 +243,44 @@ class _ChatListPageState extends State<ChatListPage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                 children: [
-                  TextField(
+                  NativeTextInput(
                     controller: _searchController,
-                    onChanged: (value) =>
-                        setState(() => _searchQuery = value.trim()),
-                    decoration: InputDecoration(
-                      hintText: 'Search chat',
-                      hintStyle: const TextStyle(color: AppColors.textTertiary),
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: AppColors.textTertiary,
-                      ),
-                      filled: true,
-                      fillColor: AppColors.surface,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide.none,
+                    onChanged: (value) => setState(() {
+                      _searchQuery = value.trim();
+                      _currentChatPage = 1;
+                    }),
+                    hintText: 'Search chat',
+                    backgroundColor: AppColors.surface,
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    fallbackBuilder: (context) => TextField(
+                      controller: _searchController,
+                      onChanged: (value) => setState(() {
+                        _searchQuery = value.trim();
+                        _currentChatPage = 1;
+                      }),
+                      decoration: InputDecoration(
+                        hintText: 'Search chat',
+                        hintStyle: const TextStyle(
+                          color: AppColors.textTertiary,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: AppColors.textTertiary,
+                        ),
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
@@ -293,8 +315,10 @@ class _ChatListPageState extends State<ChatListPage> {
                             Expanded(
                               child: GestureDetector(
                                 behavior: HitTestBehavior.opaque,
-                                onTap: () =>
-                                    setState(() => _selectedFilter = 'Team'),
+                                onTap: () => setState(() {
+                                  _selectedFilter = 'Team';
+                                  _currentChatPage = 1;
+                                }),
                                 child: Center(
                                   child: Text(
                                     'Team',
@@ -312,9 +336,10 @@ class _ChatListPageState extends State<ChatListPage> {
                             Expanded(
                               child: GestureDetector(
                                 behavior: HitTestBehavior.opaque,
-                                onTap: () => setState(
-                                  () => _selectedFilter = 'Individu',
-                                ),
+                                onTap: () => setState(() {
+                                  _selectedFilter = 'Individu';
+                                  _currentChatPage = 1;
+                                }),
                                 child: Center(
                                   child: Text(
                                     'Individu',
@@ -358,48 +383,211 @@ class _ChatListPageState extends State<ChatListPage> {
                         ),
                       ),
                     )
-                  else
-                    ...filteredChats.map(
-                      (chat) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _ChatTile(
-                          data: chat,
-                          currentUserId: _currentUser?.id,
-                          currentUserName: _currentUser?.name,
-                          onTap: () async {
-                            if (_isGuest) {
-                              AuthRequiredDialog.show(context);
-                              return;
-                            }
-                            final currentUser =
-                                _currentUser ??
-                                await widget.authService.getCachedUser();
-                            if (!context.mounted || currentUser == null) {
-                              return;
-                            }
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatRoomPage(
-                                  conversation: chat,
-                                  currentUser: currentUser,
-                                  authService: widget.authService,
-                                ),
-                              ),
-                            );
-                            await NotificationHelper.cancelChatNotification(
-                              chat.id,
-                            );
-                            await _chatService.markConversationRead(chat.id);
-                          },
-                        ),
+                  else ...[
+                    ..._paginatedChats(
+                      filteredChats,
+                    ).map((chat) => _buildChatTile(chat)),
+                    if (_chatTotalPages(filteredChats) > 1) ...[
+                      const SizedBox(height: 8),
+                      _buildChatPaginationControl(
+                        _chatTotalPages(filteredChats),
                       ),
-                    ),
+                    ],
+                  ],
                 ],
               );
             },
           ),
         ),
+      ),
+    );
+  }
+
+  List<ChatConversation> _paginatedChats(List<ChatConversation> chats) {
+    final totalPages = _chatTotalPages(chats);
+    if (totalPages > 0 && _currentChatPage > totalPages) {
+      _currentChatPage = totalPages;
+    }
+    if (_currentChatPage < 1) _currentChatPage = 1;
+
+    final startIndex = (_currentChatPage - 1) * _chatsPerPage;
+    final endIndex = startIndex + _chatsPerPage;
+    return chats.sublist(
+      startIndex,
+      endIndex > chats.length ? chats.length : endIndex,
+    );
+  }
+
+  int _chatTotalPages(List<ChatConversation> chats) {
+    return (chats.length / _chatsPerPage).ceil();
+  }
+
+  Widget _buildChatTile(ChatConversation chat) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _ChatTile(
+        data: chat,
+        currentUserId: _currentUser?.id,
+        currentUserName: _currentUser?.name,
+        onTap: () async {
+          if (_isGuest) {
+            AuthRequiredDialog.show(context);
+            return;
+          }
+          final currentUser =
+              _currentUser ?? await widget.authService.getCachedUser();
+          if (!context.mounted || currentUser == null) return;
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatRoomPage(
+                conversation: chat,
+                currentUser: currentUser,
+                authService: widget.authService,
+              ),
+            ),
+          );
+          await NotificationHelper.cancelChatNotification(chat.id);
+          await _chatService.markConversationRead(chat.id);
+        },
+      ),
+    );
+  }
+
+  Widget _buildChatPaginationControl(int totalPages) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _ChatPageButton(
+          text: '<<',
+          onTap: _currentChatPage > 1
+              ? () => setState(() => _currentChatPage = 1)
+              : null,
+          isActive: false,
+        ),
+        _ChatPageButton(
+          icon: Icons.chevron_left,
+          onTap: _currentChatPage > 1
+              ? () => setState(() => _currentChatPage--)
+              : null,
+          isActive: false,
+        ),
+        ..._chatPageItems(totalPages).map(
+          (page) => page == null
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    '...',
+                    style: TextStyle(
+                      color: AppColors.textTertiary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                )
+              : _ChatPageButton(
+                  text: page.toString(),
+                  onTap: () => setState(() => _currentChatPage = page),
+                  isActive: page == _currentChatPage,
+                ),
+        ),
+        _ChatPageButton(
+          icon: Icons.chevron_right,
+          onTap: _currentChatPage < totalPages
+              ? () => setState(() => _currentChatPage++)
+              : null,
+          isActive: false,
+        ),
+        _ChatPageButton(
+          text: '>>',
+          onTap: _currentChatPage < totalPages
+              ? () => setState(() => _currentChatPage = totalPages)
+              : null,
+          isActive: false,
+        ),
+      ],
+    );
+  }
+
+  List<int?> _chatPageItems(int totalPages) {
+    if (totalPages <= 6) {
+      return List.generate(totalPages, (index) => index + 1);
+    }
+
+    if (_currentChatPage <= 5) {
+      return [1, 2, 3, 4, 5, null, totalPages];
+    }
+
+    if (_currentChatPage >= totalPages - 3) {
+      return [
+        1,
+        null,
+        totalPages - 4,
+        totalPages - 3,
+        totalPages - 2,
+        totalPages - 1,
+        totalPages,
+      ];
+    }
+
+    return [
+      1,
+      null,
+      _currentChatPage - 1,
+      _currentChatPage,
+      _currentChatPage + 1,
+      null,
+      totalPages,
+    ];
+  }
+}
+
+class _ChatPageButton extends StatelessWidget {
+  final String? text;
+  final IconData? icon;
+  final VoidCallback? onTap;
+  final bool isActive;
+
+  const _ChatPageButton({
+    this.text,
+    this.icon,
+    required this.onTap,
+    required this.isActive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isEnabled = onTap != null;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF1E1E1E) : AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        alignment: Alignment.center,
+        child: icon != null
+            ? Icon(
+                icon,
+                color: isEnabled ? AppColors.textPrimary : Colors.grey,
+                size: 24,
+              )
+            : Text(
+                text!,
+                style: TextStyle(
+                  color: isActive
+                      ? Colors.white
+                      : isEnabled
+                      ? AppColors.textPrimary
+                      : Colors.grey,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
       ),
     );
   }

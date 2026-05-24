@@ -17,9 +17,7 @@ class GlobalReminderScheduler {
   }) async {
     final reminders = await GlobalReminderService.getAll();
     final enabled = reminders.where(
-      (r) =>
-          r.isEnabled &&
-          r.triggerMode == ReminderTriggerMode.beforeDeadline,
+      (r) => r.isEnabled && r.triggerMode == ReminderTriggerMode.beforeDeadline,
     );
 
     for (final reminder in enabled) {

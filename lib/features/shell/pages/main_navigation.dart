@@ -35,7 +35,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   // Bar indices: 0=Home, 1=Task, 2=FAB, 3=Group, 4=Calendar, 5=Profile
   int _currentIndex = 0;
-  late final List<Widget> _pages;
+  final List<Widget?> _pages = List<Widget?>.filled(4, null);
   StreamSubscription<void>? _rcSubscription;
   StreamSubscription<Map<String, dynamic>>? _notificationTapSub;
   StreamSubscription<void>? _widgetDashboardSub;
@@ -58,16 +58,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
-    _pages = [
-      HomePage(
-        authService: widget.authService,
-        onProfileClick: () => _onNavTap(4),
-      ),
-      CalendarPage(authService: widget.authService),
-      GroupPage(authService: widget.authService),
-      ProfilePage(authService: widget.authService),
-    ];
-
+    _buildPage(_pageIndex(_currentIndex));
     // Real-time remote config: listen for server-pushed changes
     _rcSubscription = RemoteConfigService.onUpdated.listen((_) {
       if (mounted) _handleRemoteConfigUpdate();
@@ -220,12 +211,30 @@ class _MainNavigationState extends State<MainNavigation> {
 
   void _onNavTap(int barIndex) {
     if (barIndex == _currentIndex) return;
+    _buildPage(_pageIndex(barIndex));
     setState(() => _currentIndex = barIndex);
+  }
+
+  Widget _buildPage(int pageIndex) {
+    return _pages[pageIndex] ??= switch (pageIndex) {
+      0 => HomePage(
+        authService: widget.authService,
+        onProfileClick: () => _onNavTap(4),
+      ),
+      1 => CalendarPage(authService: widget.authService),
+      2 => GroupPage(authService: widget.authService),
+      3 => ProfilePage(authService: widget.authService),
+      _ => HomePage(
+        authService: widget.authService,
+        onProfileClick: () => _onNavTap(4),
+      ),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       backgroundColor: AppColors.background,
       resizeToAvoidBottomInset: false,
       body: Stack(
@@ -238,17 +247,12 @@ class _MainNavigationState extends State<MainNavigation> {
             child: Align(
               alignment: Alignment.topCenter,
               child: Padding(
-                padding: EdgeInsets.only(
-                  bottom: 68 + MediaQuery.of(context).padding.bottom,
-                ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  child: IndexedStack(
-                    key: ValueKey<int>(_currentIndex),
-                    index: _pageIndex(_currentIndex),
-                    children: _pages,
+                padding: EdgeInsets.zero,
+                child: IndexedStack(
+                  index: _pageIndex(_currentIndex),
+                  children: List.generate(
+                    _pages.length,
+                    (index) => _pages[index] ?? const SizedBox.shrink(),
                   ),
                 ),
               ),

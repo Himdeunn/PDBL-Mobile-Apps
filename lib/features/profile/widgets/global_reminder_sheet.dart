@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/native_text_input.dart';
 import '../services/global_reminder_service.dart';
 
 /// Bottom sheet untuk Add / Edit global reminder.
@@ -261,22 +262,32 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
                   // Amount input
                   SizedBox(
                     width: 72,
-                    child: TextField(
+                    child: NativeTextInput(
                       controller: _amountController,
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
                       onChanged: (_) => setState(() {}),
+                      height: 44,
+                      backgroundColor: AppColors.surface,
+                      borderRadius: 12,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      fallbackBuilder: (context) => TextField(
+                        controller: _amountController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: AppColors.surface,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -292,7 +303,9 @@ class _GlobalReminderSheetState extends State<GlobalReminderSheet> {
                             duration: const Duration(milliseconds: 150),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: sel ? AppColors.primary : AppColors.surface,
+                              color: sel
+                                  ? AppColors.primary
+                                  : AppColors.surface,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             alignment: Alignment.center,

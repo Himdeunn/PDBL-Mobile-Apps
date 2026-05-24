@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
@@ -93,7 +94,8 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
     } catch (e) {
       if (e is DioException && e.response?.statusCode == 429) {
         final data = e.response?.data;
-        final retryAfter = (data is Map ? data['retry_after'] as int? : null) ?? 60;
+        final retryAfter =
+            (data is Map ? data['retry_after'] as int? : null) ?? 60;
         _startCooldown(retryAfter);
       }
       ErrorHandler.handleApiError(e);
@@ -106,21 +108,13 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
     return SizedBox(
       width: 62,
       height: 62,
-      child: TextField(
+      child: NativeTextInput(
         controller: _controllers[index],
         focusNode: _focusNodes[index],
         maxLength: 1,
         keyboardType: TextInputType.number,
         textAlign: TextAlign.center,
-        decoration: InputDecoration(
-          counterText: '',
-          filled: true,
-          fillColor: AppColors.surface,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
-          ),
-        ),
+        backgroundColor: AppColors.surface,
         style: const TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.bold,
@@ -133,6 +127,34 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
             _focusNodes[index - 1].requestFocus();
           }
         },
+        fallbackBuilder: (context) => TextField(
+          controller: _controllers[index],
+          focusNode: _focusNodes[index],
+          maxLength: 1,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          decoration: InputDecoration(
+            counterText: '',
+            filled: true,
+            fillColor: AppColors.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+          onChanged: (val) {
+            if (val.length == 1 && index < 3) {
+              _focusNodes[index + 1].requestFocus();
+            } else if (val.isEmpty && index > 0) {
+              _focusNodes[index - 1].requestFocus();
+            }
+          },
+        ),
       ),
     );
   }
@@ -255,27 +277,47 @@ class _VerifyOtpPageState extends State<VerifyOtpPage> {
                     const SizedBox(height: 24),
 
                     GestureDetector(
-                      onTap: (_resendCooldown > 0 || _isResending) ? null : _onResend,
+                      onTap: (_resendCooldown > 0 || _isResending)
+                          ? null
+                          : _onResend,
                       child: _resendCooldown > 0
                           ? Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.timer_outlined, size: 14, color: AppColors.textTertiary),
+                                Icon(
+                                  Icons.timer_outlined,
+                                  size: 14,
+                                  color: AppColors.textTertiary,
+                                ),
                                 const SizedBox(width: 6),
                                 Text(
                                   'Resend in ${_resendCooldown}s',
-                                  style: TextStyle(fontSize: 13, color: AppColors.textTertiary, fontStyle: FontStyle.italic),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textTertiary,
+                                    fontStyle: FontStyle.italic,
+                                  ),
                                 ),
                               ],
                             )
                           : RichText(
                               text: TextSpan(
                                 text: "Didn't receive the code? ",
-                                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                  fontStyle: FontStyle.italic,
+                                ),
                                 children: [
                                   TextSpan(
-                                    text: _isResending ? 'Sending...' : 'Resend',
-                                    style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary, fontStyle: FontStyle.italic),
+                                    text: _isResending
+                                        ? 'Sending...'
+                                        : 'Resend',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textPrimary,
+                                      fontStyle: FontStyle.italic,
+                                    ),
                                   ),
                                 ],
                               ),

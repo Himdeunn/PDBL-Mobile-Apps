@@ -31,7 +31,7 @@ class TaskLocal {
   String? assignedEmails; // Comma-separated emails for team task assignment
 
   // Team task progress — synced from server, NOT used for personal tasks
-  String? completedBy;   // Comma-separated emails who have checked this task
+  String? completedBy; // Comma-separated emails who have checked this task
   int totalAssigned = 0; // Total number of assigned members
 
   // Not persisted — computed at display time from assignedEmails (email-prefix fallback)

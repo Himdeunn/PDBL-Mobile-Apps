@@ -12,7 +12,9 @@ class NotificationService {
 
   // ─── Local reads ────────────────────────────────────────────────────────────
 
-  Future<List<NotificationLocal>> getLocalNotifications(String userEmail) async {
+  Future<List<NotificationLocal>> getLocalNotifications(
+    String userEmail,
+  ) async {
     return await _isar.notificationLocals
         .filter()
         .userEmailEqualTo(userEmail)

@@ -140,7 +140,8 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _onSignUp() {
-    Navigator.push(
+    if (!mounted || _isLoading || _isGoogleLoading) return;
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const RegisterPage()),
     );
@@ -207,11 +208,11 @@ class _LoginPageState extends State<LoginPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  SizedBox(height: isSmallScreen ? 32 : 52),
+                  SizedBox(height: isSmallScreen ? 20 : 32),
 
-                  const WudiLogo(),
+                  WudiLogo(width: isSmallScreen ? 88 : 104),
 
-                  SizedBox(height: isSmallScreen ? 48 : 72),
+                  SizedBox(height: isSmallScreen ? 18 : 28),
 
                   const Text(
                     'Sign in to continue your productivity\njourney with FocusFlow.',
@@ -223,7 +224,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 20),
 
                   if (_errorMessage != null)
                     Padding(
@@ -306,7 +307,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 20),
 
                   _isLoading
                       ? const SizedBox(
@@ -343,7 +344,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
 
                   // Divider
                   Row(
@@ -367,7 +368,7 @@ class _LoginPageState extends State<LoginPage> {
                     ],
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
 
                   // Google Sign-In
                   _isGoogleLoading
@@ -414,7 +415,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
 
                   GestureDetector(
                     onTap: _onSignUp,
@@ -440,7 +441,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),

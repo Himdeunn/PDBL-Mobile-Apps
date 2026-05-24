@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 class WudiLogo extends StatelessWidget {
-  const WudiLogo({super.key});
+  final double width;
+
+  const WudiLogo({super.key, this.width = 180});
 
   @override
   Widget build(BuildContext context) {
     return Image.asset(
       'assets/images/wudi_logo.png',
-      width: 180,
+      width: width,
       fit: BoxFit.contain,
     );
   }

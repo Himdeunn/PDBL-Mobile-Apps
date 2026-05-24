@@ -176,7 +176,9 @@ class UpdateDialog extends StatelessWidget {
                           color: AppColors.background,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: AppColors.textTertiary.withValues(alpha: 0.2),
+                            color: AppColors.textTertiary.withValues(
+                              alpha: 0.2,
+                            ),
                           ),
                         ),
                         child: Text(
@@ -215,10 +217,11 @@ class UpdateDialog extends StatelessWidget {
                             borderRadius: BorderRadius.circular(16),
                           ),
                           elevation: 4,
-                          shadowColor: (isForced
-                                  ? const Color(0xFF1565C0)
-                                  : const Color(0xFF2E7D32))
-                              .withValues(alpha: 0.4),
+                          shadowColor:
+                              (isForced
+                                      ? const Color(0xFF1565C0)
+                                      : const Color(0xFF2E7D32))
+                                  .withValues(alpha: 0.4),
                         ),
                       ),
                     ),

@@ -5,11 +5,14 @@ class RemoteConfigService {
   static final FirebaseRemoteConfig _rc = FirebaseRemoteConfig.instance;
 
   static Future<void> initialize() async {
-    await _rc.setConfigSettings(RemoteConfigSettings(
-      fetchTimeout: const Duration(seconds: 10),
-      minimumFetchInterval:
-          kReleaseMode ? const Duration(hours: 1) : Duration.zero,
-    ));
+    await _rc.setConfigSettings(
+      RemoteConfigSettings(
+        fetchTimeout: const Duration(seconds: 10),
+        minimumFetchInterval: kReleaseMode
+            ? const Duration(hours: 1)
+            : Duration.zero,
+      ),
+    );
 
     await _rc.setDefaults({
       // ── Maintenance ──────────────────────────────────────────────────────
@@ -55,7 +58,8 @@ class RemoteConfigService {
 
   // ── Update getters ───────────────────────────────────────────────────────
   static bool get forceUpdateEnabled => _rc.getBool('force_update_enabled');
-  static bool get optionalUpdateEnabled => _rc.getBool('optional_update_enabled');
+  static bool get optionalUpdateEnabled =>
+      _rc.getBool('optional_update_enabled');
   static String get minVersion => _rc.getString('min_version');
   static String get latestVersion => _rc.getString('latest_version');
   static String get updateUrlAndroid => _rc.getString('update_url_android');

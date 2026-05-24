@@ -1,7 +1,8 @@
 Map<String, String> getNetworkImageHeaders(String url) {
   final Map<String, String> headers = {
     'User-Agent': 'WUDI-Mobile-App',
-    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'Accept':
+        'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
   };
 

@@ -10,7 +10,7 @@ class NotificationSettingsService {
   static const String _keyReminderMinute = 'reminder_minute';
   static const String _keyRemoteAlerts = 'remote_alerts';
   static const String _keyVibration = 'vibration_enabled';
-  
+
   // Default to H-0 (Today), H-1, H-2, H-3
   static const List<int> defaultDays = [0, 1, 2, 3];
   static const int defaultHour = 9;
@@ -103,12 +103,16 @@ class NotificationSettingsService {
       final remoteAlerts = await isRemoteAlertsEnabled();
 
       final client = ApiClient();
-      await client.post('/notification-settings', data: {
-        'reminder_days': reminderDays,
-        'reminder_time': '${reminderTime.hour.toString().padLeft(2, '0')}:${reminderTime.minute.toString().padLeft(2, '0')}',
-        'vibration': vibration,
-        'remote_alerts': remoteAlerts,
-      });
+      await client.post(
+        '/notification-settings',
+        data: {
+          'reminder_days': reminderDays,
+          'reminder_time':
+              '${reminderTime.hour.toString().padLeft(2, '0')}:${reminderTime.minute.toString().padLeft(2, '0')}',
+          'vibration': vibration,
+          'remote_alerts': remoteAlerts,
+        },
+      );
     } catch (e) {
       // Silently fail or use a more robust logging system in production
     }
@@ -122,21 +126,24 @@ class NotificationSettingsService {
 
       final client = ApiClient();
       final response = await client.get('/notification-settings');
-      
+
       if (response.statusCode == 200) {
         final data = response.data;
         final List<int> days = List<int>.from(data['reminder_days'] ?? []);
         final String timeStr = data['reminder_time'] ?? "09:00";
         final parts = timeStr.split(':');
         final TimeOfDay time = TimeOfDay(
-          hour: int.tryParse(parts[0]) ?? 9, 
-          minute: int.tryParse(parts[1]) ?? 0
+          hour: int.tryParse(parts[0]) ?? 9,
+          minute: int.tryParse(parts[1]) ?? 0,
         );
         final bool vibration = data['vibration'] ?? true;
         final bool remoteAlerts = data['remote_alerts'] ?? true;
 
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setStringList(_keyReminderDays, days.map((d) => d.toString()).toList());
+        await prefs.setStringList(
+          _keyReminderDays,
+          days.map((d) => d.toString()).toList(),
+        );
         await prefs.setInt(_keyReminderHour, time.hour);
         await prefs.setInt(_keyReminderMinute, time.minute);
         await prefs.setBool(_keyVibration, vibration);

@@ -43,6 +43,10 @@ class FocusCard extends StatelessWidget {
               ],
             ),
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFF2D2438).withValues(alpha: 0.5),
+              width: 1,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

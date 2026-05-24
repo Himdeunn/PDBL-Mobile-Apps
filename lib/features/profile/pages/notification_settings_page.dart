@@ -12,7 +12,8 @@ class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
 
   @override
-  State<NotificationSettingsPage> createState() => _NotificationSettingsPageState();
+  State<NotificationSettingsPage> createState() =>
+      _NotificationSettingsPageState();
 }
 
 class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
@@ -28,8 +29,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   }
 
   Future<void> _loadRemoteSettings() async {
-    final remoteEnabled = await NotificationSettingsService.isRemoteAlertsEnabled();
-    final vibrationEnabled = await NotificationSettingsService.isVibrationEnabled();
+    final remoteEnabled =
+        await NotificationSettingsService.isRemoteAlertsEnabled();
+    final vibrationEnabled =
+        await NotificationSettingsService.isVibrationEnabled();
     if (mounted) {
       setState(() {
         _remoteAlertsEnabled = remoteEnabled;
@@ -94,7 +97,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(value ? 'Remote alerts enabled' : 'Remote alerts disabled'),
+          content: Text(
+            value ? 'Remote alerts enabled' : 'Remote alerts disabled',
+          ),
           duration: const Duration(seconds: 1),
         ),
       );
@@ -113,7 +118,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       );
     }
   }
-  
+
   List<Widget> _buildGroupedReminders() {
     final grouped = GlobalReminderService.groupByType(_globalReminders);
     final widgets = <Widget>[];
@@ -177,7 +182,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         ],
       ),
       child: SwitchListTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         value: value,
         onChanged: onChanged,
@@ -192,7 +200,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Notification Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Notification Settings',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: AppColors.textPrimary,
@@ -205,11 +216,29 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Global Reminders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                const Text(
+                  'Global Reminders',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
                 TextButton.icon(
                   onPressed: () => _openAddReminderSheet(),
-                  icon: const Icon(Icons.add, size: 16, color: AppColors.primary),
-                  label: const Text('Add', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600, fontSize: 13)),
+                  icon: const Icon(
+                    Icons.add,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                  label: const Text(
+                    'Add',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -221,7 +250,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             if (_globalReminders.isEmpty)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                  horizontal: 16,
+                ),
                 margin: const EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(
                   color: AppColors.surface,
@@ -229,12 +261,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 ),
                 child: Row(
                   children: const [
-                    Icon(Icons.notifications_off_outlined, size: 18, color: AppColors.textTertiary),
+                    Icon(
+                      Icons.notifications_off_outlined,
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'There are no global reminders yet. Tap "Add".',
-                        style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textTertiary,
+                        ),
                       ),
                     ),
                   ],
@@ -242,11 +281,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               )
             else
               ..._buildGroupedReminders(),
-            
+
             const SizedBox(height: 32),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text('Push Notifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              child: Text(
+                'Push Notifications',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             _buildSwitchTile(
@@ -265,7 +311,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               const SizedBox(height: 24),
               const Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Debug', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                child: Text(
+                  'Debug',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               Container(
@@ -273,12 +326,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
                   ],
                 ),
                 child: ListTile(
                   leading: const Icon(Icons.bug_report, color: Colors.orange),
-                  title: const Text('Test Notification (5 detik)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    'Test Notification (5 detik)',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   subtitle: const Text('Send test notification in 5 seconds'),
                   trailing: const Icon(Icons.send),
                   onTap: () async {
@@ -286,7 +346,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     await NotificationHelper.scheduleTestNotification();
                     if (mounted) {
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Test notification scheduled! Wait 5 seconds...'), duration: Duration(seconds: 3)),
+                        const SnackBar(
+                          content: Text(
+                            'Test notification scheduled! Wait 5 seconds...',
+                          ),
+                          duration: Duration(seconds: 3),
+                        ),
                       );
                     }
                   },
@@ -299,12 +364,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
                   ],
                 ),
                 child: ListTile(
                   leading: const Icon(Icons.alarm_on, color: Colors.purple),
-                  title: const Text('Test Before Deadline Reminder', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    'Test Before Deadline Reminder',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   subtitle: const Text(
                     'Simulate task deadline in 2 hours.\n'
                     'Notifications will appear according to the active Global Reminder interval.',
@@ -314,13 +386,16 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   onTap: () async {
                     final messenger = ScaffoldMessenger.of(context);
                     // Fake task: deadline 2 jam dari sekarang
-                    final fakeDeadline = DateTime.now().add(const Duration(hours: 2));
+                    final fakeDeadline = DateTime.now().add(
+                      const Duration(hours: 2),
+                    );
                     const fakeTaskId = 999998;
 
                     await GlobalReminderScheduler.scheduleBeforeDeadlineForTask(
                       taskId: fakeTaskId,
                       taskTitle: '[TEST] Fake Task',
-                      taskDescription: 'Ini adalah task simulasi untuk testing global reminder.',
+                      taskDescription:
+                          'Ini adalah task simulasi untuk testing global reminder.',
                       priority: 'high',
                       deadline: fakeDeadline,
                       isTeam: false,
@@ -329,9 +404,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     // Hitung berapa reminder yang terjadwal
                     final reminders = await GlobalReminderService.getAll();
                     final beforeDeadlineCount = reminders
-                        .where((r) =>
-                            r.isEnabled &&
-                            r.triggerMode == ReminderTriggerMode.beforeDeadline)
+                        .where(
+                          (r) =>
+                              r.isEnabled &&
+                              r.triggerMode ==
+                                  ReminderTriggerMode.beforeDeadline,
+                        )
                         .length;
 
                     if (mounted) {

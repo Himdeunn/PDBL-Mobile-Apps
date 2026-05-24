@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../../../../core/theme/primary_button.dart';
 import '../../../../core/utils/error_handler.dart';
 import 'package:intl/intl.dart';
@@ -92,11 +93,17 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomScrollPadding = keyboardBottom > 0 ? keyboardBottom + 48 : 24.0;
+
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.background,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: AppColors.background,
         leading: IconButton(
           icon: const Icon(
             Icons.chevron_left,
@@ -118,7 +125,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
         child: AbsorbPointer(
           absorbing: _isSaving,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.fromLTRB(24, 24, 24, bottomScrollPadding),
             child: Form(
               key: _formKey,
               child: Column(
@@ -188,7 +195,7 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
                     _descriptionController,
                     'Task details...',
                     enabled: !_isSaving,
-                    maxLines: 3,
+                    maxLines: 5,
                   ),
                   const SizedBox(height: 24),
 
@@ -370,19 +377,52 @@ class _CreateTeamTaskPageState extends State<CreateTeamTaskPage> {
     String? Function(String?)? validator,
     bool enabled = true,
   }) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
+    return FormField<String>(
+      initialValue: controller.text,
       validator: validator,
-      enabled: enabled,
-      decoration: InputDecoration(
-        hintText: hint,
-        fillColor: AppColors.surface,
-        filled: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide.none,
-        ),
+      builder: (state) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          NativeTextInput(
+            controller: controller,
+            maxLines: maxLines,
+            minLines: maxLines > 1 ? 3 : 1,
+            enabled: enabled,
+            height: maxLines > 1 ? 132 : 52,
+            hintText: hint,
+            backgroundColor: AppColors.surface,
+            borderRadius: 16,
+            onChanged: (v) => state.didChange(v),
+            padding: EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: maxLines > 1 ? 16 : 14,
+            ),
+            fallbackBuilder: (context) => TextFormField(
+              controller: controller,
+              maxLines: maxLines,
+              validator: validator,
+              enabled: enabled,
+              decoration: InputDecoration(
+                hintText: hint,
+                fillColor: AppColors.surface,
+                filled: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (v) => state.didChange(v),
+            ),
+          ),
+          if (state.hasError)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 16),
+              child: Text(
+                state.errorText!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+        ],
       ),
     );
   }

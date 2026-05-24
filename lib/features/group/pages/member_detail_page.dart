@@ -51,22 +51,23 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
       return 'Team Leader';
     }
     final memberUser = member['user'];
-    final memberId = (member['id'] ??
-            member['user_id'] ??
-            member['userId'] ??
-            (memberUser is Map ? memberUser['id'] : null))
-        ?.toString();
+    final memberId =
+        (member['id'] ??
+                member['user_id'] ??
+                member['userId'] ??
+                (memberUser is Map ? memberUser['id'] : null))
+            ?.toString();
     if (memberId != null &&
         widget.teamLeaderId != null &&
         memberId == widget.teamLeaderId) {
       return 'Team Leader';
     }
 
-    final memberEmail = (member['email'] ??
-            (memberUser is Map ? memberUser['email'] : null))
-        ?.toString()
-        .toLowerCase()
-        .trim();
+    final memberEmail =
+        (member['email'] ?? (memberUser is Map ? memberUser['email'] : null))
+            ?.toString()
+            .toLowerCase()
+            .trim();
     final leaderEmail = widget.teamLeaderEmail?.toLowerCase().trim();
     if (memberEmail != null &&
         memberEmail.isNotEmpty &&

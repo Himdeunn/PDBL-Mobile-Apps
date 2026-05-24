@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../../../../core/theme/primary_button.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
@@ -34,15 +37,21 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
   bool _isLoading = true;
   bool _isGuest = false;
   bool _isValidatingEmail = false;
+  StreamSubscription<bool>? _connectionSubscription;
   int get _maxMembers => int.tryParse(_maxMembersController.text) ?? 100;
   bool get _canInviteMore => _invitedEmails.length + 1 < _maxMembers;
 
   @override
-
   @override
   void initState() {
     super.initState();
     _checkStatus();
+    _connectionSubscription = _connectionService.isConnectedStream.listen((
+      connected,
+    ) {
+      if (!mounted) return;
+      setState(() => _isOffline = !connected);
+    });
   }
 
   @override
@@ -51,6 +60,7 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
     _descriptionController.dispose();
     _emailController.dispose();
     _maxMembersController.dispose();
+    _connectionSubscription?.cancel();
     super.dispose();
   }
 
@@ -70,31 +80,38 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
   Future<void> _addEmail() async {
     if (_maxMembers <= 1) {
       ErrorHandler.showErrorPopup(
-          'Minimum members is 2. Add at least one member besides the leader.',
-          title: 'Invitation Disabled');
+        'Minimum members is 2. Add at least one member besides the leader.',
+        title: 'Invitation Disabled',
+      );
       return;
     }
 
     if (!_canInviteMore) {
       ErrorHandler.showErrorPopup(
-          'You have reached the maximum number of members for this team. Increase the limit to invite more.',
-          title: 'Member Limit Reached');
+        'You have reached the maximum number of members for this team. Increase the limit to invite more.',
+        title: 'Member Limit Reached',
+      );
       return;
     }
 
     final email = _emailController.text.trim().toLowerCase();
     final emailRegex = RegExp(
-        r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
+      r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
+    );
 
     if (email.isEmpty) return;
     if (!emailRegex.hasMatch(email)) {
-      ErrorHandler.showErrorPopup('Please enter a valid email address.',
-          title: 'Invalid Email');
+      ErrorHandler.showErrorPopup(
+        'Please enter a valid email address.',
+        title: 'Invalid Email',
+      );
       return;
     }
     if (_invitedEmails.contains(email)) {
-      ErrorHandler.showErrorPopup('This email is already in your invite list.',
-          title: 'Duplicate Email');
+      ErrorHandler.showErrorPopup(
+        'This email is already in your invite list.',
+        title: 'Duplicate Email',
+      );
       return;
     }
 
@@ -108,13 +125,15 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
         });
       } else {
         ErrorHandler.showErrorPopup(
-            'User with this email was not found in our system.',
-            title: 'User Not Found');
+          'User with this email was not found in our system.',
+          title: 'User Not Found',
+        );
       }
     } catch (e) {
       ErrorHandler.showErrorPopup(
-          'Could not verify user. Please check your connection.',
-          title: 'Verification Error');
+        'Could not verify user. Please check your connection.',
+        title: 'Verification Error',
+      );
     } finally {
       if (mounted) setState(() => _isValidatingEmail = false);
     }
@@ -130,14 +149,16 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
     final isOnline = await _connectionService.isConnected();
     if (!isOnline) {
       ErrorHandler.showErrorPopup(
-          "No internet connection. Please connect to create a team.",
-          title: 'No Internet');
+        "No internet connection. Please connect to create a team.",
+        title: 'No Internet',
+      );
       return;
     }
 
     setState(() => _isSaving = true);
     try {
-      final int maxMembers = int.tryParse(_maxMembersController.text.trim()) ?? 100;
+      final int maxMembers =
+          int.tryParse(_maxMembersController.text.trim()) ?? 100;
       final response = await _teamService.createTeam(
         _nameController.text.trim(),
         description: _descriptionController.text.trim().isEmpty
@@ -182,7 +203,9 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
       );
     }
 
@@ -193,7 +216,10 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppColors.textPrimary,
+            ),
             onPressed: () => Navigator.pop(context),
           ),
         ),
@@ -209,8 +235,11 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                     color: AppColors.primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.lock_outline_rounded,
-                      size: 64, color: AppColors.primary),
+                  child: const Icon(
+                    Icons.lock_outline_rounded,
+                    size: 64,
+                    color: AppColors.primary,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 const Text(
@@ -226,7 +255,10 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                   'You need to be logged in to create or manage a team.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: AppColors.textSecondary, height: 1.5, fontSize: 14),
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                    fontSize: 14,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 SizedBox(
@@ -241,11 +273,16 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                    child: const Text('Login',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Login',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -261,10 +298,13 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                       side: const BorderSide(color: AppColors.textSecondary),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                    child: const Text('Create Account',
-                        style: TextStyle(fontSize: 15)),
+                    child: const Text(
+                      'Create Account',
+                      style: TextStyle(fontSize: 15),
+                    ),
                   ),
                 ),
               ],
@@ -281,7 +321,10 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppColors.textPrimary,
+            ),
             onPressed: () => Navigator.pop(context),
           ),
         ),
@@ -295,15 +338,21 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                   color: Colors.red.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.wifi_off_rounded,
-                    size: 72, color: Colors.red),
+                child: const Icon(
+                  Icons.wifi_off_rounded,
+                  size: 72,
+                  color: Colors.red,
+                ),
               ),
               const SizedBox(height: 24),
-              const Text("You're Offline",
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary)),
+              const Text(
+                "You're Offline",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
               const SizedBox(height: 12),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 40),
@@ -311,7 +360,10 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                   "Please connect to the internet to create a team.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: AppColors.textSecondary, height: 1.5, fontSize: 14),
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               const SizedBox(height: 32),
@@ -325,10 +377,13 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ],
@@ -337,13 +392,24 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
       );
     }
 
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomScrollPadding = keyboardBottom > 0
+        ? keyboardBottom + 120.0
+        : 32.0;
+
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.background,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: AppColors.background,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.textPrimary,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -361,7 +427,7 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
           absorbing: _isSaving,
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              padding: EdgeInsets.fromLTRB(24, 12, 24, bottomScrollPadding),
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: Form(
@@ -372,7 +438,9 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                       const Text(
                         'Set up a new team and invite members',
                         style: TextStyle(
-                            fontSize: 13, color: AppColors.textSecondary),
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                       const SizedBox(height: 20),
 
@@ -399,74 +467,172 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
 
                       const SizedBox(height: 14),
                       _label('Max Members (2–100)'),
-                      TextFormField(
-                        controller: _maxMembersController,
-                        enabled: !_isSaving,
-                        keyboardType: TextInputType.number,
-                        onChanged: (v) => setState(() {}),
-                        decoration: InputDecoration(
-                          hintText: '100',
-                          fillColor: AppColors.surface,
-                          filled: true,
-                          counterText: '',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                        ),
+                      FormField<String>(
                         validator: (v) {
-                          final n = int.tryParse(v ?? '');
+                          final n = int.tryParse(_maxMembersController.text);
                           if (n == null || n < 2 || n > 100) {
                             return 'Please enter a number between 2 and 100';
                           }
                           return null;
                         },
+                        builder: (state) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            NativeTextInput(
+                              controller: _maxMembersController,
+                              enabled: !_isSaving,
+                              keyboardType: TextInputType.number,
+                              onChanged: (v) {
+                                state.didChange(v);
+                                setState(() {});
+                              },
+                              hintText: '100',
+                              backgroundColor: AppColors.surface,
+                              fallbackBuilder: (context) => TextFormField(
+                                controller: _maxMembersController,
+                                enabled: !_isSaving,
+                                keyboardType: TextInputType.number,
+                                onChanged: (v) {
+                                  state.didChange(v);
+                                  setState(() {});
+                                },
+                                decoration: InputDecoration(
+                                  hintText: '100',
+                                  fillColor: AppColors.surface,
+                                  filled: true,
+                                  counterText: '',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (state.hasError)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: 8,
+                                  left: 16,
+                                ),
+                                child: Text(
+                                  state.errorText!,
+                                  style: const TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
 
                       const SizedBox(height: 14),
-                      Builder(builder: (context) {
-                        final maxM = int.tryParse(_maxMembersController.text) ?? 100;
-                          final currentCount = 1 + _invitedEmails.length; // 1 (Leader) + invited
+                      Builder(
+                        builder: (context) {
+                          final maxM =
+                              int.tryParse(_maxMembersController.text) ?? 100;
+                          final currentCount =
+                              1 + _invitedEmails.length; // 1 (Leader) + invited
                           final canInvite = currentCount < maxM;
-                        
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _label('Invite Members (optional)'),
-                            TextField(
-                              controller: _emailController,
-                              onSubmitted: (_) => _isSaving ? null : _addEmail(),
-                              enabled: !_isSaving && canInvite,
-                              keyboardType: TextInputType.emailAddress,
-                              decoration: InputDecoration(
-                                hintText: canInvite ? 'Member email address' : 'Max members reached ($maxM/$maxM)',
-                                fillColor: canInvite ? AppColors.surface : Colors.grey.withValues(alpha: 0.1),
-                                filled: true,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                suffixIcon: _isValidatingEmail
-                                    ? const Padding(
-                                        padding: EdgeInsets.all(12),
-                                        child: SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _label('Invite Members (optional)'),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: NativeTextInput(
+                                      controller: _emailController,
+                                      onSubmitted: (_) =>
+                                          _isSaving ? null : _addEmail(),
+                                      enabled: !_isSaving && canInvite,
+                                      keyboardType: TextInputType.emailAddress,
+                                      hintText: canInvite
+                                          ? 'Member email address'
+                                          : 'Max members reached ($maxM/$maxM)',
+                                      backgroundColor: canInvite
+                                          ? AppColors.surface
+                                          : Colors.grey.withValues(alpha: 0.1),
+                                      fallbackBuilder: (context) => TextField(
+                                        controller: _emailController,
+                                        onSubmitted: (_) =>
+                                            _isSaving ? null : _addEmail(),
+                                        enabled: !_isSaving && canInvite,
+                                        keyboardType:
+                                            TextInputType.emailAddress,
+                                        decoration: InputDecoration(
+                                          hintText: canInvite
+                                              ? 'Member email address'
+                                              : 'Max members reached ($maxM/$maxM)',
+                                          fillColor: canInvite
+                                              ? AppColors.surface
+                                              : Colors.grey.withValues(
+                                                  alpha: 0.1,
+                                                ),
+                                          filled: true,
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                            borderSide: BorderSide.none,
+                                          ),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 12,
+                                              ),
                                         ),
-                                      )
-                                    : IconButton(
-                                        icon: Icon(Icons.add, color: canInvite ? AppColors.primary : Colors.grey),
-                                        onPressed: (_isSaving || _isValidatingEmail || !canInvite) ? null : _addEmail,
                                       ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  SizedBox(
+                                    width: 48,
+                                    height: 48,
+                                    child: ElevatedButton(
+                                      onPressed:
+                                          (_isSaving ||
+                                              _isValidatingEmail ||
+                                              !canInvite)
+                                          ? null
+                                          : _addEmail,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        disabledBackgroundColor:
+                                            AppColors.surface,
+                                        foregroundColor: Colors.white,
+                                        padding: EdgeInsets.zero,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                      ),
+                                      child: _isValidatingEmail
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Icon(Icons.add, size: 24),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        );
-                      }),
+                            ],
+                          );
+                        },
+                      ),
 
                       if (_invitedEmails.isNotEmpty) ...[
                         const SizedBox(height: 8),
@@ -474,26 +640,28 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                           spacing: 6,
                           runSpacing: 4,
                           children: _invitedEmails
-                              .map((email) => Chip(
-                                    avatar: const CircleAvatar(
-                                        child:
-                                            Icon(Icons.person, size: 12)),
-                                    label: Text(email,
-                                        style:
-                                            const TextStyle(fontSize: 11)),
-                                    deleteIcon:
-                                        const Icon(Icons.close, size: 12),
-                                    onDeleted: _isSaving
-                                        ? null
-                                        : () => _removeEmail(email),
-                                    backgroundColor: AppColors.surface,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(20)),
-                                    padding: EdgeInsets.zero,
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ))
+                              .map(
+                                (email) => Chip(
+                                  avatar: const CircleAvatar(
+                                    child: Icon(Icons.person, size: 12),
+                                  ),
+                                  label: Text(
+                                    email,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  deleteIcon: const Icon(Icons.close, size: 12),
+                                  onDeleted: _isSaving
+                                      ? null
+                                      : () => _removeEmail(email),
+                                  backgroundColor: AppColors.surface,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              )
                               .toList(),
                         ),
                       ],
@@ -505,7 +673,8 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
                               child: Padding(
                                 padding: EdgeInsets.symmetric(vertical: 16),
                                 child: CircularProgressIndicator(
-                                    color: AppColors.primary),
+                                  color: AppColors.primary,
+                                ),
                               ),
                             )
                           : PrimaryButton(
@@ -524,13 +693,16 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
   }
 
   Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(text,
-            style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: AppColors.textPrimary)),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 13,
+        color: AppColors.textPrimary,
+      ),
+    ),
+  );
 
   Widget _textField(
     TextEditingController controller,
@@ -539,24 +711,69 @@ class _CreateTeamPageState extends State<CreateTeamPage> {
     int? maxLength,
     bool showCounter = false,
     String? Function(String?)? validator,
-  }) =>
-      TextFormField(
-        controller: controller,
-        maxLines: maxLines,
-        maxLength: maxLength,
-        validator: validator,
-        enabled: !_isSaving,
-        buildCounter: showCounter ? null : (context, {required currentLength, required isFocused, required maxLength}) => null,
-        decoration: InputDecoration(
-          hintText: hint,
-          fillColor: AppColors.surface,
-          filled: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
+  }) => FormField<String>(
+    initialValue: controller.text,
+    validator: validator,
+    builder: (FormFieldState<String> state) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          NativeTextInput(
+            controller: controller,
+            maxLines: maxLines,
+            maxLength: maxLength,
+            enabled: !_isSaving,
+            minLines: maxLines > 1 ? 3 : 1,
+            height: maxLines > 1 ? 132 : 52,
+            hintText: hint,
+            backgroundColor: AppColors.surface,
+            borderRadius: 16,
+            onChanged: (value) {
+              state.didChange(value);
+              if (showCounter) setState(() {});
+            },
+            fallbackBuilder: (context) => TextFormField(
+              controller: controller,
+              maxLines: maxLines,
+              maxLength: maxLength,
+              enabled: !_isSaving,
+              buildCounter: showCounter
+                  ? null
+                  : (
+                      context, {
+                      required currentLength,
+                      required isFocused,
+                      required maxLength,
+                    }) => null,
+              decoration: InputDecoration(
+                hintText: hint,
+                fillColor: AppColors.surface,
+                filled: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              onChanged: (value) {
+                state.didChange(value);
+                if (showCounter) setState(() {});
+              },
+            ),
           ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
+          if (state.hasError)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 16),
+              child: Text(
+                state.errorText!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+        ],
       );
+    },
+  );
 }

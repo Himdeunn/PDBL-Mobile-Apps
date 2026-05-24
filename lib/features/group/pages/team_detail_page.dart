@@ -20,6 +20,7 @@ import 'member_detail_page.dart';
 import '../../task/services/task_repository.dart';
 import '../../task/widgets/priority_badge.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/widgets/native_text_input.dart';
 
 class TeamDetailPage extends StatefulWidget {
   final int teamId;
@@ -65,7 +66,11 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   bool _isTeamLeaderMember(Map<dynamic, dynamic> member) {
     if (member['is_leader'] == true || member['isLeader'] == true) return true;
 
-    final role = member['role']?.toString().toLowerCase().replaceAll('_', ' ').trim();
+    final role = member['role']
+        ?.toString()
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .trim();
     if (role == 'leader' ||
         role == 'team leader' ||
         role == 'team owner' ||
@@ -75,42 +80,48 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
     }
 
     final memberUser = member['user'];
-    final memberId = (member['id'] ??
-            member['user_id'] ??
-            member['userId'] ??
-            (memberUser is Map ? memberUser['id'] : null))
-        ?.toString();
+    final memberId =
+        (member['id'] ??
+                member['user_id'] ??
+                member['userId'] ??
+                (memberUser is Map ? memberUser['id'] : null))
+            ?.toString();
     final createdBy = _teamData?['created_by'] ?? _teamData?['createdBy'];
-    final ownerId = (createdBy is Map
-            ? createdBy['id'] ?? createdBy['user_id'] ?? createdBy['userId']
-            : createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
-        ?.toString();
+    final ownerId =
+        (createdBy is Map
+                ? createdBy['id'] ?? createdBy['user_id'] ?? createdBy['userId']
+                : createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
+            ?.toString();
     if (memberId != null && ownerId != null && memberId == ownerId) return true;
 
     final owner = _teamData?['owner'];
     if (owner is Map) {
       final ownerUser = owner['user'];
-      final ownerMemberId = (owner['id'] ??
-              owner['user_id'] ??
-              owner['userId'] ??
-              (ownerUser is Map ? ownerUser['id'] : null))
-          ?.toString();
-      if (memberId != null && ownerMemberId != null && memberId == ownerMemberId) {
+      final ownerMemberId =
+          (owner['id'] ??
+                  owner['user_id'] ??
+                  owner['userId'] ??
+                  (ownerUser is Map ? ownerUser['id'] : null))
+              ?.toString();
+      if (memberId != null &&
+          ownerMemberId != null &&
+          memberId == ownerMemberId) {
         return true;
       }
 
-      final memberEmail = (member['email'] ??
-              (memberUser is Map ? memberUser['email'] : null))
-          ?.toString()
-          .toLowerCase()
-          .trim();
-      final ownerEmail = (owner['email'] ??
-              owner['leader_email'] ??
-              owner['leaderEmail'] ??
-              (ownerUser is Map ? ownerUser['email'] : null))
-          ?.toString()
-          .toLowerCase()
-          .trim();
+      final memberEmail =
+          (member['email'] ?? (memberUser is Map ? memberUser['email'] : null))
+              ?.toString()
+              .toLowerCase()
+              .trim();
+      final ownerEmail =
+          (owner['email'] ??
+                  owner['leader_email'] ??
+                  owner['leaderEmail'] ??
+                  (ownerUser is Map ? ownerUser['email'] : null))
+              ?.toString()
+              .toLowerCase()
+              .trim();
       if (memberEmail != null &&
           memberEmail.isNotEmpty &&
           ownerEmail != null &&
@@ -119,30 +130,35 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       }
     }
 
-    final leader = _teamData?['leader'] ?? _teamData?['team_leader'] ?? _teamData?['teamLeader'];
+    final leader =
+        _teamData?['leader'] ??
+        _teamData?['team_leader'] ??
+        _teamData?['teamLeader'];
     if (leader is Map) {
       final leaderUser = leader['user'];
-      final leaderId = (leader['id'] ??
-              leader['user_id'] ??
-              leader['userId'] ??
-              (leaderUser is Map ? leaderUser['id'] : null))
-          ?.toString();
+      final leaderId =
+          (leader['id'] ??
+                  leader['user_id'] ??
+                  leader['userId'] ??
+                  (leaderUser is Map ? leaderUser['id'] : null))
+              ?.toString();
       if (memberId != null && leaderId != null && memberId == leaderId) {
         return true;
       }
 
-      final memberEmail = (member['email'] ??
-              (memberUser is Map ? memberUser['email'] : null))
-          ?.toString()
-          .toLowerCase()
-          .trim();
-      final leaderEmail = (leader['email'] ??
-              leader['leader_email'] ??
-              leader['leaderEmail'] ??
-              (leaderUser is Map ? leaderUser['email'] : null))
-          ?.toString()
-          .toLowerCase()
-          .trim();
+      final memberEmail =
+          (member['email'] ?? (memberUser is Map ? memberUser['email'] : null))
+              ?.toString()
+              .toLowerCase()
+              .trim();
+      final leaderEmail =
+          (leader['email'] ??
+                  leader['leader_email'] ??
+                  leader['leaderEmail'] ??
+                  (leaderUser is Map ? leaderUser['email'] : null))
+              ?.toString()
+              .toLowerCase()
+              .trim();
       if (memberEmail != null &&
           memberEmail.isNotEmpty &&
           leaderEmail != null &&
@@ -157,7 +173,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   Map<dynamic, dynamic> _normalizeMember(dynamic rawMember) {
     final member = rawMember is Map<dynamic, dynamic>
         ? Map<dynamic, dynamic>.from(rawMember)
-        : <dynamic, dynamic>{'name': rawMember.toString(), 'email': rawMember.toString()};
+        : <dynamic, dynamic>{
+            'name': rawMember.toString(),
+            'email': rawMember.toString(),
+          };
 
     if (_isTeamLeaderMember(member)) {
       member['role'] = 'Team Leader';
@@ -184,19 +203,21 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       return (createdBy['id'] ?? createdBy['user_id'] ?? createdBy['userId'])
           ?.toString();
     }
-    final directId = (createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
-        ?.toString();
+    final directId =
+        (createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
+            ?.toString();
     if (directId != null) return directId;
 
     for (final key in ['owner', 'leader', 'team_leader', 'teamLeader']) {
       final value = _teamData?[key];
       if (value is Map) {
         final user = value['user'];
-        final id = (value['id'] ??
-                value['user_id'] ??
-                value['userId'] ??
-                (user is Map ? user['id'] : null))
-            ?.toString();
+        final id =
+            (value['id'] ??
+                    value['user_id'] ??
+                    value['userId'] ??
+                    (user is Map ? user['id'] : null))
+                ?.toString();
         if (id != null) return id;
       }
     }
@@ -209,13 +230,14 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       final value = _teamData?[key];
       if (value is Map) {
         final user = value['user'];
-        final email = (value['email'] ??
-                value['leader_email'] ??
-                value['leaderEmail'] ??
-                (user is Map ? user['email'] : null))
-            ?.toString()
-            .toLowerCase()
-            .trim();
+        final email =
+            (value['email'] ??
+                    value['leader_email'] ??
+                    value['leaderEmail'] ??
+                    (user is Map ? user['email'] : null))
+                ?.toString()
+                .toLowerCase()
+                .trim();
         if (email != null && email.isNotEmpty) return email;
       }
     }
@@ -244,7 +266,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
 
     // Auto-refresh as a fallback; skip overlapping requests so slow responses
     // don't stack up and make team/member task sync feel delayed.
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted && !_isOffline) _loadData(showLoading: false);
     });
   }
@@ -302,8 +324,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       'created_by': rawData['created_by'],
                     if (rawData['createdBy'] != null)
                       'createdBy': rawData['createdBy'],
-                    if (rawData['owner_id'] != null) 'owner_id': rawData['owner_id'],
-                    if (rawData['ownerId'] != null) 'ownerId': rawData['ownerId'],
+                    if (rawData['owner_id'] != null)
+                      'owner_id': rawData['owner_id'],
+                    if (rawData['ownerId'] != null)
+                      'ownerId': rawData['ownerId'],
                   }
                 : Map<String, dynamic>.from(rawData);
 
@@ -326,15 +350,15 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                       m is Map &&
                       m['email']?.toString().toLowerCase() == ownerEmail,
                 );
-              if (!exists) {
-                memberList.insert(0, {
-                  ...owner,
-                  'role': 'Team Leader',
-                  'is_leader': true,
-                });
+                if (!exists) {
+                  memberList.insert(0, {
+                    ...owner,
+                    'role': 'Team Leader',
+                    'is_leader': true,
+                  });
+                }
               }
             }
-          }
 
             _members = memberList.map(_normalizeMember).toList();
 
@@ -510,32 +534,141 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: const Text('Edit Team'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'Name'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 260),
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _dialogFieldTitle('Team Name'),
+                NativeTextInput(
+                  controller: nameController,
+                  hintText: 'Name',
+                  height: 48,
+                  backgroundColor: AppColors.surface,
+                  borderColor: AppColors.calendarBorder.withValues(alpha: 0.35),
+                  borderRadius: 8,
+                  fallbackBuilder: (context) => TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Name',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: AppColors.calendarBorder.withValues(
+                            alpha: 0.35,
+                          ),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: AppColors.calendarBorder.withValues(
+                            alpha: 0.35,
+                          ),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.primary),
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _dialogFieldTitle('Description'),
+                NativeTextInput(
+                  controller: descController,
+                  hintText: 'Description',
+                  height: 48,
+                  backgroundColor: AppColors.surface,
+                  borderColor: AppColors.calendarBorder.withValues(alpha: 0.35),
+                  borderRadius: 8,
+                  fallbackBuilder: (context) => TextField(
+                    controller: descController,
+                    decoration: InputDecoration(
+                      labelText: 'Description',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: AppColors.calendarBorder.withValues(
+                            alpha: 0.35,
+                          ),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: AppColors.calendarBorder.withValues(
+                            alpha: 0.35,
+                          ),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.primary),
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _dialogFieldTitle('Max Members'),
+                NativeTextInput(
+                  controller: maxMembersController,
+                  keyboardType: TextInputType.number,
+                  hintText: '100',
+                  height: 48,
+                  backgroundColor: AppColors.surface,
+                  borderColor: AppColors.calendarBorder.withValues(alpha: 0.35),
+                  borderRadius: 8,
+                  fallbackBuilder: (context) => TextField(
+                    controller: maxMembersController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Max Members (1–100)',
+                      hintText: '100',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: AppColors.calendarBorder.withValues(
+                            alpha: 0.35,
+                          ),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: AppColors.calendarBorder.withValues(
+                            alpha: 0.35,
+                          ),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.primary),
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: descController,
-              decoration: const InputDecoration(labelText: 'Description'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: maxMembersController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Max Members (1–100)',
-                hintText: '100',
-              ),
-            ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF2E2A36),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             child: const Text('Cancel'),
           ),
           TextButton(
@@ -579,6 +712,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                 ErrorHandler.handleApiError(e);
               }
             },
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
             child: const Text('Save'),
           ),
         ],
@@ -595,29 +732,78 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: AppColors.surface,
           title: const Text('Invite Team Member'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Enter the email address of the person you want to invite to this project.',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 150),
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Enter the email address of the person you want to invite to this project.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  NativeTextInput(
+                    controller: emailController,
+                    enabled: !_isInviting,
+                    keyboardType: TextInputType.emailAddress,
+                    hintText: 'user@example.com',
+                    height: 48,
+                    backgroundColor: AppColors.surface,
+                    borderColor: AppColors.calendarBorder.withValues(
+                      alpha: 0.35,
+                    ),
+                    borderRadius: 8,
+                    fallbackBuilder: (context) => TextField(
+                      controller: emailController,
+                      enabled: !_isInviting,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        labelText: 'Email Address',
+                        hintText: 'user@example.com',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(
+                            color: AppColors.calendarBorder.withValues(
+                              alpha: 0.35,
+                            ),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(
+                            color: AppColors.calendarBorder.withValues(
+                              alpha: 0.35,
+                            ),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        prefixIcon: const Icon(Icons.email_outlined),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                enabled: !_isInviting,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email Address',
-                  hintText: 'user@example.com',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: _isInviting ? null : () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF2E2A36),
+                textStyle: const TextStyle(fontWeight: FontWeight.w600),
+              ),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
@@ -679,6 +865,20 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                   : const Text('Send Invite'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dialogFieldTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 6),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textSecondary,
         ),
       ),
     );
@@ -1052,57 +1252,80 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
               ),
               const SizedBox(height: 12),
               // Search bar
-              TextField(
+              NativeTextInput(
                 controller: _memberSearchController,
                 onChanged: (v) => setState(() {
                   _memberSearchQuery = v.trim().toLowerCase();
                   _memberPage = 0;
                 }),
-                decoration: InputDecoration(
-                  hintText: 'Search by name or email...',
-                  hintStyle: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    size: 20,
-                    color: AppColors.textSecondary,
-                  ),
-                  suffixIcon: _memberSearchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            size: 18,
-                            color: AppColors.textSecondary,
-                          ),
-                          onPressed: () => setState(() {
-                            _memberSearchController.clear();
-                            _memberSearchQuery = '';
-                            _memberPage = 0;
-                          }),
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: AppColors.surface,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
+                height: 44,
+                hintText: 'Search by name or email...',
+                hintColor: AppColors.textSecondary,
+                backgroundColor: AppColors.surface,
+                borderRadius: 14,
+                style: const TextStyle(fontSize: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                fallbackBuilder: (context) => TextField(
+                  controller: _memberSearchController,
+                  onChanged: (v) => setState(() {
+                    _memberSearchQuery = v.trim().toLowerCase();
+                    _memberPage = 0;
+                  }),
+                  decoration: InputDecoration(
+                    hintText: 'Search by name or email...',
+                    hintStyle: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
+                    suffixIcon: _memberSearchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(
+                              Icons.close,
+                              size: 18,
+                              color: AppColors.textSecondary,
+                            ),
+                            onPressed: () => setState(() {
+                              _memberSearchController.clear();
+                              _memberSearchQuery = '';
+                              _memberPage = 0;
+                            }),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
               Builder(
                 builder: (context) {
-                  final createdBy = _teamData?['created_by'] ?? _teamData?['createdBy'];
-                  final String? ownerId = (createdBy is Map
-                          ? createdBy['id'] ?? createdBy['user_id'] ?? createdBy['userId']
-                          : createdBy ?? _teamData?['owner_id'] ?? _teamData?['ownerId'])
-                      ?.toString();
+                  final createdBy =
+                      _teamData?['created_by'] ?? _teamData?['createdBy'];
+                  final String? ownerId =
+                      (createdBy is Map
+                              ? createdBy['id'] ??
+                                    createdBy['user_id'] ??
+                                    createdBy['userId']
+                              : createdBy ??
+                                    _teamData?['owner_id'] ??
+                                    _teamData?['ownerId'])
+                          ?.toString();
                   final String? myId = _currentUserId?.toString();
                   final bool isOwner =
                       ownerId != null && myId != null && ownerId == myId;
@@ -1490,15 +1713,24 @@ class _MemberTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLeader = role.toLowerCase().replaceAll('_', ' ').trim() == 'team leader';
+    final isLeader =
+        role.toLowerCase().replaceAll('_', ' ').trim() == 'team leader';
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1E6D2),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.25),
+              blurRadius: 6,
+              spreadRadius: -1,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -1516,7 +1748,8 @@ class _MemberTile extends StatelessWidget {
                         fit: BoxFit.cover,
                         httpHeaders: getNetworkImageHeaders(avatarUrl!),
                         cacheManager: WudiCacheManager(),
-                        errorWidget: (_, __, ___) => const Icon(Icons.person, color: Colors.grey),
+                        errorWidget: (_, __, ___) =>
+                            const Icon(Icons.person, color: Colors.grey),
                       )
                     : const Icon(Icons.person, color: Colors.grey),
               ),
@@ -1648,8 +1881,16 @@ class _TaskTileState extends State<_TaskTile> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1E6D2),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    spreadRadius: -1,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,

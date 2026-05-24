@@ -13,7 +13,8 @@ class ConnectionService {
   }
 
   final Connectivity _connectivity = Connectivity();
-  final StreamController<bool> _connectionController = StreamController<bool>.broadcast();
+  final StreamController<bool> _connectionController =
+      StreamController<bool>.broadcast();
 
   bool _hasNetworkInterface(List<ConnectivityResult> results) {
     return results.any((result) => result != ConnectivityResult.none);

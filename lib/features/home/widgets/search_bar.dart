@@ -47,6 +47,7 @@ class WudiSearchBar extends StatelessWidget {
                   onSubmitted: (String value) {
                     onFieldSubmitted();
                   },
+                  textInputAction: TextInputAction.search,
                   textAlignVertical: TextAlignVertical.center,
                   decoration: const InputDecoration(
                     hintText: 'Search',
@@ -71,7 +72,7 @@ class WudiSearchBar extends StatelessWidget {
           child: Material(
             elevation: 4.0,
             borderRadius: BorderRadius.circular(12),
-            color: Colors.white,
+            color: AppColors.surface,
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight: 250,

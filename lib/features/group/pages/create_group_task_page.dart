@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/primary_button.dart';
@@ -8,6 +10,7 @@ import '../../../../core/utils/error_handler.dart';
 import '../services/team_service.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/widgets/native_text_input.dart';
 
 class CreateGroupTaskPage extends StatefulWidget {
   final AuthService? authService;
@@ -34,11 +37,27 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
   bool _isOffline = false;
   bool _isLoading = true;
   bool _isValidatingEmail = false;
+  StreamSubscription<bool>? _connectionSubscription;
 
   @override
   void initState() {
     super.initState();
     _checkInitialConnection();
+    _connectionSubscription = _connectionService.isConnectedStream.listen((
+      connected,
+    ) {
+      if (!mounted) return;
+      setState(() => _isOffline = !connected);
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectionSubscription?.cancel();
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _emailController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkInitialConnection() async {
@@ -48,28 +67,30 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
         _isOffline = !isOnline;
         _isLoading = false;
       });
-      if (!isOnline) {
-        ErrorHandler.showErrorPopup(
-          "Sorry, you don't have internet. Please connect to internet to create or see the team.",
-          title: "No Internet Connection",
-        );
-      }
     }
   }
 
   Future<void> _addEmail() async {
     final email = _emailController.text.trim().toLowerCase();
-    final emailRegex = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
-    
+    final emailRegex = RegExp(
+      r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
+    );
+
     if (email.isEmpty) return;
 
     if (!emailRegex.hasMatch(email)) {
-      ErrorHandler.showErrorPopup("Please enter a valid email address.", title: "Invalid Email");
+      ErrorHandler.showErrorPopup(
+        "Please enter a valid email address.",
+        title: "Invalid Email",
+      );
       return;
     }
-    
+
     if (_invitedEmails.contains(email)) {
-      ErrorHandler.showErrorPopup("This email is already in your invite list.", title: "Duplicate Email");
+      ErrorHandler.showErrorPopup(
+        "This email is already in your invite list.",
+        title: "Duplicate Email",
+      );
       return;
     }
 
@@ -78,7 +99,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
 
     try {
       final result = await _teamService.checkEmail(email);
-      
+
       if (result['exists'] == true) {
         setState(() {
           _invitedEmails.add(email);
@@ -86,20 +107,20 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
         });
       } else {
         ErrorHandler.showErrorPopup(
-          "User with this email was not found in our system.", 
-          title: "User Not Found"
+          "User with this email was not found in our system.",
+          title: "User Not Found",
         );
       }
     } catch (e) {
       if (e.toString().contains('404')) {
         ErrorHandler.showErrorPopup(
-          "User with this email was not found in our system.", 
-          title: "User Not Found"
+          "User with this email was not found in our system.",
+          title: "User Not Found",
         );
       } else {
         ErrorHandler.showErrorPopup(
-          "Could not verify user at this time. Please check your connection.", 
-          title: "Verification Error"
+          "Could not verify user at this time. Please check your connection.",
+          title: "Verification Error",
         );
       }
     } finally {
@@ -119,7 +140,7 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final fifteenYearsLater = DateTime(now.year + 15, now.month, now.day);
-    
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
@@ -164,8 +185,11 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     if (picked != null) {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
-      if (_selectedDate.year == today.year && _selectedDate.month == today.month && _selectedDate.day == today.day) {
-        if (picked.hour < now.hour || (picked.hour == now.hour && picked.minute < now.minute)) {
+      if (_selectedDate.year == today.year &&
+          _selectedDate.month == today.month &&
+          _selectedDate.day == today.day) {
+        if (picked.hour < now.hour ||
+            (picked.hour == now.hour && picked.minute < now.minute)) {
           if (mounted) {
             ErrorHandler.showErrorPopup('Time cannot be in the past');
           }
@@ -179,15 +203,6 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
   Future<void> _handleCreate() async {
     if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
-
-    final isOnline = await _connectionService.isConnected();
-    if (!isOnline) {
-      ErrorHandler.showErrorPopup(
-        "Sorry, you don't have internet. Please connect to internet to create or see the team.",
-        title: "No Internet Connection",
-      );
-      return;
-    }
 
     setState(() => _isSaving = true);
     try {
@@ -244,66 +259,8 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-      );
-    }
-
-    if (_isOffline) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary, size: 32),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: const Text('No Internet Connection', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-          centerTitle: true,
-        ),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.wifi_off_rounded, size: 80, color: Colors.red),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                "You're Offline",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 12),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 40),
-                child: Text(
-                  "Sorry, you don't have internet. Please connect to internet to create or see the team.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textSecondary, height: 1.5, fontSize: 14),
-                ),
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() => _isLoading = true);
-                  _checkInitialConnection();
-                },
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text("Try Again"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
+          child: CircularProgressIndicator(color: AppColors.primary),
         ),
       );
     }
@@ -340,6 +297,10 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_isOffline) ...[
+                    _buildOfflineNotice(),
+                    const SizedBox(height: 16),
+                  ],
                   _buildLabel('Task Title *'),
                   _buildTextField(
                     _titleController,
@@ -347,8 +308,10 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
                     enabled: !_isSaving,
                     maxLength: 100,
                     validator: (v) {
-                      if (v == null || v.trim().isEmpty) return 'Please enter title';
-                      if (v.trim().length > 100) return 'Title must be 100 characters or less';
+                      if (v == null || v.trim().isEmpty)
+                        return 'Please enter title';
+                      if (v.trim().length > 100)
+                        return 'Title must be 100 characters or less';
                       return null;
                     },
                   ),
@@ -365,37 +328,58 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
 
                   const SizedBox(height: 24),
                   _buildLabel('Add Member (optional)'),
-                  TextField(
+                  NativeTextInput(
                     controller: _emailController,
                     onSubmitted: (_) => _isSaving ? null : _addEmail(),
                     enabled: !_isSaving,
-                    decoration: InputDecoration(
-                      hintText: 'Add Member Email',
-                      fillColor: AppColors.surface,
-                      filled: true,
-                      counterText: "", // Hide count for email field
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      suffixIcon: _isValidatingEmail
-                          ? const Padding(
-                              padding: EdgeInsets.all(12.0),
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                                ),
-                              ),
-                            )
-                          : IconButton(
-                              icon: const Icon(Icons.add, color: AppColors.primary),
-                              onPressed: (_isSaving || _isValidatingEmail) ? null : _addEmail,
-                            ),
-                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.done,
                     maxLength: 100,
+                    height: 52,
+                    hintText: 'Add Member Email',
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    fallbackBuilder: (context) => TextField(
+                      controller: _emailController,
+                      onSubmitted: (_) => _isSaving ? null : _addEmail(),
+                      enabled: !_isSaving,
+                      decoration: InputDecoration(
+                        hintText: 'Add Member Email',
+                        fillColor: AppColors.surface,
+                        filled: true,
+                        counterText: "",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        suffixIcon: _isValidatingEmail
+                            ? const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppColors.primary,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : IconButton(
+                                icon: const Icon(
+                                  Icons.add,
+                                  color: AppColors.primary,
+                                ),
+                                onPressed: (_isSaving || _isValidatingEmail)
+                                    ? null
+                                    : _addEmail,
+                              ),
+                      ),
+                      maxLength: 100,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -433,7 +417,8 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
                             _buildLabel('Time *'),
                             _buildPickerTile(
                               icon: Icons.access_time,
-                              text: "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}",
+                              text:
+                                  "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}",
                               onTap: _isSaving
                                   ? () {}
                                   : () => _selectTime(context),
@@ -480,6 +465,34 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     );
   }
 
+  Widget _buildOfflineNotice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.28)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.wifi_off_rounded, color: Colors.orange, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Offline mode: the task is saved locally and will sync when the connection returns.',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTextField(
     TextEditingController controller,
     String hint, {
@@ -489,20 +502,59 @@ class _CreateGroupTaskPageState extends State<CreateGroupTaskPage> {
     bool enabled = true,
     Color? fillColor,
   }) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      maxLength: maxLength,
+    return FormField<String>(
+      initialValue: controller.text,
       validator: validator,
-      enabled: enabled,
-      decoration: InputDecoration(
-        hintText: hint,
-        fillColor: fillColor ?? AppColors.surface,
-        filled: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide.none,
-        ),
+      builder: (field) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: fillColor ?? AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: field.hasError
+                  ? Border.all(color: Colors.red, width: 1)
+                  : null,
+            ),
+            child: NativeTextInput(
+              controller: controller,
+              maxLines: maxLines,
+              maxLength: maxLength,
+              enabled: enabled,
+              height: maxLines > 1 ? 120 : 52,
+              hintText: hint,
+              borderRadius: 20,
+              onChanged: field.didChange,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              fallbackBuilder: (context) => TextFormField(
+                controller: controller,
+                maxLines: maxLines,
+                maxLength: maxLength,
+                validator: validator,
+                enabled: enabled,
+                decoration: InputDecoration(
+                  hintText: hint,
+                  fillColor: fillColor ?? AppColors.surface,
+                  filled: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (field.hasError) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                field.errorText!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -12,7 +12,8 @@ class User {
 
   User();
 
-  bool get isEmailVerified => isGuest || emailVerifiedAt != null || googleId != null;
+  bool get isEmailVerified =>
+      isGuest || emailVerifiedAt != null || googleId != null;
 
   User.fromJson(Map<String, dynamic> json)
     : id = json['id'],

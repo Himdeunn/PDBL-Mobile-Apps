@@ -13,6 +13,11 @@ class AiChatCache {
       ..addAll(messages.take(80));
   }
 
+  static void clear({int? conversationId}) {
+    _messages.clear();
+    AiChatCache.conversationId = conversationId;
+  }
+
   static void add(AiChatMessage message) {
     _messages.add(message);
     if (_messages.length > 80) {
@@ -20,10 +25,30 @@ class AiChatCache {
     }
   }
 
+  static void upsert(AiChatMessage message) {
+    final index = _messages.indexWhere((item) => item.id == message.id);
+    if (index >= 0) {
+      _messages[index] = message;
+      return;
+    }
+
+    add(message);
+  }
+
   static void replace(String id, AiChatMessage message) {
     final index = _messages.indexWhere((item) => item.id == id);
     if (index >= 0) {
       _messages[index] = message;
     }
+  }
+
+  static void replaceOrUpsert(String localId, AiChatMessage message) {
+    final localIndex = _messages.indexWhere((item) => item.id == localId);
+    if (localIndex >= 0) {
+      _messages[localIndex] = message;
+      return;
+    }
+
+    upsert(message);
   }
 }

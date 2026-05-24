@@ -18,7 +18,8 @@ class CalendarPage extends StatefulWidget {
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver {
+class _CalendarPageState extends State<CalendarPage>
+    with WidgetsBindingObserver {
   final TaskRepository _taskRepository = TaskRepository();
   DateTime _selectedDate = DateTime.now();
   DateTime _currentMonth = DateTime(
@@ -53,12 +54,34 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
     'December',
   ];
 
+  DateTime get _minCalendarMonth {
+    final now = DateTime.now();
+    return DateTime(now.year - 5, now.month, 1);
+  }
+
+  DateTime get _maxCalendarMonth {
+    final now = DateTime.now();
+    return DateTime(now.year + 15, now.month, 1);
+  }
+
+  bool get _canGoToPreviousMonth => _currentMonth.isAfter(_minCalendarMonth);
+
+  bool get _canGoToNextMonth => _currentMonth.isBefore(_maxCalendarMonth);
+
+  bool _isPickerMonthEnabled(int year, int month) {
+    final candidate = DateTime(year, month, 1);
+    return !candidate.isBefore(_minCalendarMonth) &&
+        !candidate.isAfter(_maxCalendarMonth);
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkInitialConnection();
-    _connectivitySubscription = ConnectionService().isConnectedStream.listen((connected) {
+    _connectivitySubscription = ConnectionService().isConnectedStream.listen((
+      connected,
+    ) {
       if (mounted) setState(() => _isOffline = !connected);
     });
     _teamEventSubscription = NotificationHelper.onTeamEvent.listen((_) {
@@ -132,6 +155,8 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
   }
 
   void _previousMonth() {
+    if (!_canGoToPreviousMonth) return;
+
     final newMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
     setState(() {
       _isNext = false;
@@ -142,6 +167,8 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
   }
 
   void _nextMonth() {
+    if (!_canGoToNextMonth) return;
+
     final newMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
     setState(() {
       _isNext = true;
@@ -155,16 +182,21 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
     int pickerYear = _currentMonth.year;
     int pickerMonth = _currentMonth.month;
 
-    // Generate years from 5 years ago to 10 years in the future
-    final currentYear = DateTime.now().year;
-    final List<int> years = List.generate(15, (i) => currentYear - 5 + i);
+    final firstYear = _minCalendarMonth.year;
+    final lastYear = _maxCalendarMonth.year;
+    final List<int> years = List.generate(
+      lastYear - firstYear + 1,
+      (i) => firstYear + i,
+    );
 
     final result = await showDialog<DateTime>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           contentPadding: const EdgeInsets.all(20),
           content: SizedBox(
             width: 280,
@@ -178,7 +210,9 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
                   decoration: BoxDecoration(
                     color: AppColors.background,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.calendarBorder.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: AppColors.calendarBorder.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
@@ -187,7 +221,10 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
                       dropdownColor: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
                       menuMaxHeight: 300,
-                      icon: const Icon(Icons.expand_more_rounded, color: AppColors.textSecondary),
+                      icon: const Icon(
+                        Icons.expand_more_rounded,
+                        color: AppColors.textSecondary,
+                      ),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -197,6 +234,14 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
                         if (newValue != null) {
                           setDialogState(() {
                             pickerYear = newValue;
+                            if (!_isPickerMonthEnabled(
+                              pickerYear,
+                              pickerMonth,
+                            )) {
+                              pickerMonth = pickerYear == _maxCalendarMonth.year
+                                  ? _maxCalendarMonth.month
+                                  : _minCalendarMonth.month;
+                            }
                           });
                         }
                       },
@@ -218,20 +263,34 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
                   mainAxisSpacing: 8,
                   crossAxisSpacing: 8,
                   children: List.generate(12, (i) {
-                    final selected = pickerMonth == i + 1;
+                    final month = i + 1;
+                    final enabled = _isPickerMonthEnabled(pickerYear, month);
+                    final selected = pickerMonth == month;
                     return GestureDetector(
-                      onTap: () => setDialogState(() => pickerMonth = i + 1),
+                      onTap: enabled
+                          ? () => setDialogState(() => pickerMonth = month)
+                          : null,
                       child: Container(
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: selected ? AppColors.primary : Colors.transparent,
+                          color: selected
+                              ? AppColors.primary
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           _monthNames[i].substring(0, 3),
                           style: TextStyle(
-                            color: selected ? Colors.white : AppColors.textPrimary,
-                            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                            color: selected
+                                ? Colors.white
+                                : enabled
+                                ? AppColors.textPrimary
+                                : AppColors.textSecondary.withValues(
+                                    alpha: 0.35,
+                                  ),
+                            fontWeight: selected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             fontSize: 13,
                           ),
                         ),
@@ -245,11 +304,23 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(ctx, DateTime(pickerYear, pickerMonth, 1)),
-              child: const Text('OK', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+              onPressed: _isPickerMonthEnabled(pickerYear, pickerMonth)
+                  ? () =>
+                        Navigator.pop(ctx, DateTime(pickerYear, pickerMonth, 1))
+                  : null,
+              child: const Text(
+                'OK',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
@@ -263,6 +334,7 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
         _selectedDate = result;
         _filterSelectedDayTasks();
       });
+      _loadTasks(force: true);
     }
   }
 
@@ -294,111 +366,73 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: () => _loadTasks(force: true),
-        triggerMode: RefreshIndicatorTriggerMode.anywhere,
-        child: CustomScrollView(
-          physics: const ClampingScrollPhysics(),
-          slivers: [
-            // Header & Calendar Grid
-            SliverToBoxAdapter(
-              child: Column(
-                children: [
-                  const SizedBox(height: 16),
-                  _buildHeader(), // Now Header is outside the AnimatedSwitcher!
-                  const SizedBox(height: 24),
-                  _buildWeekDays(), // And Weekdays too (optional, but good for static feeling)
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onHorizontalDragEnd: (details) {
-                      if (details.primaryVelocity! > 0) {
-                        _previousMonth();
-                      } else if (details.primaryVelocity! < 0) {
-                        _nextMonth();
-                      }
-                    },
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      transitionBuilder: (Widget child, Animation<double> animation) {
-                        final isIncoming = child.key == ValueKey<DateTime>(_currentMonth);
-                        final slideOffset = _isNext 
-                            ? (isIncoming ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0))
-                            : (isIncoming ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0));
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 16),
+          _buildHeader(),
+          const SizedBox(height: 24),
+          _buildWeekDays(),
+          const SizedBox(height: 16),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragEnd: (details) {
+              final velocity = details.primaryVelocity;
+              if (velocity == null) return;
 
-                        return SlideTransition(
-                          position: animation.drive(Tween<Offset>(
-                            begin: slideOffset,
-                            end: Offset.zero,
-                          ).chain(CurveTween(curve: Curves.easeInOutCubic))),
-                          child: FadeTransition(
-                            opacity: animation,
-                            child: child,
-                          ),
-                        );
-                    },
-                    child: _buildCalendarGrid(key: ValueKey<DateTime>(_currentMonth)),
+              if (velocity > 0 && _canGoToPreviousMonth) {
+                _previousMonth();
+              } else if (velocity < 0 && _canGoToNextMonth) {
+                _nextMonth();
+              }
+            },
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                final isIncoming =
+                    child.key == ValueKey<DateTime>(_currentMonth);
+                final slideOffset = _isNext
+                    ? (isIncoming
+                          ? const Offset(1.0, 0.0)
+                          : const Offset(-1.0, 0.0))
+                    : (isIncoming
+                          ? const Offset(-1.0, 0.0)
+                          : const Offset(1.0, 0.0));
+
+                return SlideTransition(
+                  position: animation.drive(
+                    Tween<Offset>(
+                      begin: slideOffset,
+                      end: Offset.zero,
+                    ).chain(CurveTween(curve: Curves.easeInOutCubic)),
                   ),
-                ),
-              ],
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              child: _buildCalendarGrid(key: ValueKey<DateTime>(_currentMonth)),
             ),
           ),
-          
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            
-            // Individu / Team tab — sliding pill
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    const double pillH = 38.0;
-                    const double padding = 4.0;
-                    final double pillW = (constraints.maxWidth - padding * 2) / 2;
-                    return Container(
-                      height: pillH + padding * 2,
-                      padding: const EdgeInsets.all(padding),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Stack(
-                        children: [
-                          AnimatedPositioned(
-                            duration: const Duration(milliseconds: 240),
-                            curve: Curves.easeInOut,
-                            left: _taskTab == 0 ? 0 : pillW,
-                            top: 0,
-                            bottom: 0,
-                            width: pillW,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(26),
-                              ),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              _buildTab('Individu', 0, pillW, pillH),
-                              _buildTab('Team', 1, pillW, pillH),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+          const SizedBox(height: 24),
+
+          // Switch Individu | Team
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: IntrinsicWidth(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildTab('Individu', 0),
+                  const SizedBox(width: 8),
+                  _buildTab('Team', 1),
+                ],
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            
-            // Todo List Section
-            _buildSliverTodoList(),
-            // Bottom Spacing
-            const SliverToBoxAdapter(child: SizedBox(height: 40)),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+
+          // Todo List Section (Scrollable)
+          Expanded(child: _buildTodoList()),
+        ],
       ),
     );
   }
@@ -409,7 +443,10 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _buildNavButton(Icons.chevron_left_rounded, _previousMonth),
+          _buildNavButton(
+            Icons.chevron_left_rounded,
+            _canGoToPreviousMonth ? _previousMonth : null,
+          ),
           GestureDetector(
             onTap: _showMonthYearPicker,
             child: Column(
@@ -427,7 +464,11 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
                       ),
                     ),
                     const SizedBox(width: 4),
-                    const Icon(Icons.expand_more, color: AppColors.textSecondary, size: 20),
+                    const Icon(
+                      Icons.expand_more,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
                   ],
                 ),
                 Text(
@@ -442,13 +483,18 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
               ],
             ),
           ),
-          _buildNavButton(Icons.chevron_right_rounded, _nextMonth),
+          _buildNavButton(
+            Icons.chevron_right_rounded,
+            _canGoToNextMonth ? _nextMonth : null,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildNavButton(IconData icon, VoidCallback onTap) {
+  Widget _buildNavButton(IconData icon, VoidCallback? onTap) {
+    final enabled = onTap != null;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -457,9 +503,20 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
         decoration: BoxDecoration(
           color: Colors.transparent,
           shape: BoxShape.circle,
-          border: Border.all(color: AppColors.calendarBorder, width: 1.2),
+          border: Border.all(
+            color: enabled
+                ? AppColors.calendarBorder
+                : AppColors.calendarBorder.withValues(alpha: 0.35),
+            width: 1.2,
+          ),
         ),
-        child: Icon(icon, color: AppColors.textPrimary, size: 24),
+        child: Icon(
+          icon,
+          color: enabled
+              ? AppColors.textPrimary
+              : AppColors.textSecondary.withValues(alpha: 0.35),
+          size: 24,
+        ),
       ),
     );
   }
@@ -535,7 +592,9 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
             },
             child: Container(
               decoration: BoxDecoration(
-                color: isSelected ? AppColors.calendarSelected : Colors.transparent,
+                color: isSelected
+                    ? AppColors.calendarSelected
+                    : Colors.transparent,
                 shape: BoxShape.circle,
               ),
               child: Column(
@@ -545,9 +604,12 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
                     date.day.toString(),
                     style: TextStyle(
                       fontSize: 17,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w400,
                       color: () {
-                        if (!isCurrentMonth) return AppColors.calendarOtherMonth;
+                        if (!isCurrentMonth)
+                          return AppColors.calendarOtherMonth;
                         if (isSelected) return Colors.white;
                         return AppColors.textPrimary;
                       }(),
@@ -604,101 +666,98 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
     );
   }
 
-  Widget _buildSliverTodoList() {
+  Widget _buildTodoList() {
     if (_isLoading) {
-      return const SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     final tabFilteredTasks = _taskTab == 0
         ? _selectedDayTasks.where((t) => t.teamId == null).toList()
         : _selectedDayTasks.where((t) => t.teamId != null).toList();
 
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      sliver: SliverToBoxAdapter(
-        child: ClipRect(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            transitionBuilder: (child, animation) {
-              final isForward = _taskTab >= _prevTaskTab;
-              final begin = isForward
-                  ? const Offset(1.0, 0.0)
-                  : const Offset(-1.0, 0.0);
+    return RefreshIndicator(
+      onRefresh: () => _loadTasks(force: true),
+      triggerMode: RefreshIndicatorTriggerMode.anywhere,
+      child: ClipRect(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          transitionBuilder: (child, animation) {
+            final isForward = _taskTab >= _prevTaskTab;
+            final begin = isForward
+                ? const Offset(1.0, 0.0)
+                : const Offset(-1.0, 0.0);
 
-              return SlideTransition(
-                position: Tween<Offset>(begin: begin, end: Offset.zero)
-                    .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-                child: FadeTransition(
-                  opacity: animation,
-                  child: child,
-                ),
-              );
-            },
-            child: KeyedSubtree(
-              key: ValueKey<int>(_taskTab),
-              child: tabFilteredTasks.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 40),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.event_busy_outlined,
-                            size: 48,
-                            color: Color(0xFFB0A495),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _taskTab == 0
-                                ? 'No individual tasks for this day'
-                                : 'No team tasks for this day',
-                            style: const TextStyle(
-                              color: Color(0xFF8B7E6F),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : Column(
-                      children: tabFilteredTasks.map((task) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _TaskTile(
-                            task: task,
-                            currentUserEmail: _currentUserEmail,
-                            onEdit: () async {
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => CreateTaskPage(
-                                    task: task,
-                                    authService: widget.authService,
-                                  ),
-                                ),
-                              );
-                              if (result == true) {
-                                _loadTasks();
-                              }
-                            },
-                            onDelete: () => _deleteTask(task),
-                            isOffline: _isOffline,
-                          ),
-                        );
-                      }).toList(),
+            return SlideTransition(
+              position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
+              child: FadeTransition(opacity: animation, child: child),
+            );
+          },
+          child: KeyedSubtree(
+            key: ValueKey<int>(_taskTab),
+            child: tabFilteredTasks.isEmpty
+                ? ListView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 40,
                     ),
-            ),
+                    children: [
+                      const Icon(
+                        Icons.event_busy_outlined,
+                        size: 48,
+                        color: Color(0xFFB0A495),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _taskTab == 0
+                            ? 'No individual tasks for this day'
+                            : 'No team tasks for this day',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFF8B7E6F),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
+                    itemCount: tabFilteredTasks.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _TaskTile(
+                          task: tabFilteredTasks[index],
+                          currentUserEmail: _currentUserEmail,
+                          onEdit: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => CreateTaskPage(
+                                  task: tabFilteredTasks[index],
+                                  authService: widget.authService,
+                                ),
+                              ),
+                            );
+                            if (result == true) {
+                              _loadTasks();
+                            }
+                          },
+                          onDelete: () => _deleteTask(tabFilteredTasks[index]),
+                          isOffline: _isOffline,
+                        ),
+                      );
+                    },
+                  ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTab(String label, int index, double width, double height) {
+  Widget _buildTab(String label, int index) {
     final isActive = _taskTab == index;
     return GestureDetector(
       onTap: () => setState(() {
@@ -706,16 +765,20 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
         _taskTab = index;
       }),
       behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: width,
-        height: height,
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.primary : AppColors.surface,
+          borderRadius: BorderRadius.circular(30),
+        ),
         child: Center(
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: isActive ? Colors.white : AppColors.textSecondary,
+              color: isActive ? AppColors.white : AppColors.primary,
             ),
           ),
         ),
@@ -828,6 +891,10 @@ class _TaskTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF5E5359).withValues(alpha: 0.5),
+                  width: 1,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -858,29 +925,44 @@ class _TaskTile extends StatelessWidget {
                     ],
                   ),
                   // Assign to (team tasks only)
-                  if (task.teamId != null && task.assignedEmails != null && task.assignedEmails!.isNotEmpty) ...[
+                  if (task.teamId != null &&
+                      task.assignedEmails != null &&
+                      task.assignedEmails!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         const Text(
                           'Assign to: ',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF5D544E)),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF5D544E),
+                          ),
                         ),
                         Expanded(
                           child: Wrap(
                             spacing: 4,
                             runSpacing: 4,
-                            children: task.assignedEmails!.split(',').map((email) {
+                            children: task.assignedEmails!.split(',').map((
+                              email,
+                            ) {
                               final trimmedEmail = email.trim();
-                              if (trimmedEmail.isEmpty) return const SizedBox.shrink();
-                              final isCurrentUser = currentUserEmail != null &&
-                                  trimmedEmail.toLowerCase() == currentUserEmail!.toLowerCase().trim();
+                              if (trimmedEmail.isEmpty)
+                                return const SizedBox.shrink();
+                              final isCurrentUser =
+                                  currentUserEmail != null &&
+                                  trimmedEmail.toLowerCase() ==
+                                      currentUserEmail!.toLowerCase().trim();
                               final displayName = isCurrentUser
                                   ? 'You'
-                                  : (trimmedEmail.contains('@') ? trimmedEmail.split('@').first : trimmedEmail);
+                                  : (trimmedEmail.contains('@')
+                                        ? trimmedEmail.split('@').first
+                                        : trimmedEmail);
                               return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF2D2633),
                                   borderRadius: BorderRadius.circular(20),
@@ -888,11 +970,18 @@ class _TaskTile extends StatelessWidget {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.person, size: 10, color: Colors.white70),
+                                    const Icon(
+                                      Icons.person,
+                                      size: 10,
+                                      color: Colors.white70,
+                                    ),
                                     const SizedBox(width: 3),
                                     Text(
                                       displayName,
-                                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -904,11 +993,16 @@ class _TaskTile extends StatelessWidget {
                     ),
                   ],
                   // Description
-                  if (task.description != null && task.description!.isNotEmpty) ...[
+                  if (task.description != null &&
+                      task.description!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     RichText(
                       text: TextSpan(
-                        style: const TextStyle(fontSize: 13, color: Color(0xFF5D544E), height: 1.4),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF5D544E),
+                          height: 1.4,
+                        ),
                         children: [
                           const TextSpan(
                             text: 'Description : ',
@@ -937,7 +1031,10 @@ class _TaskTile extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.1),
                       child: Center(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.75),
                             borderRadius: BorderRadius.circular(16),
@@ -945,10 +1042,20 @@ class _TaskTile extends StatelessWidget {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.wifi_off, color: Colors.white, size: 16),
+                              Icon(
+                                Icons.wifi_off,
+                                color: Colors.white,
+                                size: 16,
+                              ),
                               SizedBox(width: 10),
-                              Text("Offline: Connection Required",
-                                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                              Text(
+                                "Offline: Connection Required",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -985,13 +1092,23 @@ class _TaskTile extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.circle, size: 8, color: textColor),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textColor)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
         ],
       ),
     );
@@ -1164,7 +1281,9 @@ class _TaskDetailSheet extends StatelessWidget {
           const SizedBox(height: 20),
 
           // ── Assign to (team tasks only) ──
-          if (task.teamId != null && task.assignedEmails != null && task.assignedEmails!.isNotEmpty) ...[
+          if (task.teamId != null &&
+              task.assignedEmails != null &&
+              task.assignedEmails!.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text(
               'Assigned To',
@@ -1182,13 +1301,20 @@ class _TaskDetailSheet extends StatelessWidget {
               children: task.assignedEmails!.split(',').map((email) {
                 final trimmedEmail = email.trim();
                 if (trimmedEmail.isEmpty) return const SizedBox.shrink();
-                final isCurrentUser = currentUserEmail != null &&
-                    trimmedEmail.toLowerCase() == currentUserEmail!.toLowerCase().trim();
+                final isCurrentUser =
+                    currentUserEmail != null &&
+                    trimmedEmail.toLowerCase() ==
+                        currentUserEmail!.toLowerCase().trim();
                 final displayName = isCurrentUser
                     ? 'You'
-                    : (trimmedEmail.contains('@') ? trimmedEmail.split('@').first : trimmedEmail);
+                    : (trimmedEmail.contains('@')
+                          ? trimmedEmail.split('@').first
+                          : trimmedEmail);
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2D2633),
                     borderRadius: BorderRadius.circular(20),
@@ -1200,7 +1326,10 @@ class _TaskDetailSheet extends StatelessWidget {
                       const SizedBox(width: 3),
                       Text(
                         displayName,
-                        style: const TextStyle(fontSize: 11, color: Colors.white),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),

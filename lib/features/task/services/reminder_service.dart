@@ -16,18 +16,18 @@ class TaskReminder {
   });
 
   Map<String, dynamic> toJson() => {
-        'unit': unit,
-        'amount': amount,
-        'hour': hour,
-        'minute': minute,
-      };
+    'unit': unit,
+    'amount': amount,
+    'hour': hour,
+    'minute': minute,
+  };
 
   factory TaskReminder.fromJson(Map<String, dynamic> json) => TaskReminder(
-        unit: json['unit'] as String,
-        amount: json['amount'] as int,
-        hour: json['hour'] as int,
-        minute: json['minute'] as int,
-      );
+    unit: json['unit'] as String,
+    amount: json['amount'] as int,
+    hour: json['hour'] as int,
+    minute: json['minute'] as int,
+  );
 
   String get label {
     final unitLabel = switch (unit) {
@@ -83,14 +83,20 @@ class ReminderService {
     final raw = prefs.getString('$_keyPrefix$taskId');
     if (raw == null) return [];
     final list = jsonDecode(raw) as List<dynamic>;
-    return list.map((e) => TaskReminder.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => TaskReminder.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<void> _saveRemindersForTask(
-      int taskId, List<TaskReminder> reminders) async {
+    int taskId,
+    List<TaskReminder> reminders,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        '$_keyPrefix$taskId', jsonEncode(reminders.map((r) => r.toJson()).toList()));
+      '$_keyPrefix$taskId',
+      jsonEncode(reminders.map((r) => r.toJson()).toList()),
+    );
   }
 
   static Future<void> clearRemindersForTask(int taskId) async {
@@ -103,7 +109,8 @@ class ReminderService {
   /// Returns how many reminders are scheduled across ALL tasks
   /// within each period relative to [deadline].
   static Future<Map<String, int>> countScheduledInPeriods(
-      DateTime deadline) async {
+    DateTime deadline,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final keys = prefs.getKeys().where((k) => k.startsWith(_keyPrefix));
 
@@ -124,7 +131,12 @@ class ReminderService {
         // A reminder's fire time is deadline - duration, at r.hour:r.minute
         final fireDate = deadline.subtract(r.duration);
         final fire = DateTime(
-            fireDate.year, fireDate.month, fireDate.day, r.hour, r.minute);
+          fireDate.year,
+          fireDate.month,
+          fireDate.day,
+          r.hour,
+          r.minute,
+        );
         if (fire.isAfter(now)) {
           if (!fire.isBefore(weekStart)) week++;
           if (!fire.isBefore(monthStart)) month++;
@@ -138,7 +150,10 @@ class ReminderService {
 
   /// Check if adding [count] more reminders for [deadline] would exceed limits.
   /// Returns null if OK, or an error message if exceeded.
-  static Future<String?> checkLimits(DateTime deadline, {int adding = 1}) async {
+  static Future<String?> checkLimits(
+    DateTime deadline, {
+    int adding = 1,
+  }) async {
     final counts = await countScheduledInPeriods(deadline);
     if ((counts['week']! + adding) > maxPerWeek) {
       return 'Weekly reminder limit reached ($maxPerWeek/week). Remove some reminders first.';
@@ -168,7 +183,12 @@ class ReminderService {
       final r = reminders[i];
       final fireDate = deadline.subtract(r.duration);
       final fire = DateTime(
-          fireDate.year, fireDate.month, fireDate.day, r.hour, r.minute);
+        fireDate.year,
+        fireDate.month,
+        fireDate.day,
+        r.hour,
+        r.minute,
+      );
 
       if (fire.isAfter(DateTime.now())) {
         await NotificationHelper.scheduleCustomReminder(

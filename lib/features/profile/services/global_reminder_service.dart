@@ -299,7 +299,8 @@ class GlobalReminderService {
         if (task.isCompleted || task.dueDate == null) continue;
 
         final bool isTeam = task.teamId != null;
-        if (reminder.taskType == ReminderTaskType.individual && isTeam) continue;
+        if (reminder.taskType == ReminderTaskType.individual && isTeam)
+          continue;
         if (reminder.taskType == ReminderTaskType.team && !isTeam) continue;
 
         // Build precise deadline DateTime
@@ -331,21 +332,33 @@ class GlobalReminderService {
   }
 
   /// Generates a bulleted list of tasks for the given reminder and date.
-  static Future<String> _generateTaskSummary(GlobalReminder reminder, DateTime targetDate) async {
+  static Future<String> _generateTaskSummary(
+    GlobalReminder reminder,
+    DateTime targetDate,
+  ) async {
     try {
       final email = await SecureStorage.getEmail();
-      if (email == null || email.isEmpty) return _getDefaultBody(reminder.taskType);
+      if (email == null || email.isEmpty)
+        return _getDefaultBody(reminder.taskType);
 
       final repo = TaskRepository();
       final allTasks = await repo.getAllTasks(email);
-      
-      final targetDay = DateTime(targetDate.year, targetDate.month, targetDate.day);
-      
+
+      final targetDay = DateTime(
+        targetDate.year,
+        targetDate.month,
+        targetDate.day,
+      );
+
       final relevantTasks = allTasks.where((t) {
         if (t.isCompleted || t.dueDate == null) return false;
-        final taskDay = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+        final taskDay = DateTime(
+          t.dueDate!.year,
+          t.dueDate!.month,
+          t.dueDate!.day,
+        );
         if (!taskDay.isAtSameMomentAs(targetDay)) return false;
-        
+
         return switch (reminder.taskType) {
           ReminderTaskType.individual => t.teamId == null,
           ReminderTaskType.team => t.teamId != null,
@@ -353,12 +366,12 @@ class GlobalReminderService {
         };
       }).toList();
 
-    if (relevantTasks.isEmpty) return _getDefaultBody(reminder.taskType);
+      if (relevantTasks.isEmpty) return _getDefaultBody(reminder.taskType);
 
-    final buffer = StringBuffer();
-    buffer.writeln('📋 Tasks for today:');
-    for (int i = 0; i < relevantTasks.length; i++) {
-      buffer.write('${i + 1}. ${relevantTasks[i].title}');
+      final buffer = StringBuffer();
+      buffer.writeln('📋 Tasks for today:');
+      for (int i = 0; i < relevantTasks.length; i++) {
+        buffer.write('${i + 1}. ${relevantTasks[i].title}');
         if (i < relevantTasks.length - 1) buffer.writeln();
       }
       return buffer.toString();

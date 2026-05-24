@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/primary_button.dart';
 import '../../../../core/utils/error_handler.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../../auth/services/auth_service.dart';
 import '../models/task_local.dart';
 import '../services/task_repository.dart';
@@ -176,11 +177,16 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomScrollPadding = keyboardBottom > 0 ? keyboardBottom + 48 : 32.0;
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.background,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: AppColors.background,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: _isSaving ? null : () => Navigator.pop(context),
@@ -197,7 +203,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       body: AbsorbPointer(
         absorbing: _isSaving,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: EdgeInsets.fromLTRB(24, 24, 24, bottomScrollPadding),
           child: Form(
             key: _formKey,
             child: Column(
@@ -208,18 +214,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                TextFormField(
-                  controller: _titleController,
+                _buildTextField(
+                  _titleController,
+                  'Enter task name...',
                   enabled: !_isSaving,
-                  decoration: InputDecoration(
-                    hintText: 'Enter task name...',
-                    fillColor: AppColors.surface,
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
                   maxLength: 100,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -237,20 +235,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                TextFormField(
-                  controller: _descriptionController,
+                _buildTextField(
+                  _descriptionController,
+                  'Write details about your task here...',
                   enabled: !_isSaving,
-                  maxLines: 4,
+                  maxLines: 5,
                   maxLength: 500,
-                  decoration: InputDecoration(
-                    hintText: 'Write details about your task here...',
-                    fillColor: AppColors.surface,
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -377,6 +367,66 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    int maxLines = 1,
+    int? maxLength,
+    String? Function(String?)? validator,
+    bool enabled = true,
+  }) {
+    return FormField<String>(
+      initialValue: controller.text,
+      validator: validator,
+      builder: (field) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          NativeTextInput(
+            controller: controller,
+            maxLines: maxLines,
+            minLines: maxLines > 1 ? 3 : 1,
+            maxLength: maxLength,
+            enabled: enabled,
+            height: maxLines > 1 ? 132 : 52,
+            hintText: hint,
+            backgroundColor: AppColors.surface,
+            borderRadius: 16,
+            onChanged: field.didChange,
+            padding: EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: maxLines > 1 ? 16 : 14,
+            ),
+            fallbackBuilder: (context) => TextFormField(
+              controller: controller,
+              maxLines: maxLines,
+              maxLength: maxLength,
+              validator: validator,
+              enabled: enabled,
+              decoration: InputDecoration(
+                hintText: hint,
+                fillColor: AppColors.surface,
+                filled: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: field.didChange,
+            ),
+          ),
+          if (field.hasError)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 16),
+              child: Text(
+                field.errorText!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+        ],
       ),
     );
   }

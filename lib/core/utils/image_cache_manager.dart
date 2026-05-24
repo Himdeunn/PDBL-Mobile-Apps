@@ -9,9 +9,11 @@ class WudiCacheManager extends CacheManager with ImageCacheManager {
   factory WudiCacheManager() => _instance;
 
   WudiCacheManager._()
-      : super(Config(
+    : super(
+        Config(
           _key,
           stalePeriod: const Duration(days: 7),
           maxNrOfCacheObjects: 100,
-        ));
+        ),
+      );
 }

@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/native_text_input.dart';
+import '../../task/widgets/priority_badge.dart';
 import '../cache/ai_chat_cache.dart';
 import '../models/ai_chat_message.dart';
 import '../services/ai_chat_service.dart';
@@ -12,8 +14,14 @@ import '../widgets/ai_typing_indicator.dart';
 class WudiAiScreen extends StatefulWidget {
   final String? initialPrompt;
   final bool loadHistory;
+  final bool isGuest;
 
-  const WudiAiScreen({super.key, this.initialPrompt, this.loadHistory = true});
+  const WudiAiScreen({
+    super.key,
+    this.initialPrompt,
+    this.loadHistory = true,
+    this.isGuest = false,
+  });
 
   @override
   State<WudiAiScreen> createState() => _WudiAiScreenState();
@@ -28,6 +36,7 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
   String? _activeRequestId;
   bool _isGenerating = false;
   bool _isLoadingHistory = true;
+  bool _showScrollToBottom = false;
   List<AiChatMessage> _messages = [];
 
   static const _suggestions = [
@@ -41,6 +50,11 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
+    if (widget.isGuest) {
+      _isLoadingHistory = false;
+      return;
+    }
     _messages = AiChatCache.messages;
     if (_messages.isEmpty) {
       _messages = [_welcomeMessage()];
@@ -50,6 +64,7 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
     } else {
       _isLoadingHistory = false;
     }
+    _scrollSoon(animated: false);
     if (widget.initialPrompt != null) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _send(widget.initialPrompt!),
@@ -62,7 +77,7 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
       id: _uuid.v4(),
       role: 'assistant',
       content:
-          'Hi, aku WUDI. Aku bisa bantu cek deadline terdekat, overdue tasks, rangkum tugas hari ini, atau susun prioritasmu.',
+          'Sure, ask away. I can help answer questions about your tasks, deadlines, priorities, progress, or which task you should do first.',
       createdAt: DateTime.now(),
     );
   }
@@ -72,18 +87,100 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
       final history = await _service.history();
       if (!mounted) return;
       setState(() {
-        _messages = history.isEmpty ? [_welcomeMessage()] : history;
+        _messages = _mergeHistory(history);
         _isLoadingHistory = false;
       });
-      _scrollSoon();
+      _scrollSoon(animated: false);
     } catch (_) {
       if (!mounted) return;
       setState(() => _isLoadingHistory = false);
     }
   }
 
+  Future<void> _startNewSession() async {
+    if (_isGenerating) return;
+
+    setState(() => _isLoadingHistory = true);
+    try {
+      await _service.newConversation();
+      if (!mounted) return;
+      setState(() {
+        _messages = [_welcomeMessage()];
+        _isLoadingHistory = false;
+      });
+      _scrollSoon(animated: false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingHistory = false);
+    }
+  }
+
+  Future<void> _openSession(AiConversationSummary conversation) async {
+    if (_isGenerating) return;
+
+    Navigator.pop(context);
+    setState(() => _isLoadingHistory = true);
+    try {
+      final history = await _service.history(conversationId: conversation.id);
+      if (!mounted) return;
+      setState(() {
+        _messages = history.isEmpty ? [_welcomeMessage()] : history;
+        _isLoadingHistory = false;
+      });
+      _scrollSoon(animated: false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingHistory = false);
+    }
+  }
+
+  Future<void> _showSessions() async {
+    if (_isGenerating) return;
+
+    final conversations = await _service.conversations();
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AiSessionSheet(
+        conversations: conversations,
+        currentConversationId: AiChatCache.conversationId,
+        onNewSession: () {
+          Navigator.pop(context);
+          _startNewSession();
+        },
+        onOpenSession: _openSession,
+      ),
+    );
+  }
+
+  List<AiChatMessage> _mergeHistory(List<AiChatMessage> history) {
+    final base = history.isEmpty ? <AiChatMessage>[] : [...history];
+    for (final local in _messages) {
+      final isWelcome =
+          !local.isUser && local.content == _welcomeMessage().content;
+      final exists = base.any(
+        (item) =>
+            item.id == local.id ||
+            (item.role == local.role &&
+                item.content == local.content &&
+                item.createdAt.difference(local.createdAt).abs() <
+                    const Duration(seconds: 5)),
+      );
+      if (!isWelcome && !exists) base.add(local);
+    }
+    base.sort((a, b) {
+      final timeCompare = a.createdAt.compareTo(b.createdAt);
+      if (timeCompare != 0) return timeCompare;
+      return a.sortId.compareTo(b.sortId);
+    });
+    return base.isEmpty ? [_welcomeMessage()] : base.take(80).toList();
+  }
+
   @override
   void dispose() {
+    _scrollController.removeListener(_handleScroll);
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -111,29 +208,41 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
     try {
       final response = await _service.send(text, cancelToken: _cancelToken);
       _activeRequestId = response.requestId;
-      final assistant = AiChatMessage(
-        id: _uuid.v4(),
-        role: 'assistant',
-        content: response.content,
-        createdAt: DateTime.now(),
-        metadata: response.action,
-      );
+      final savedUserMessage = response.userMessage;
+      final assistant =
+          response.assistantMessage ??
+          AiChatMessage(
+            id: _uuid.v4(),
+            role: 'assistant',
+            content: response.content,
+            createdAt: DateTime.now(),
+            metadata: response.action,
+          );
       if (!mounted) return;
       setState(() {
-        _messages = [..._messages, assistant];
+        final updatedMessages = [..._messages];
+        if (savedUserMessage != null) {
+          final userIndex = updatedMessages.indexWhere(
+            (item) => item.id == userMessage.id,
+          );
+          if (userIndex >= 0) updatedMessages[userIndex] = savedUserMessage;
+        }
+        _messages = [...updatedMessages, assistant];
         _isGenerating = false;
       });
-      AiChatCache.add(assistant);
+      if (savedUserMessage != null) {
+        AiChatCache.replaceOrUpsert(userMessage.id, savedUserMessage);
+      }
+      AiChatCache.upsert(assistant);
       _scrollSoon();
     } catch (e) {
       if (!mounted) return;
       final wasCancelled = e is DioException && CancelToken.isCancel(e);
+      final statusCode = e is DioException ? e.response?.statusCode : null;
       final failed = AiChatMessage(
         id: _uuid.v4(),
         role: 'assistant',
-        content: wasCancelled
-            ? 'Oke, aku berhenti di sini.'
-            : 'Maaf, aku belum bisa jawab sekarang. Coba kirim lagi sebentar ya.',
+        content: _fallbackErrorText(text, wasCancelled, statusCode),
         createdAt: DateTime.now(),
         failed: !wasCancelled,
       );
@@ -145,6 +254,31 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
     }
   }
 
+  String _fallbackErrorText(String text, bool wasCancelled, int? statusCode) {
+    if (wasCancelled) {
+      return RegExp(
+            r'\b(the|what|which|task|deadline|priority|show|pick|delete|edit|complete)\b',
+            caseSensitive: false,
+          ).hasMatch(text)
+          ? 'Okay, I stopped here.'
+          : 'Oke, aku berhenti di sini.';
+    }
+    if (statusCode == 429) {
+      return RegExp(
+            r'\b(the|what|which|task|deadline|priority|show|pick|delete|edit|complete)\b',
+            caseSensitive: false,
+          ).hasMatch(text)
+          ? 'Too many quick messages. Please wait a few seconds, then send it again.'
+          : 'Kebanyakan pesan terlalu cepat. Tunggu beberapa detik, lalu kirim lagi ya.';
+    }
+    return RegExp(
+          r'\b(the|what|which|task|deadline|priority|show|pick|delete|edit|complete)\b',
+          caseSensitive: false,
+        ).hasMatch(text)
+        ? 'Sorry, I can’t answer right now. Please send it again in a moment.'
+        : 'Maaf, aku belum bisa jawab sekarang. Coba kirim lagi sebentar ya.';
+  }
+
   Future<void> _stop() async {
     final requestId = _activeRequestId;
     _cancelToken?.cancel('Stopped by user');
@@ -154,20 +288,72 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
     if (mounted) setState(() => _isGenerating = false);
   }
 
-  void _scrollSoon() {
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final distanceFromBottom =
+        _scrollController.position.maxScrollExtent - _scrollController.offset;
+    final shouldShow = distanceFromBottom > 180;
+    if (shouldShow != _showScrollToBottom) {
+      setState(() => _showScrollToBottom = shouldShow);
+    }
+  }
+
+  void _jumpToBottomAfterLayout({required int remainingFrames}) {
+    if (!_scrollController.hasClients) return;
+    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    if (remainingFrames <= 0) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      _jumpToBottomAfterLayout(remainingFrames: remainingFrames - 1);
+    });
+  }
+
+  void _scrollSoon({bool animated = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final target = _scrollController.position.maxScrollExtent;
+      if (animated) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          target,
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
         );
+      } else {
+        _jumpToBottomAfterLayout(remainingFrames: 4);
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isGuest) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildAppBar(),
+              const Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      'Sorry, Please Login To Use This Feature',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -177,21 +363,47 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
             Expanded(
               child: _isLoadingHistory
                   ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                      itemCount: _messages.length + (_isGenerating ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (_isGenerating && index == _messages.length) {
-                          return const AiTypingIndicator();
-                        }
-                        return _AiBubble(
-                          message: _messages[index],
-                          onRetry: _messages[index].failed && index > 0
-                              ? () => _send(_messages[index - 1].content)
-                              : null,
-                        );
-                      },
+                  : Stack(
+                      children: [
+                        ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                          itemCount: _messages.length + (_isGenerating ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (_isGenerating && index == _messages.length) {
+                              return const AiTypingIndicator();
+                            }
+                            return _AiBubble(
+                              message: _messages[index],
+                              onTaskPicked: _send,
+                              onRetry: _messages[index].failed && index > 0
+                                  ? () => _send(_messages[index - 1].content)
+                                  : null,
+                            );
+                          },
+                        ),
+                        Positioned(
+                          right: 18,
+                          bottom: 14,
+                          child: AnimatedScale(
+                            duration: const Duration(milliseconds: 180),
+                            scale: _showScrollToBottom ? 1 : 0,
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 180),
+                              opacity: _showScrollToBottom ? 1 : 0,
+                              child: FloatingActionButton.small(
+                                heroTag: 'wudi_scroll_down',
+                                onPressed: _scrollSoon,
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                child: const Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
             ),
             _buildSuggestions(),
@@ -234,25 +446,18 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
           Container(
             width: 38,
             height: 38,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.primary, AppColors.calendarSelected],
-              ),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.16),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
+            decoration: const BoxDecoration(
+              color: Color(0xFFD5C4B0), // Cream yang sedikit lebih gelap
+              shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 20,
+            child: Padding(
+              padding: const EdgeInsets.all(
+                4.0,
+              ), // Beri jarak agar logo pas di dalam lingkaran
+              child: Image.asset(
+                'assets/images/Wudi_AI_Icon.png',
+                fit: BoxFit.contain,
+              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -287,30 +492,55 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.08),
-              ),
+          const SizedBox(width: 6),
+          PopupMenuButton<_AiHeaderAction>(
+            tooltip: 'More',
+            onSelected: (action) {
+              switch (action) {
+                case _AiHeaderAction.sessions:
+                  _showSessions();
+                case _AiHeaderAction.newChat:
+                  _startNewSession();
+              }
+            },
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.lock_rounded, size: 12, color: AppColors.primary),
-                SizedBox(width: 3),
-                Text(
-                  'Private',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
-                  ),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _AiHeaderAction.sessions,
+                child: Row(
+                  children: [
+                    Icon(Icons.history_rounded, size: 18),
+                    SizedBox(width: 10),
+                    Text('Sessions'),
+                  ],
                 ),
-              ],
+              ),
+              PopupMenuItem(
+                value: _AiHeaderAction.newChat,
+                child: Row(
+                  children: [
+                    Icon(Icons.add_rounded, size: 19),
+                    SizedBox(width: 10),
+                    Text('New chat'),
+                  ],
+                ),
+              ),
+            ],
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.more_horiz_rounded,
+                color: AppColors.primary,
+                size: 21,
+              ),
             ),
           ),
         ],
@@ -342,27 +572,33 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
 
   Widget _buildInput() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
       child: Row(
         children: [
           Expanded(
-            child: TextField(
+            child: NativeTextInput(
               controller: _controller,
-              minLines: 1,
-              maxLines: 4,
-              enabled: !_isGenerating,
-              decoration: InputDecoration(
-                hintText: 'Ask about tasks or deadlines',
-                filled: true,
-                fillColor: AppColors.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  borderSide: BorderSide.none,
+              hintText: 'Ask something...',
+              backgroundColor: AppColors.surface,
+              borderRadius: 24,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              onSubmitted: (_) => _send(_controller.text),
+              fallbackBuilder: (context) => TextField(
+                controller: _controller,
+                decoration: InputDecoration(
+                  hintText: 'Ask something...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+                onSubmitted: (_) => _send(_controller.text),
               ),
             ),
           ),
@@ -390,37 +626,14 @@ class _WudiAiScreenState extends State<WudiAiScreen> {
   }
 }
 
-class _HeaderPill extends StatelessWidget {
-  final String label;
-
-  const _HeaderPill(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.primary,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
+enum _AiHeaderAction { sessions, newChat }
 
 class _AiBubble extends StatelessWidget {
   final AiChatMessage message;
+  final ValueChanged<String>? onTaskPicked;
   final VoidCallback? onRetry;
 
-  const _AiBubble({required this.message, this.onRetry});
+  const _AiBubble({required this.message, this.onTaskPicked, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -456,7 +669,10 @@ class _AiBubble extends StatelessWidget {
               _FormattedAiText(text: message.content, isUser: isUser),
               if (!isUser && message.metadata != null) ...[
                 const SizedBox(height: 12),
-                _RichAiPayload(metadata: message.metadata!),
+                _RichAiPayload(
+                  metadata: message.metadata!,
+                  onTaskPicked: onTaskPicked,
+                ),
               ],
               if (onRetry != null) ...[
                 const SizedBox(height: 8),
@@ -476,8 +692,9 @@ class _AiBubble extends StatelessWidget {
 
 class _RichAiPayload extends StatelessWidget {
   final Map<String, dynamic> metadata;
+  final ValueChanged<String>? onTaskPicked;
 
-  const _RichAiPayload({required this.metadata});
+  const _RichAiPayload({required this.metadata, this.onTaskPicked});
 
   @override
   Widget build(BuildContext context) {
@@ -522,11 +739,7 @@ class _RichAiPayload extends StatelessWidget {
           .whereType<Map>()
           .map((item) => item.cast<String, dynamic>())
           .toList();
-      return _TaskListCard(
-        title: 'Overdue tasks',
-        tasks: tasks,
-        icon: Icons.warning_amber_rounded,
-      );
+      return _OverdueInsightCard(tasks: tasks, onTaskPicked: onTaskPicked);
     }
     if (kind == 'task_list') {
       final tasks = ((metadata['tasks'] as List?) ?? [])
@@ -548,6 +761,7 @@ class _RichAiPayload extends StatelessWidget {
         title: 'Pick a task',
         tasks: tasks,
         icon: Icons.touch_app_rounded,
+        onTaskPicked: onTaskPicked,
       );
     }
     if (kind == 'task_updated') {
@@ -601,6 +815,159 @@ class _RichAiPayload extends StatelessWidget {
   }
 }
 
+class _AiSessionSheet extends StatelessWidget {
+  final List<AiConversationSummary> conversations;
+  final int? currentConversationId;
+  final VoidCallback onNewSession;
+  final ValueChanged<AiConversationSummary> onOpenSession;
+
+  const _AiSessionSheet({
+    required this.conversations,
+    required this.currentConversationId,
+    required this.onNewSession,
+    required this.onOpenSession,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'WUDI AI sessions',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onNewSession,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('New'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (conversations.isNotEmpty) ...[
+              const Text(
+                'Past sessions are securely saved. WUDI remembers your important context.',
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: conversations.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final conversation = conversations[index];
+                    final isActive = conversation.id == currentConversationId;
+
+                    return Material(
+                      color: isActive
+                          ? AppColors.primary.withValues(alpha: 0.08)
+                          : AppColors.surface,
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => onOpenSession(conversation),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: Icon(
+                                  isActive
+                                      ? Icons.mark_chat_read_rounded
+                                      : Icons.chat_bubble_outline_rounded,
+                                  color: AppColors.primary,
+                                  size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      isActive
+                                          ? 'Current session'
+                                          : conversation.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w900,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      conversation.preview?.trim().isNotEmpty ==
+                                              true
+                                          ? conversation.preview!.trim()
+                                          : 'Empty session',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                color: AppColors.textSecondary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _FormattedAiText extends StatelessWidget {
   final String text;
   final bool isUser;
@@ -609,37 +976,150 @@ class _FormattedAiText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isUser ? Colors.white : AppColors.textPrimary;
+    const assistantColor = Color(0xFF5D544E);
+    const assistantStrongColor = Color(0xFF4B4038);
+    final color = isUser ? Colors.white : assistantColor;
+
+    if (isUser) {
+      return Text(
+        text,
+        style: TextStyle(color: color, height: 1.4, fontSize: 14),
+      );
+    }
+
+    final lines = text.split('\n');
+    final children = <Widget>[];
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) {
+        if (i < lines.length - 1) children.add(const SizedBox(height: 8));
+        continue;
+      }
+
+      // Handle bullet points
+      if (line.startsWith('* ') ||
+          line.startsWith('- ') ||
+          line.startsWith('• ')) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "• ",
+                  style: TextStyle(
+                    color: assistantStrongColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                Expanded(
+                  child: _buildRichText(
+                    line.substring(2),
+                    assistantColor,
+                    assistantStrongColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      // Handle numbered lists
+      else if (RegExp(r'^\d+\.\s').hasMatch(line)) {
+        final match = RegExp(r'^(\d+\.)\s').firstMatch(line)!;
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${match.group(1)} ",
+                  style: TextStyle(
+                    color: assistantStrongColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                Expanded(
+                  child: _buildRichText(
+                    line.substring(match.end),
+                    assistantColor,
+                    assistantStrongColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      // Regular paragraph
+      else {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _buildRichText(line, assistantColor, assistantStrongColor),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  Widget _buildRichText(String text, Color color, Color strongColor) {
     final spans = <InlineSpan>[];
-    final pattern = RegExp(r'\*\*(.*?)\*\*');
+    final pattern = RegExp(r'\*\*([\s\S]*?)\*\*');
     var cursor = 0;
 
     for (final match in pattern.allMatches(text)) {
       if (match.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, match.start)));
+        spans.add(
+          TextSpan(text: _cleanAiMarkdown(text.substring(cursor, match.start))),
+        );
       }
       spans.add(
         TextSpan(
-          text: match.group(1),
-          style: TextStyle(
-            color: isUser ? Colors.white : AppColors.primary,
-            fontWeight: FontWeight.w800,
-          ),
+          text: _cleanAiMarkdown(match.group(1) ?? ''),
+          style: TextStyle(color: strongColor, fontWeight: FontWeight.w800),
         ),
       );
       cursor = match.end;
     }
 
     if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor)));
+      spans.add(TextSpan(text: _cleanAiMarkdown(text.substring(cursor))));
+    }
+
+    if (spans.isEmpty) {
+      return SelectableText(
+        _cleanAiMarkdown(text),
+        style: TextStyle(color: color, height: 1.5, fontSize: 14),
+      );
     }
 
     return SelectableText.rich(
       TextSpan(
-        style: TextStyle(color: color, height: 1.45, fontSize: 14),
-        children: spans.isEmpty ? [TextSpan(text: text)] : spans,
+        style: TextStyle(color: color, height: 1.5, fontSize: 14),
+        children: spans,
       ),
     );
+  }
+
+  String _cleanAiMarkdown(String value) {
+    return value
+        .replaceAll('**', '')
+        .replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '')
+        .replaceAllMapped(
+          RegExp(r'`([^`]*)`'),
+          (match) => match.group(1) ?? '',
+        );
   }
 }
 
@@ -663,32 +1143,20 @@ class _SummaryChart extends StatelessWidget {
     final unfinished = _intValue(counts['unfinished']);
     final overdue = _intValue(counts['overdue']);
     final completed = _intValue(counts['completed']);
-    final total = _intValue(
-      counts['total'],
-    ).clamp(unfinished + completed, 9999);
-    final chartTotal = total.clamp(1, 9999);
-    final high = _intValue(priorityCounts['high']);
-    final medium = _intValue(priorityCounts['medium']);
-    final low = _intValue(priorityCounts['low']);
+    final total = unfinished + overdue + completed;
+    final isEmpty = total == 0;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.78),
-            AppColors.surface.withValues(alpha: 0.72),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.11)),
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+            color: AppColors.primary.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -698,11 +1166,10 @@ class _SummaryChart extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 34,
-                height: 34,
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.analytics_rounded,
@@ -710,7 +1177,7 @@ class _SummaryChart extends StatelessWidget {
                   size: 18,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -718,8 +1185,10 @@ class _SummaryChart extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
                         color: AppColors.primary,
+                        letterSpacing: -0.5,
                       ),
                     ),
                     if (subtitle != null)
@@ -728,100 +1197,299 @@ class _SummaryChart extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                   ],
                 ),
               ),
+              if (!isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    "$total Tasks",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
             ],
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: Row(
-              children: [
-                _BarSegment(
-                  value: completed / chartTotal,
-                  color: AppColors.primary,
-                ),
-                _BarSegment(
-                  value: unfinished / chartTotal,
-                  color: AppColors.calendarSelected,
-                ),
-                _BarSegment(
-                  value: overdue / chartTotal,
-                  color: AppColors.errorText,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 7),
-          const Row(
-            children: [
-              _LegendDot(label: 'Done', color: AppColors.primary),
-              SizedBox(width: 10),
-              _LegendDot(label: 'Open', color: AppColors.calendarSelected),
-              SizedBox(width: 10),
-              _LegendDot(label: 'Late', color: AppColors.errorText),
+          const SizedBox(height: 20),
+          if (isEmpty)
+            _buildEmptyState()
+          else ...[
+            _buildChartSection(completed, unfinished, overdue, total),
+            const SizedBox(height: 20),
+            _buildMetricsGrid(completed, unfinished, overdue),
+            if (priorityCounts.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Divider(height: 1),
+              ),
+              _buildPrioritySection(),
             ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MetricPill(
-                label: 'Done',
-                value: completed,
-                color: AppColors.primary,
-              ),
-              _MetricPill(
-                label: 'Open',
-                value: unfinished,
-                color: AppColors.calendarSelected,
-              ),
-              _MetricPill(
-                label: 'Overdue',
-                value: overdue,
-                color: AppColors.errorText,
-              ),
-            ],
-          ),
-          if (priorityCounts.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _MetricPill(
-                  label: 'High',
-                  value: high,
-                  color: AppColors.errorText,
-                ),
-                _MetricPill(
-                  label: 'Medium',
-                  value: medium,
-                  color: AppColors.calendarSelected,
-                ),
-                _MetricPill(
-                  label: 'Low',
-                  value: low,
-                  color: AppColors.textSecondary,
-                ),
-              ],
-            ),
-          ],
-          if (tasks.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            for (final task in tasks.take(4)) _CompactTaskRow(task: task),
           ],
         ],
       ),
     );
   }
 
-  int _intValue(dynamic value) =>
-      value is int ? value : int.tryParse(value?.toString() ?? '') ?? 0;
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.inbox_rounded, color: AppColors.iconAccent, size: 24),
+          SizedBox(height: 8),
+          Text(
+            'No tasks found for this period',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartSection(int completed, int open, int late, int total) {
+    final chartTotal = total.clamp(1, 999999).toDouble();
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              height: 100,
+              width: 100,
+              child: CircularProgressIndicator(
+                value: completed / chartTotal,
+                strokeWidth: 10,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                strokeCap: StrokeCap.round,
+              ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "${((completed / chartTotal) * 100).toInt()}%",
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const Text(
+                  "Done",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _LegendDot(label: 'Done', color: AppColors.primary),
+            const SizedBox(width: 16),
+            _LegendDot(label: 'Open', color: AppColors.calendarSelected),
+            const SizedBox(width: 16),
+            _LegendDot(label: 'Late', color: AppColors.errorText),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricsGrid(int completed, int open, int late) {
+    return Row(
+      children: [
+        Expanded(
+          child: _MetricCard(
+            label: 'Completed',
+            value: completed,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _MetricCard(
+            label: 'Pending',
+            value: open,
+            color: AppColors.calendarSelected,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _MetricCard(
+            label: 'Overdue',
+            value: late,
+            color: AppColors.errorText,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrioritySection() {
+    final high = _intValue(priorityCounts['high']);
+    final medium = _intValue(priorityCounts['medium']);
+    final low = _intValue(priorityCounts['low']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "By Priority",
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _PriorityPill(
+              label: 'High',
+              value: high,
+              color: TaskPriorityVisuals.highColor,
+            ),
+            const SizedBox(width: 6),
+            _PriorityPill(
+              label: 'Med',
+              value: medium,
+              color: TaskPriorityVisuals.mediumColor,
+            ),
+            const SizedBox(width: 6),
+            _PriorityPill(
+              label: 'Low',
+              value: low,
+              color: TaskPriorityVisuals.lowColor,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  int _intValue(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    return int.tryParse(v.toString()) ?? 0;
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _MetricCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value.toString(),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: color.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriorityPill extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _PriorityPill({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              "$label: $value",
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _BarSegment extends StatelessWidget {
@@ -832,6 +1500,7 @@ class _BarSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (value <= 0) return const SizedBox.shrink();
     return Expanded(
       flex: (value * 100).round().clamp(1, 100),
       child: Container(height: 10, color: color),
@@ -913,67 +1582,108 @@ class _TaskInsightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final taskTitle = task['title']?.toString() ?? 'Untitled task';
+    final priority = task['priority']?.toString() ?? 'medium';
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(22),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.07),
-            blurRadius: 16,
-            offset: const Offset(0, 9),
+            color: AppColors.primary.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: AppColors.primary, size: 20),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: AppColors.primary, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.primary,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const Spacer(),
+              _PriorityBadge(priority: priority),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.06),
+              ),
+            ),
+            child: Row(
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w700,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        taskTitle,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.primary,
+                          height: 1.2,
+                        ),
+                      ),
+                      if (task['deadline'] != null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.alarm_rounded,
+                              size: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              task['deadline'].toString(),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  task['title']?.toString() ?? 'Untitled task',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: AppColors.primary,
                 ),
-                if (task['deadline'] != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    task['deadline'].toString(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
-          _PriorityBadge(priority: task['priority']?.toString() ?? 'medium'),
         ],
       ),
     );
@@ -984,26 +1694,28 @@ class _TaskListCard extends StatelessWidget {
   final String title;
   final List<Map<String, dynamic>> tasks;
   final IconData icon;
+  final ValueChanged<String>? onTaskPicked;
 
   const _TaskListCard({
     required this.title,
     required this.tasks,
     required this.icon,
+    this.onTaskPicked,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.09)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.07),
-            blurRadius: 16,
-            offset: const Offset(0, 9),
+            color: AppColors.primary.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -1013,27 +1725,251 @@ class _TaskListCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 30,
-                height: 30,
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(11),
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 17, color: AppColors.primary),
+                child: Icon(icon, size: 18, color: AppColors.primary),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Text(
                 title,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
                   color: AppColors.primary,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const Spacer(),
+              if (tasks.length > 5)
+                Text(
+                  "Showing 5",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary.withValues(alpha: 0.5),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          for (final entry in tasks.take(5).indexed)
+            _CompactTaskRow(
+              task: entry.$2,
+              pickLabel: 'number ${entry.$1 + 1}',
+              onTaskPicked: onTaskPicked,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverdueInsightCard extends StatelessWidget {
+  final List<Map<String, dynamic>> tasks;
+  final ValueChanged<String>? onTaskPicked;
+
+  const _OverdueInsightCard({required this.tasks, this.onTaskPicked});
+
+  @override
+  Widget build(BuildContext context) {
+    final high = tasks.where((task) => task['priority'] == 'high').length;
+    final medium = tasks.where((task) => task['priority'] == 'medium').length;
+    final low = tasks.where((task) => task['priority'] == 'low').length;
+    final total = tasks.length;
+    final urgent = total == 0 ? 0 : high;
+    final riskLabel = total == 0
+        ? 'Clear'
+        : urgent > 0
+        ? 'High risk'
+        : 'Needs attention';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.errorText.withValues(alpha: 0.16)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.errorText.withValues(alpha: 0.06),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.errorText.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 20,
+                  color: AppColors.errorText,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Overdue tasks',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primary,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    Text(
+                      '$total late • $riskLabel',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '$total',
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.errorText,
+                  height: 1,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          for (final task in tasks.take(5)) _CompactTaskRow(task: task),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: Row(
+              children: [
+                _PriorityBarSegment(
+                  value: total == 0 ? 0 : high / total,
+                  color: TaskPriorityVisuals.highColor,
+                ),
+                _PriorityBarSegment(
+                  value: total == 0 ? 0 : medium / total,
+                  color: TaskPriorityVisuals.mediumColor,
+                ),
+                _PriorityBarSegment(
+                  value: total == 0 ? 0 : low / total,
+                  color: TaskPriorityVisuals.lowColor,
+                ),
+                if (total == 0)
+                  Expanded(
+                    child: Container(height: 10, color: AppColors.surface),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _PriorityMiniChip(
+                label: 'High',
+                value: high,
+                color: TaskPriorityVisuals.highColor,
+              ),
+              const SizedBox(width: 8),
+              _PriorityMiniChip(
+                label: 'Med',
+                value: medium,
+                color: TaskPriorityVisuals.mediumColor,
+              ),
+              const SizedBox(width: 8),
+              _PriorityMiniChip(
+                label: 'Low',
+                value: low,
+                color: TaskPriorityVisuals.lowColor,
+              ),
+            ],
+          ),
+          if (tasks.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            for (final entry in tasks.take(5).indexed)
+              _CompactTaskRow(
+                task: entry.$2,
+                pickLabel: 'number ${entry.$1 + 1}',
+                onTaskPicked: onTaskPicked,
+              ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _PriorityBarSegment extends StatelessWidget {
+  final double value;
+  final Color color;
+
+  const _PriorityBarSegment({required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    if (value <= 0) return const SizedBox.shrink();
+
+    return Expanded(
+      flex: (value * 100).round().clamp(1, 100),
+      child: Container(height: 10, color: color),
+    );
+  }
+}
+
+class _PriorityMiniChip extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _PriorityMiniChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$label $value',
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1041,65 +1977,83 @@ class _TaskListCard extends StatelessWidget {
 
 class _CompactTaskRow extends StatelessWidget {
   final Map<String, dynamic> task;
+  final String? pickLabel;
+  final ValueChanged<String>? onTaskPicked;
 
-  const _CompactTaskRow({required this.task});
+  const _CompactTaskRow({
+    required this.task,
+    this.pickLabel,
+    this.onTaskPicked,
+  });
 
   @override
   Widget build(BuildContext context) {
     final priority = task['priority']?.toString() ?? 'medium';
-    final color = priority == 'high'
-        ? AppColors.errorText
-        : priority == 'low'
-        ? AppColors.textSecondary
-        : AppColors.calendarSelected;
+    final style = TaskPriorityVisuals.style(priority);
+    final color = style.color;
 
+    final title = task['title']?.toString() ?? 'Untitled task';
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-      decoration: BoxDecoration(
-        color: AppColors.background.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: color.withValues(alpha: 0.11)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 4,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(999),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: onTaskPicked == null
+            ? null
+            : () => onTaskPicked!(pickLabel ?? title),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.05),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task['title']?.toString() ?? 'Untitled task',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
-                    height: 1.25,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                if (task['deadline'] != null)
-                  Text(
-                    task['deadline'].toString(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      height: 1.25,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: AppColors.primary,
+                        height: 1.2,
+                      ),
                     ),
-                  ),
-              ],
-            ),
+                    if (task['deadline'] != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        task['deadline'].toString(),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _PriorityBadge(priority: priority),
+            ],
           ),
-          const SizedBox(width: 8),
-          _PriorityBadge(priority: priority),
-        ],
+        ),
       ),
     );
   }
@@ -1112,11 +2066,8 @@ class _PriorityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = priority == 'high'
-        ? AppColors.errorText
-        : priority == 'low'
-        ? AppColors.textSecondary
-        : AppColors.calendarSelected;
+    final style = TaskPriorityVisuals.style(priority);
+    final color = style.color;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(

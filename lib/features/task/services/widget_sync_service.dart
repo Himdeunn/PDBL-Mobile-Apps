@@ -4,7 +4,7 @@ import 'package:home_widget/home_widget.dart';
 class WidgetSyncService {
   static Future<void> syncFocusTodayWidget(List<dynamic> allTasks) async {
     final now = DateTime.now();
-    
+
     final todayTasks = allTasks.where((task) {
       if (task.dueDate == null) return false;
       if (task.dueDate!.year != now.year ||
@@ -27,11 +27,11 @@ class WidgetSyncService {
           : 'personal:${t.id}';
 
       taskJsonByKey[widgetKey] = {
-      'widgetKey': widgetKey,
-      'id': t.id.toString(),
-      'title': t.title ?? '',
-      'dueTime': t.dueTime ?? '',
-      'priority': t.priority ?? 'medium',
+        'widgetKey': widgetKey,
+        'id': t.id.toString(),
+        'title': t.title ?? '',
+        'dueTime': t.dueTime ?? '',
+        'priority': t.priority ?? 'medium',
         'isTeam': isTeam,
         'isCompleted': t.isCompleted == true || isLocked,
         'isLocked': isLocked,
@@ -41,8 +41,11 @@ class WidgetSyncService {
 
     final taskJsonList = taskJsonByKey.values.toList();
 
-    await HomeWidget.saveWidgetData<String>('focus_today_tasks', jsonEncode(taskJsonList));
-    
+    await HomeWidget.saveWidgetData<String>(
+      'focus_today_tasks',
+      jsonEncode(taskJsonList),
+    );
+
     // Force notify both the provider AND the list view data changed
     await HomeWidget.updateWidget(
       name: 'FocusTodayWidgetProvider',

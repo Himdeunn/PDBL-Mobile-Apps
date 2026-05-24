@@ -57,7 +57,7 @@ class AuthRequiredDialog extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // Title
           const Text(
             'Authentication Required',
@@ -68,7 +68,7 @@ class AuthRequiredDialog extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          
+
           // Message
           const Text(
             'Sorry, you can\'t go to this menu.\nYou need to login or register.',
@@ -80,7 +80,7 @@ class AuthRequiredDialog extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
-          
+
           // Action Buttons
           Row(
             children: [
@@ -96,7 +96,10 @@ class AuthRequiredDialog extends StatelessWidget {
                   },
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: AppColors.primary, width: 1.5),
+                    side: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1.5,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -111,7 +114,7 @@ class AuthRequiredDialog extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              
+
               // Login Button
               Expanded(
                 child: ElevatedButton(
@@ -142,7 +145,7 @@ class AuthRequiredDialog extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          
+
           // Close button link
           TextButton(
             onPressed: () => Navigator.pop(context),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../services/auth_service.dart';
 import 'verify_otp_page.dart';
 
@@ -151,22 +152,34 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(50),
                       ),
-                      child: TextField(
+                      child: NativeTextInput(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
                         enabled: !_isLoading,
-                        decoration: const InputDecoration(
-                          hintText: 'nama@gmail.com',
-                          hintStyle: TextStyle(color: AppColors.textTertiary),
-                          prefixIcon: Icon(
-                            Icons.mail_outline,
-                            color: AppColors.iconAccent,
-                            size: 20,
-                          ),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 16,
+                        height: 52,
+                        hintText: 'nama@gmail.com',
+                        hintColor: AppColors.textTertiary,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        fallbackBuilder: (context) => TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          enabled: !_isLoading,
+                          decoration: const InputDecoration(
+                            hintText: 'nama@gmail.com',
+                            hintStyle: TextStyle(color: AppColors.textTertiary),
+                            prefixIcon: Icon(
+                              Icons.mail_outline,
+                              color: AppColors.iconAccent,
+                              size: 20,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 16,
+                            ),
                           ),
                         ),
                       ),

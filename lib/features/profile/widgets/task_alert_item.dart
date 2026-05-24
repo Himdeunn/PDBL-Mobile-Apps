@@ -18,7 +18,7 @@ class TaskAlertItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isPast = scheduledTime.isBefore(DateTime.now());
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -26,7 +26,9 @@ class TaskAlertItem extends StatelessWidget {
         color: isPast ? Colors.grey.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isPast ? Colors.transparent : AppColors.primary.withValues(alpha: 0.1),
+          color: isPast
+              ? Colors.transparent
+              : AppColors.primary.withValues(alpha: 0.1),
         ),
         boxShadow: [
           if (!isPast)
@@ -42,7 +44,9 @@ class TaskAlertItem extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: (isPast ? Colors.grey : AppColors.primary).withValues(alpha: 0.1),
+              color: (isPast ? Colors.grey : AppColors.primary).withValues(
+                alpha: 0.1,
+              ),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -59,7 +63,9 @@ class TaskAlertItem extends StatelessWidget {
                 Text(
                   task.title,
                   style: TextStyle(
-                    color: isPast ? AppColors.textSecondary : AppColors.textPrimary,
+                    color: isPast
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
                     fontWeight: FontWeight.bold,
                   ),
                   maxLines: 1,
@@ -104,7 +110,7 @@ class TaskAlertItem extends StatelessWidget {
 
     if (target == today) return 'TODAY';
     if (target == tomorrow) return 'TOMORROW';
-    
+
     final difference = target.difference(today).inDays;
     return '$difference DAYS LEFT';
   }

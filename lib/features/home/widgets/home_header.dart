@@ -45,10 +45,13 @@ class HomeHeader extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                todayTarget > 0 
-                  ? 'Your goal today: $todayTarget tasks'
-                  : 'Let\'s make today a productive day.',
-                style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
+                todayTarget > 0
+                    ? 'Your goal today: $todayTarget tasks'
+                    : 'Let\'s make today a productive day.',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textTertiary,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -57,7 +60,11 @@ class HomeHeader extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         IconButton(
-          icon: const Icon(Icons.notifications_none_rounded, color: AppColors.textPrimary, size: 28),
+          icon: const Icon(
+            Icons.notifications_none_rounded,
+            color: AppColors.textPrimary,
+            size: 28,
+          ),
           onPressed: onNotificationTap,
         ),
         const SizedBox(width: 4),
@@ -72,13 +79,14 @@ class HomeHeader extends StatelessWidget {
               color: AppColors.surface,
             ),
             child: ClipOval(
-              child: avatarUrl != null 
+              child: avatarUrl != null
                   ? CachedNetworkImage(
                       imageUrl: avatarUrl!,
                       fit: BoxFit.cover,
                       cacheManager: WudiCacheManager(),
                       httpHeaders: getNetworkImageHeaders(avatarUrl!),
-                      errorWidget: (_, __, ___) => const Icon(Icons.person, color: AppColors.primary),
+                      errorWidget: (_, __, ___) =>
+                          const Icon(Icons.person, color: AppColors.primary),
                     )
                   : const Icon(Icons.person, color: AppColors.primary),
             ),

@@ -23,7 +23,9 @@ class _WeekStripState extends State<WeekStrip> {
   void initState() {
     super.initState();
     _weekDates = _getWeekDates();
-    final todayIndex = _weekDates.indexWhere((date) => _isSameDay(date, DateTime.now()));
+    final todayIndex = _weekDates.indexWhere(
+      (date) => _isSameDay(date, DateTime.now()),
+    );
     final initialOffset = todayIndex > 0 ? (todayIndex * 72.0) - 20.0 : 0.0;
     _scrollController = ScrollController(initialScrollOffset: initialOffset);
   }

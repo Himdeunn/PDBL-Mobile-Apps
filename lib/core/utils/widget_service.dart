@@ -94,7 +94,7 @@ class WidgetService {
     Timer.periodic(const Duration(milliseconds: 200), (timer) {
       attempts++;
       final navigator = NavigatorService.navigatorKey.currentState;
-      
+
       if (navigator != null) {
         timer.cancel();
         if (uri.host == 'add-task') {
@@ -111,7 +111,7 @@ class WidgetService {
             return;
           }
           final isTeam = isTeamStr == 'true';
-          
+
           if (isTeam && teamId != null) {
             final parsedTeamId = int.tryParse(teamId);
             if (parsedTeamId == null) {
@@ -130,7 +130,8 @@ class WidgetService {
             navigator.popUntil((route) => route.isFirst);
           }
         }
-      } else if (attempts >= 15) { // Timeout after 3 seconds
+      } else if (attempts >= 15) {
+        // Timeout after 3 seconds
         timer.cancel();
         debugPrint("WUDI_WIDGET_ERROR: Navigator timeout for ${uri.host}");
       }
@@ -144,14 +145,22 @@ class WidgetService {
       if (taskIdStr != null) {
         final taskId = int.tryParse(taskIdStr);
         if (taskId == null) {
-          debugPrint("WUDI_WIDGET_ERROR: Invalid background task id $taskIdStr");
+          debugPrint(
+            "WUDI_WIDGET_ERROR: Invalid background task id $taskIdStr",
+          );
           return;
         }
 
-        debugPrint("WUDI_WIDGET_SYNC: Background toggle received for task $taskIdStr");
+        debugPrint(
+          "WUDI_WIDGET_SYNC: Background toggle received for task $taskIdStr",
+        );
         // We need to ensure Isar/LocalDB is initialized in the background isolate
         await LocalDatabase.init();
-        await _handleToggleBackground(taskId, widgetKey: widgetKey, alreadyToggledInWidget: true);
+        await _handleToggleBackground(
+          taskId,
+          widgetKey: widgetKey,
+          alreadyToggledInWidget: true,
+        );
       }
     }
   }
@@ -170,12 +179,16 @@ class WidgetService {
       final task = await _findWidgetTask(isar, taskId, widgetKey);
       if (task != null) {
         if (task.userEmail != userEmail) {
-          debugPrint("WUDI_WIDGET_SYNC: Task $taskId belongs to ${task.userEmail}, not $userEmail");
+          debugPrint(
+            "WUDI_WIDGET_SYNC: Task $taskId belongs to ${task.userEmail}, not $userEmail",
+          );
           return;
         }
 
         if (alreadyToggledInWidget) {
-          debugPrint("WUDI_WIDGET_SYNC: Widget cache already toggled for task $taskId");
+          debugPrint(
+            "WUDI_WIDGET_SYNC: Widget cache already toggled for task $taskId",
+          );
         }
 
         if (task.teamId != null) {
@@ -207,18 +220,27 @@ class WidgetService {
           }
         }
 
-        debugPrint("WUDI_WIDGET_SYNC: Task $taskId not found in DB for $userEmail");
+        debugPrint(
+          "WUDI_WIDGET_SYNC: Task $taskId not found in DB for $userEmail",
+        );
       }
     } catch (e) {
       debugPrint("WUDI_WIDGET_ERROR (Toggle): $e");
     }
   }
 
-  static Future<TaskLocal?> _findWidgetTask(Isar isar, int taskId, String? widgetKey) async {
+  static Future<TaskLocal?> _findWidgetTask(
+    Isar isar,
+    int taskId,
+    String? widgetKey,
+  ) async {
     if (widgetKey != null && widgetKey.startsWith('team:')) {
       final apiId = int.tryParse(widgetKey.substring('team:'.length));
       if (apiId != null) {
-        final task = await isar.taskLocals.filter().apiIdEqualTo(apiId).findFirst();
+        final task = await isar.taskLocals
+            .filter()
+            .apiIdEqualTo(apiId)
+            .findFirst();
         if (task != null) return task;
       }
     }
@@ -243,7 +265,9 @@ class WidgetService {
     final response = await TeamService().toggleMemberTaskStatus(task.apiId!);
     final todoData = response['todo'];
     if (todoData is! Map) {
-      debugPrint("WUDI_WIDGET_SYNC: Team task ${task.id} returned no todo data");
+      debugPrint(
+        "WUDI_WIDGET_SYNC: Team task ${task.id} returned no todo data",
+      );
       return;
     }
 
@@ -256,7 +280,9 @@ class WidgetService {
     await WidgetSyncService.syncFocusTodayWidget(updatedTasks);
     await TaskRepository().fetchTasksFromServer(userEmail, force: true);
     await fullSync();
-    debugPrint("WUDI_WIDGET_SYNC: Synced team task ${task.id} to API/DB/widget");
+    debugPrint(
+      "WUDI_WIDGET_SYNC: Synced team task ${task.id} to API/DB/widget",
+    );
   }
 
   static Future<void> _syncTeamToggleByApiId(
@@ -271,18 +297,25 @@ class WidgetService {
     final response = await TeamService().toggleMemberTaskStatus(apiId);
     final todoData = response['todo'];
     if (todoData is! Map) {
-      debugPrint("WUDI_WIDGET_SYNC: Team API task $apiId returned no todo data");
+      debugPrint(
+        "WUDI_WIDGET_SYNC: Team API task $apiId returned no todo data",
+      );
       return;
     }
 
-    final existing = await isar.taskLocals.filter().apiIdEqualTo(apiId).findFirst();
+    final existing = await isar.taskLocals
+        .filter()
+        .apiIdEqualTo(apiId)
+        .findFirst();
     if (existing != null) {
       await _applyTeamTodoToLocalTask(existing, todoData, userEmail, isar);
     }
 
     await TaskRepository().fetchTasksFromServer(userEmail, force: true);
     await fullSync();
-    debugPrint("WUDI_WIDGET_SYNC: Synced team API task $apiId and refreshed widget");
+    debugPrint(
+      "WUDI_WIDGET_SYNC: Synced team API task $apiId and refreshed widget",
+    );
   }
 
   static Future<void> _applyTeamTodoToLocalTask(
@@ -294,7 +327,9 @@ class WidgetService {
     final completedByRaw = todoData['completed_by'];
     final completedBy = completedByRaw is List ? completedByRaw : <dynamic>[];
     final assignedEmailsRaw = todoData['assigned_emails'];
-    final assignedEmails = assignedEmailsRaw is List ? assignedEmailsRaw : <dynamic>[];
+    final assignedEmails = assignedEmailsRaw is List
+        ? assignedEmailsRaw
+        : <dynamic>[];
     final assignedEmailValues = assignedEmails
         .map((e) => e.toString().toLowerCase().trim())
         .where((e) => e.isNotEmpty)
@@ -340,22 +375,22 @@ class WidgetService {
 
     // REMOVED current_tab saving from Flutter to avoid overwriting native state
 
-      if (personalTasks != null || teamTasks != null) {
+    if (personalTasks != null || teamTasks != null) {
       final combinedTasksByKey = <String, Map<String, dynamic>>{};
       final now = DateTime.now();
-      
+
       if (personalTasks != null) {
         // Filter for today's tasks only
         final todayPersonal = personalTasks.where((t) {
-           if (t.dueDate == null) return false;
-           if (t.dueDate!.year != now.year ||
-               t.dueDate!.month != now.month ||
-               t.dueDate!.day != now.day) {
-             return false;
-           }
+          if (t.dueDate == null) return false;
+          if (t.dueDate!.year != now.year ||
+              t.dueDate!.month != now.month ||
+              t.dueDate!.day != now.day) {
+            return false;
+          }
 
-           final dueDateTime = _combineDateAndTime(t.dueDate!, t.dueTime);
-           return dueDateTime == null || dueDateTime.isAfter(now);
+          final dueDateTime = _combineDateAndTime(t.dueDate!, t.dueTime);
+          return dueDateTime == null || dueDateTime.isAfter(now);
         }).toList();
 
         for (final t in todayPersonal) {
@@ -366,31 +401,35 @@ class WidgetService {
               : 'personal:${t.id}';
 
           combinedTasksByKey[widgetKey] = {
-          'widgetKey': widgetKey,
-          'id': t.id.toString(),
-          'title': t.title,
-          'dueTime': t.dueTime ?? '',
-          'priority': t.priority,
-          'isTeam': isTeam,
-          'team_id': t.teamId?.toString() ?? '',
-          'isCompleted': t.isCompleted || isLocked,
-          'isLocked': isLocked,
-        };
+            'widgetKey': widgetKey,
+            'id': t.id.toString(),
+            'title': t.title,
+            'dueTime': t.dueTime ?? '',
+            'priority': t.priority,
+            'isTeam': isTeam,
+            'team_id': t.teamId?.toString() ?? '',
+            'isCompleted': t.isCompleted || isLocked,
+            'isLocked': isLocked,
+          };
         }
       }
 
       if (teamTasks != null) {
-        final userEmail = (await SecureStorage.getUser())?.email?.toLowerCase().trim();
+        final userEmail = (await SecureStorage.getUser())?.email
+            ?.toLowerCase()
+            .trim();
         // Filter for today's team tasks
         final todayTeam = teamTasks.where((t) {
-            if (t['deadline'] == null) return false;
-            try {
-              final dt = DateTime.parse(t['deadline'].toString());
-              return dt.year == now.year &&
-                  dt.month == now.month &&
-                  dt.day == now.day &&
-                  dt.isAfter(now);
-            } catch (_) { return false; }
+          if (t['deadline'] == null) return false;
+          try {
+            final dt = DateTime.parse(t['deadline'].toString());
+            return dt.year == now.year &&
+                dt.month == now.month &&
+                dt.day == now.day &&
+                dt.isAfter(now);
+          } catch (_) {
+            return false;
+          }
         }).toList();
 
         for (final t in todayTeam) {
@@ -398,12 +437,18 @@ class WidgetService {
           if (apiId.isEmpty) continue;
           final widgetKey = 'team:$apiId';
           final completedByRaw = t['completed_by'];
-          final completedBy = completedByRaw is List ? completedByRaw : <dynamic>[];
+          final completedBy = completedByRaw is List
+              ? completedByRaw
+              : <dynamic>[];
           final assignedEmailsRaw = t['assigned_emails'];
-          final assignedEmails = assignedEmailsRaw is List ? assignedEmailsRaw : <dynamic>[];
-          final isAssignedToMe = userEmail != null && assignedEmails.any(
-            (e) => e.toString().toLowerCase().trim() == userEmail,
-          );
+          final assignedEmails = assignedEmailsRaw is List
+              ? assignedEmailsRaw
+              : <dynamic>[];
+          final isAssignedToMe =
+              userEmail != null &&
+              assignedEmails.any(
+                (e) => e.toString().toLowerCase().trim() == userEmail,
+              );
           if (!isAssignedToMe) continue;
 
           final isFullyCompleted = t['is_completed'] == true;
@@ -413,22 +458,24 @@ class WidgetService {
           final deadline = DateTime.parse(t['deadline'].toString());
 
           combinedTasksByKey[widgetKey] = {
-          'widgetKey': widgetKey,
-          'id': combinedTasksByKey[widgetKey]?['id'] ?? apiId,
-          'title': t['judul'] ?? t['title'] ?? '',
-          'dueTime': _formatWidgetTime(deadline),
-          'priority': t['priority'] ?? 'low',
-          'isTeam': true,
-          'team_id': t['team_id']?.toString() ?? '',
-          'isCompleted': isFullyCompleted || myEmailChecked,
-          'isLocked': isFullyCompleted && !myEmailChecked,
-        };
+            'widgetKey': widgetKey,
+            'id': combinedTasksByKey[widgetKey]?['id'] ?? apiId,
+            'title': t['judul'] ?? t['title'] ?? '',
+            'dueTime': _formatWidgetTime(deadline),
+            'priority': t['priority'] ?? 'low',
+            'isTeam': true,
+            'team_id': t['team_id']?.toString() ?? '',
+            'isCompleted': isFullyCompleted || myEmailChecked,
+            'isLocked': isFullyCompleted && !myEmailChecked,
+          };
         }
       }
 
       final combinedTasks = combinedTasksByKey.values.toList();
       final jsonStr = jsonEncode(combinedTasks);
-      debugPrint("WUDI_WIDGET_FLUTTER: Saving focus_today_tasks (${combinedTasks.length} items)");
+      debugPrint(
+        "WUDI_WIDGET_FLUTTER: Saving focus_today_tasks (${combinedTasks.length} items)",
+      );
       await HomeWidget.saveWidgetData<String>('focus_today_tasks', jsonStr);
     }
 
@@ -465,8 +512,8 @@ class WidgetService {
     // Basic debounce: if a sync is already in progress, just mark that another one is needed
     // or simply skip if it's too frequent. For now, simple skipping if already syncing.
     if (_syncing) {
-       _syncCount++;
-       return;
+      _syncCount++;
+      return;
     }
 
     _syncing = true;
@@ -480,15 +527,17 @@ class WidgetService {
 
       // Fetch personal tasks
       final repository = TaskRepository();
-      final email = (user == null || user.isGuest) ? 'guest' : (user.email ?? 'guest');
+      final email = (user == null || user.isGuest)
+          ? 'guest'
+          : (user.email ?? 'guest');
       personalTasks = await repository.getAllTasks(email);
 
       // Fallback: If no tasks found for email, check if there are tasks marked as 'guest'
       if ((personalTasks.isEmpty) && email != 'guest') {
-          final guestTasks = await repository.getAllTasks('guest');
-          if (guestTasks.isNotEmpty) {
-            personalTasks = guestTasks;
-          }
+        final guestTasks = await repository.getAllTasks('guest');
+        if (guestTasks.isNotEmpty) {
+          personalTasks = guestTasks;
+        }
       }
 
       // Fetch team tasks if logged in
@@ -496,30 +545,35 @@ class WidgetService {
         try {
           final teamService = TeamService();
           final dashboardData = await teamService.getDashboardData();
-          final teams = dashboardData['teams'] as List? ?? dashboardData['data']?['teams'] as List?;
+          final teams =
+              dashboardData['teams'] as List? ??
+              dashboardData['data']?['teams'] as List?;
           hasTeam = teams != null && teams.isNotEmpty;
 
           if (hasTeam) {
-              for (var team in teams) {
-                  try {
-                      final teamId = int.tryParse(team['id'].toString());
-                      if (teamId == null) continue;
+            for (var team in teams) {
+              try {
+                final teamId = int.tryParse(team['id'].toString());
+                if (teamId == null) continue;
 
-                      final details = await teamService.getTeamDetails(teamId);
-                      final tasks = details['tasks'] as List? ?? details['data']?['tasks'] as List? ?? [];
+                final details = await teamService.getTeamDetails(teamId);
+                final tasks =
+                    details['tasks'] as List? ??
+                    details['data']?['tasks'] as List? ??
+                    [];
 
-                      // Inject team_id if missing for redirection
-                      for (var task in tasks) {
-                        task['team_id'] = teamId;
-                      }
-                      allTeamTasks.addAll(tasks);
-                  } catch (e) {
-                      debugPrint("WUDI_WIDGET_ERROR (Team Loop): $e");
-                  }
+                // Inject team_id if missing for redirection
+                for (var task in tasks) {
+                  task['team_id'] = teamId;
+                }
+                allTeamTasks.addAll(tasks);
+              } catch (e) {
+                debugPrint("WUDI_WIDGET_ERROR (Team Loop): $e");
               }
+            }
           }
         } catch (e) {
-            debugPrint("WUDI_WIDGET_ERROR (Team Fetch): $e");
+          debugPrint("WUDI_WIDGET_ERROR (Team Fetch): $e");
         }
       }
 

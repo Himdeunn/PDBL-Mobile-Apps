@@ -35,12 +35,12 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
   }
 
   String get _unitLabel => switch (_unit) {
-        'D' => 'Days',
-        'W' => 'Weeks',
-        'M' => 'Months',
-        'Y' => 'Years',
-        _ => _unit,
-      };
+    'D' => 'Days',
+    'W' => 'Weeks',
+    'M' => 'Months',
+    'Y' => 'Years',
+    _ => _unit,
+  };
 
   Future<void> _pickTime() async {
     final picked = await showTimePicker(
@@ -74,7 +74,9 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
     if (amount <= 0 || amount > _maxAmount) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Amount must be between 1 and $_maxAmount $_unitLabel.'),
+          content: Text(
+            'Amount must be between 1 and $_maxAmount $_unitLabel.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -91,12 +93,19 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
     // Validate that the reminder fires before the deadline
     final fireDate = widget.taskDeadline.subtract(reminder.duration);
     final fire = DateTime(
-        fireDate.year, fireDate.month, fireDate.day, _hour, _minute);
+      fireDate.year,
+      fireDate.month,
+      fireDate.day,
+      _hour,
+      _minute,
+    );
 
     if (!fire.isAfter(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This reminder would fire in the past. Choose a different time.'),
+          content: Text(
+            'This reminder would fire in the past. Choose a different time.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -167,7 +176,9 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
                     setState(() {
                       _unit = u;
                       final cur = int.tryParse(_amountController.text) ?? 1;
-                      _amountController.text = cur.clamp(1, _maxAmount).toString();
+                      _amountController.text = cur
+                          .clamp(1, _maxAmount)
+                          .toString();
                     });
                   },
                   child: Container(
@@ -183,7 +194,9 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: selected ? Colors.white : AppColors.textSecondary,
+                          color: selected
+                              ? Colors.white
+                              : AppColors.textSecondary,
                         ),
                       ),
                     ),
@@ -216,8 +229,10 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
                       decoration: InputDecoration(
                         fillColor: AppColors.surface,
                         filled: true,
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide.none,
@@ -245,15 +260,20 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
                     onTap: _pickTime,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.access_time,
-                              size: 18, color: AppColors.textTertiary),
+                          const Icon(
+                            Icons.access_time,
+                            size: 18,
+                            color: AppColors.textTertiary,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             '$h:$m',
@@ -282,7 +302,8 @@ class _ReminderPickerSheetState extends State<ReminderPickerSheet> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: const Text(
                 'Add Reminder',

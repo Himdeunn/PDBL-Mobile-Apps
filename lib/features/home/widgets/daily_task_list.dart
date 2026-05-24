@@ -496,9 +496,13 @@ class _TaskItemState extends State<_TaskItem> {
                     ? AppColors.surface.withValues(alpha: 0.5)
                     : AppColors.surface,
                 borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFFA89B8C).withValues(alpha: 0.5),
+                  width: 1,
+                ),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Checkbox — disabled for ALL team tasks once is_completed=true
                   GestureDetector(

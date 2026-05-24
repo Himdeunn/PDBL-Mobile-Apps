@@ -4,29 +4,29 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../services/auth_service.dart';
 import '../pages/welcome_page.dart';
 import '../../shell/pages/main_navigation.dart';
 
 class VerifyEmailPage extends StatefulWidget {
   final String email;
+
   /// true  → user can press back / skip (came from register, verifying later)
   /// false → must verify before entering the app (splash redirect)
   final bool canSkip;
 
-  const VerifyEmailPage({
-    super.key,
-    required this.email,
-    this.canSkip = true,
-  });
+  const VerifyEmailPage({super.key, required this.email, this.canSkip = true});
 
   @override
   State<VerifyEmailPage> createState() => _VerifyEmailPageState();
 }
 
 class _VerifyEmailPageState extends State<VerifyEmailPage> {
-  final List<TextEditingController> _controllers =
-      List.generate(4, (_) => TextEditingController());
+  final List<TextEditingController> _controllers = List.generate(
+    4,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
 
   bool _isLoading = false;
@@ -61,7 +61,9 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
 
   Future<void> _onVerify() async {
     if (_otp.length < 4) {
-      ErrorHandler.showErrorPopup('Please enter the 4-digit verification code.');
+      ErrorHandler.showErrorPopup(
+        'Please enter the 4-digit verification code.',
+      );
       return;
     }
     if (!await ConnectionService().isConnected()) {
@@ -71,9 +73,9 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
 
     setState(() => _isLoading = true);
     try {
-final authService = AuthService();
+      final authService = AuthService();
       await authService.verifyEmail(widget.email, _otp);
-      
+
       // CRITICAL: Freshly fetch user data after verification to update local cache
       // This ensures that login navigation guards see the updated verified status.
       await authService.getCurrentUser(forceRefresh: true);
@@ -101,7 +103,9 @@ final authService = AuthService();
     }
     setState(() => _isResending = true);
     try {
-      final response = await AuthService().resendVerificationWithCooldown(widget.email);
+      final response = await AuthService().resendVerificationWithCooldown(
+        widget.email,
+      );
       if (!mounted) return;
       final retryAfter = response['retry_after'] as int? ?? 60;
       _startCooldown(retryAfter);
@@ -111,7 +115,8 @@ final authService = AuthService();
     } catch (e) {
       if (e is DioException && e.response?.statusCode == 429) {
         final data = e.response?.data;
-        final retryAfter = (data is Map ? data['retry_after'] as int? : null) ?? 60;
+        final retryAfter =
+            (data is Map ? data['retry_after'] as int? : null) ?? 60;
         _startCooldown(retryAfter);
       }
       ErrorHandler.handleApiError(e);
@@ -124,21 +129,16 @@ final authService = AuthService();
     return SizedBox(
       width: 62,
       height: 62,
-      child: TextField(
+      child: NativeTextInput(
         controller: _controllers[index],
         focusNode: _focusNodes[index],
         maxLength: 1,
         keyboardType: TextInputType.number,
         textAlign: TextAlign.center,
-        decoration: InputDecoration(
-          counterText: '',
-          filled: true,
-          fillColor: AppColors.surface,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
-          ),
-        ),
+        height: 62,
+        backgroundColor: AppColors.surface,
+        borderRadius: 14,
+        padding: EdgeInsets.zero,
         style: const TextStyle(
           fontSize: 22,
           fontWeight: FontWeight.bold,
@@ -151,6 +151,34 @@ final authService = AuthService();
             _focusNodes[index - 1].requestFocus();
           }
         },
+        fallbackBuilder: (context) => TextField(
+          controller: _controllers[index],
+          focusNode: _focusNodes[index],
+          maxLength: 1,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          decoration: InputDecoration(
+            counterText: '',
+            filled: true,
+            fillColor: AppColors.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+          onChanged: (val) {
+            if (val.length == 1 && index < 3) {
+              _focusNodes[index + 1].requestFocus();
+            } else if (val.isEmpty && index > 0) {
+              _focusNodes[index - 1].requestFocus();
+            }
+          },
+        ),
       ),
     );
   }
@@ -161,17 +189,35 @@ final authService = AuthService();
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-        content: const Text('Are you sure you want to sign out and switch to a different account?', style: TextStyle(color: AppColors.textSecondary, height: 1.5)),
+        title: const Text(
+          'Sign Out',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: const Text(
+          'Are you sure you want to sign out and switch to a different account?',
+          style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
-            child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Sign Out',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -198,7 +244,10 @@ final authService = AuthService();
             children: [
               // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Row(
                   children: [
                     if (widget.canSkip)
@@ -210,7 +259,11 @@ final authService = AuthService();
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textPrimary),
+                          child: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            size: 18,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       )
                     else
@@ -222,14 +275,22 @@ final authService = AuthService();
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textPrimary),
+                          child: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            size: 18,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       ),
                     const Expanded(
                       child: Text(
                         'Verify Your Email',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 40),
@@ -247,20 +308,33 @@ final authService = AuthService();
 
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.mark_email_read_outlined, size: 18, color: AppColors.primary),
+                            Icon(
+                              Icons.mark_email_read_outlined,
+                              size: 18,
+                              color: AppColors.primary,
+                            ),
                             const SizedBox(width: 10),
                             const Expanded(
                               child: Text(
                                 'We sent a verification code to your email. Please check your inbox (and spam folder).',
-                                style: TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.5),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textPrimary,
+                                  height: 1.5,
+                                ),
                               ),
                             ),
                           ],
@@ -331,8 +405,9 @@ final authService = AuthService();
                                     borderRadius: BorderRadius.circular(50),
                                   ),
                                   elevation: 6,
-                                  shadowColor:
-                                      AppColors.primary.withValues(alpha: 0.4),
+                                  shadowColor: AppColors.primary.withValues(
+                                    alpha: 0.4,
+                                  ),
                                 ),
                                 icon: const Icon(
                                   Icons.verified_rounded,
@@ -418,20 +493,33 @@ final authService = AuthService();
                       if (!widget.canSkip) ...[
                         const SizedBox(height: 20),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.amber.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                            border: Border.all(
+                              color: Colors.amber.withValues(alpha: 0.3),
+                            ),
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber),
+                              Icon(
+                                Icons.info_outline_rounded,
+                                size: 16,
+                                color: Colors.amber,
+                              ),
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'You must verify your email to access Wudi.',
-                                  style: TextStyle(fontSize: 12, color: Colors.amber, fontWeight: FontWeight.w600),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.amber,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ],

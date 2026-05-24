@@ -27,8 +27,8 @@ class ErrorHandler {
     }
 
     // Deduplicate "Session Expired" popups
-    if (title.toLowerCase().contains('expired') || 
-        message.toLowerCase().contains('expired') || 
+    if (title.toLowerCase().contains('expired') ||
+        message.toLowerCase().contains('expired') ||
         title.toLowerCase().contains('unauthorized')) {
       if (_isSessionExpiredShowing) return;
       _isSessionExpiredShowing = true;
@@ -51,7 +51,7 @@ class ErrorHandler {
     );
 
     overlay.insert(entry);
-    
+
     // Auto dismiss after 5.5 seconds to allow exit animation to finish
     Timer(const Duration(milliseconds: 5500), () {
       if (entry.mounted) {
@@ -111,7 +111,8 @@ class ErrorHandler {
     }
 
     // Replace any technical/sensitive content with a safe user-facing message
-    final isTechnical = message.isEmpty ||
+    final isTechnical =
+        message.isEmpty ||
         message == 'null' ||
         message.contains('http://') ||
         message.contains('https://') ||
@@ -133,15 +134,19 @@ class ErrorHandler {
         msgLower.contains('host lookup') ||
         msgLower.contains('is not reachable')) {
       return;
-    } else if (msgLower.contains('expired') || msgLower.contains('unauthorized')) {
+    } else if (msgLower.contains('expired') ||
+        msgLower.contains('unauthorized')) {
       title = 'Session Expired';
       message = 'Your session has expired. Please log in again.';
-    } else if (msgLower.contains('permission') || msgLower.contains('access denied')) {
+    } else if (msgLower.contains('permission') ||
+        msgLower.contains('access denied')) {
       title = 'Access Denied';
       message = 'You do not have permission to perform this action.';
-    } else if (msgLower.contains('too many') || msgLower.contains('rate limit')) {
+    } else if (msgLower.contains('too many') ||
+        msgLower.contains('rate limit')) {
       title = 'Too Many Attempts';
-    } else if (msgLower.contains('internal error') || msgLower.contains('server error')) {
+    } else if (msgLower.contains('internal error') ||
+        msgLower.contains('server error')) {
       return;
     }
 
@@ -183,18 +188,26 @@ class _SlidingNotificationState extends State<_SlidingNotification>
     _offsetAnimation = Tween<Offset>(
       begin: const Offset(0.0, -2.0),
       end: const Offset(0.0, 0.0),
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutBack,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
 
     _controller.forward();
 
     // Start exit animation after 4.5 seconds
     Timer(const Duration(milliseconds: 4500), () {
       if (mounted) {
-        _controller.animateTo(-0.1, duration: const Duration(milliseconds: 200), curve: Curves.easeIn)
-          .then((_) => _controller.animateTo(-2.0, duration: const Duration(milliseconds: 400), curve: Curves.easeInCubic));
+        _controller
+            .animateTo(
+              -0.1,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeIn,
+            )
+            .then(
+              (_) => _controller.animateTo(
+                -2.0,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInCubic,
+              ),
+            );
       }
     });
   }
@@ -264,7 +277,11 @@ class _SlidingNotificationState extends State<_SlidingNotification>
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                  icon: const Icon(
+                    Icons.close,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
                   onPressed: widget.onDismiss,
                 ),
               ],

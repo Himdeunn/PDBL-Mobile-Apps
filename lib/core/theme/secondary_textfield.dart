@@ -1,5 +1,7 @@
-import 'app_theme.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/native_text_input.dart';
+import 'app_theme.dart';
 
 class DarkTextField extends StatelessWidget {
   final TextEditingController controller;
@@ -48,58 +50,128 @@ class DarkTextField extends StatelessWidget {
                   if (isRequired)
                     const TextSpan(
                       text: ' *',
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                 ],
               ),
             ),
           ),
         ],
-        TextFormField(
-          controller: controller,
-          obscureText: obscureText,
-          enabled: enabled,
-          keyboardType: keyboardType,
-          style: TextStyle(
-            fontSize: 14,
-            color: enabled ? Colors.white : AppColors.textSecondary,
-          ),
+        FormField<String>(
+          initialValue: controller.text,
           validator: validator,
-          decoration: InputDecoration(
-            hintText: hintText,
-            hintStyle: TextStyle(color: AppColors.iconAccent),
-            prefixIcon: prefixIcon,
-            suffixIcon: suffixIcon,
-            filled: true,
-            fillColor: AppColors.inputDarkBg.withValues(alpha: 0.9),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 16,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.red, width: 1),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.red, width: 1.5),
-            ),
-            errorStyle: const TextStyle(color: Colors.red, fontSize: 12),
+          builder: (field) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.inputDarkBg.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: field.hasError
+                      ? Border.all(color: Colors.red, width: 1)
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    if (prefixIcon != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 14),
+                        child: SizedBox(
+                          width: 24,
+                          height: 52,
+                          child: Center(
+                            child: IconTheme(
+                              data: const IconThemeData(
+                                color: AppColors.iconAccent,
+                                size: 20,
+                              ),
+                              child: prefixIcon!,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: NativeTextInput(
+                        controller: controller,
+                        obscureText: obscureText,
+                        enabled: enabled,
+                        keyboardType: keyboardType,
+                        height: 52,
+                        hintText: hintText,
+                        onChanged: field.didChange,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: enabled
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                        ),
+                        hintColor: AppColors.iconAccent,
+                        padding: EdgeInsets.only(
+                          left: prefixIcon != null ? 12 : 20,
+                          right: 20,
+                          top: 16,
+                          bottom: 16,
+                        ),
+                        fallbackBuilder: (context) => TextFormField(
+                          controller: controller,
+                          obscureText: obscureText,
+                          enabled: enabled,
+                          keyboardType: keyboardType,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: enabled
+                                ? Colors.white
+                                : AppColors.textSecondary,
+                          ),
+                          validator: validator,
+                          decoration: _fallbackDecoration(),
+                        ),
+                      ),
+                    ),
+                    if (suffixIcon != null)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: SizedBox(
+                          width: 40,
+                          height: 52,
+                          child: Center(child: suffixIcon!),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (field.hasError) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Text(
+                    field.errorText!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  InputDecoration _fallbackDecoration() {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: const TextStyle(color: AppColors.iconAccent),
+      filled: true,
+      fillColor: Colors.transparent,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 16),
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      errorBorder: InputBorder.none,
+      disabledBorder: InputBorder.none,
     );
   }
 }

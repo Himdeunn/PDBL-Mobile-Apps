@@ -18,10 +18,10 @@ class LocalDatabase {
       return;
     }
 
-    isar = await Isar.open(
-      [TaskLocalSchema, NotificationLocalSchema],
-      directory: dir.path,
-    );
+    isar = await Isar.open([
+      TaskLocalSchema,
+      NotificationLocalSchema,
+    ], directory: dir.path);
     _isInitialized = true;
   }
 

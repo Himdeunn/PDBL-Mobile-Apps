@@ -4,8 +4,8 @@ import '../../auth/services/auth_service.dart';
 import '../../task/pages/create_task_page.dart';
 
 // #2F2235 navbar bg | #5F4D67 FAB (border #2F2235) | #5F4D67 indicator | #EADBC8 icons/labels
-const _kNavBg  = Color(0xFF2F2235);
-const _kCream  = Color(0xFFEADBC8);
+const _kNavBg = Color(0xFF2F2235);
+const _kCream = Color(0xFFEADBC8);
 const _kPurple = Color(0xFF5F4D67); // FAB circle & active indicator
 
 class WudiBottomBar extends StatefulWidget {
@@ -27,8 +27,8 @@ class WudiBottomBar extends StatefulWidget {
 class _WudiBottomBarState extends State<WudiBottomBar> {
   late int _internalIndex;
 
-  static const double _barHeight  = 68;
-  static const double _fabSize    = 54;
+  static const double _barHeight = 68;
+  static const double _fabSize = 54;
   static const double _fabOverlap = 22; // seberapa tinggi FAB di atas bar
 
   @override
@@ -47,9 +47,11 @@ class _WudiBottomBarState extends State<WudiBottomBar> {
 
   void _onItemTap(int index) {
     if (index == 2) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => CreateTaskPage(authService: widget.authService),
-      ));
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CreateTaskPage(authService: widget.authService),
+        ),
+      );
       return;
     }
     setState(() => _internalIndex = index);
@@ -74,7 +76,7 @@ class _WudiBottomBarState extends State<WudiBottomBar> {
               decoration: const BoxDecoration(
                 color: _kNavBg,
                 borderRadius: BorderRadius.only(
-                  topLeft:  Radius.circular(20),
+                  topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
                 ),
               ),
@@ -82,11 +84,13 @@ class _WudiBottomBarState extends State<WudiBottomBar> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final double totalWidth = constraints.maxWidth;
-                  final double itemWidth  = totalWidth / 5; // 4 Items + 1 FAB slot
+                  final double itemWidth =
+                      totalWidth / 5; // 4 Items + 1 FAB slot
                   final bool showIndicator = _internalIndex != 2;
-                  final double indicatorW    = itemWidth - 10;
-                  final double indicatorLeft =
-                      showIndicator ? (itemWidth * _internalIndex) + 5 : 0;
+                  final double indicatorW = itemWidth - 10;
+                  final double indicatorLeft = showIndicator
+                      ? (itemWidth * _internalIndex) + 5
+                      : 0;
 
                   return Stack(
                     children: [
@@ -107,28 +111,54 @@ class _WudiBottomBarState extends State<WudiBottomBar> {
                         ),
                       Row(
                         children: [
-_NavItem(index: 0, assetPath: 'assets/images/Home(2).png', label: 'Home'),
-_NavItem(index: 1, assetPath: 'assets/images/Calender(1).png', label: 'Calendar'),
-Expanded(
-child: GestureDetector(
-onTap: () => _onItemTap(2),
-behavior: HitTestBehavior.opaque,
-child: Padding(
-padding: const EdgeInsets.only(top: 30),
-child: Center(
-child: Text('Create Task\nIndividu',
-textAlign: TextAlign.center,
-style: GoogleFonts.poppins(fontSize: 9, color: _kCream, fontWeight: FontWeight.w500, height: 1.2),
-),
-),
-),
-),
-),
-_NavItem(index: 3, assetPath: 'assets/images/Project Team (1).png', label: 'Project Team'),
-                          _NavItem(index: 4, icon: Icons.person_outline_rounded, label: 'Profile'),
+                          _NavItem(
+                            index: 0,
+                            icon: Icons.home_outlined,
+                            activeIcon: Icons.home_rounded,
+                            label: 'Home',
+                          ),
+                          _NavItem(
+                            index: 1,
+                            icon: Icons.calendar_month_outlined,
+                            activeIcon: Icons.calendar_month_rounded,
+                            label: 'Calendar',
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _onItemTap(2),
+                              behavior: HitTestBehavior.opaque,
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 30),
+                                child: Center(
+                                  child: Text(
+                                    'Create Task\nIndividu',
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 9,
+                                      color: _kCream,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          _NavItem(
+                            index: 3,
+                            icon: Icons.groups_outlined,
+                            activeIcon: Icons.groups_rounded,
+                            label: 'Project Team',
+                          ),
+                          _NavItem(
+                            index: 4,
+                            icon: Icons.person_outline_rounded,
+                            activeIcon: Icons.person_rounded,
+                            label: 'Profile',
+                          ),
                         ],
-),
-],
+                      ),
+                    ],
                   );
                 },
               ),
@@ -157,9 +187,9 @@ _NavItem(index: 3, assetPath: 'assets/images/Project Team (1).png', label: 'Proj
                 ),
                 child: Center(
                   child: Image.asset(
-                    'assets/images/Create Task Individu.png',
-                    width: 28,
-                    height: 28,
+                    'assets/images/add_plus_icon.png',
+                    width: 24,
+                    height: 24,
                     color: _kCream,
                   ),
                 ),
@@ -176,11 +206,16 @@ _NavItem(index: 3, assetPath: 'assets/images/Project Team (1).png', label: 'Proj
 
 class _NavItem extends StatelessWidget {
   final int index;
-  final String? assetPath;
-  final IconData? icon;
+  final IconData icon;
+  final IconData activeIcon;
   final String label;
 
-  const _NavItem({required this.index, this.assetPath, this.icon, required this.label});
+  const _NavItem({
+    required this.index,
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -196,13 +231,27 @@ class _NavItem extends StatelessWidget {
             AnimatedScale(
               duration: const Duration(milliseconds: 200),
               scale: isActive ? 1.1 : 1.0,
-              child: assetPath != null 
-                ? Image.asset(assetPath!, width: 22, height: 22, color: _kCream)
-                : Icon(icon, size: 22, color: _kCream),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                transitionBuilder: (child, animation) =>
+                    FadeTransition(opacity: animation, child: child),
+                child: Icon(
+                  isActive ? activeIcon : icon,
+                  key: ValueKey(isActive),
+                  size: 22,
+                  color: _kCream,
+                ),
+              ),
             ),
             const SizedBox(height: 3),
-            Text(label, textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(fontSize: 9, color: _kCream, fontWeight: FontWeight.w500, height: 1.1),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 9,
+                color: _kCream,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+              ),
             ),
           ],
         ),

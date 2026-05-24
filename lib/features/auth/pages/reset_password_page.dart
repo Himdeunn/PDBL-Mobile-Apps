@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
 
@@ -95,32 +96,41 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(50),
           ),
-          child: TextField(
+          child: NativeTextInput(
             controller: controller,
             obscureText: obscure,
             enabled: !_isLoading,
-            decoration: InputDecoration(
-              hintText: '••••••••',
-              hintStyle: const TextStyle(color: AppColors.textTertiary),
-              prefixIcon: const Icon(
-                Icons.lock_outline,
-                color: AppColors.iconAccent,
-                size: 20,
-              ),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  obscure
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
+            height: 52,
+            hintText: '••••••••',
+            hintColor: AppColors.textTertiary,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            fallbackBuilder: (context) => TextField(
+              controller: controller,
+              obscureText: obscure,
+              enabled: !_isLoading,
+              decoration: InputDecoration(
+                hintText: '••••••••',
+                hintStyle: const TextStyle(color: AppColors.textTertiary),
+                prefixIcon: const Icon(
+                  Icons.lock_outline,
                   color: AppColors.iconAccent,
                   size: 20,
                 ),
-                onPressed: onToggle,
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 16,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscure
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: AppColors.iconAccent,
+                    size: 20,
+                  ),
+                  onPressed: onToggle,
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
               ),
             ),
           ),

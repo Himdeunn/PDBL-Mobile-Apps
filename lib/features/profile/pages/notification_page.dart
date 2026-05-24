@@ -7,6 +7,7 @@ import '../../task/models/task_local.dart';
 import '../../task/services/task_repository.dart';
 import '../widgets/task_alert_item.dart';
 import 'package:intl/intl.dart';
+
 class NotificationPage extends StatefulWidget {
   const NotificationPage({super.key});
 
@@ -14,7 +15,8 @@ class NotificationPage extends StatefulWidget {
   State<NotificationPage> createState() => _NotificationPageState();
 }
 
-class _NotificationPageState extends State<NotificationPage> with SingleTickerProviderStateMixin {
+class _NotificationPageState extends State<NotificationPage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final NotificationService _notificationService = NotificationService();
   final TaskRepository _taskRepository = TaskRepository();
@@ -34,12 +36,12 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
     if (email != null) {
       final allTasks = await _taskRepository.getAllTasks(email);
       setState(() {
-        _tasks = allTasks.where((t) => !t.isCompleted && t.dueDate != null).toList()
-          ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+        _tasks =
+            allTasks.where((t) => !t.isCompleted && t.dueDate != null).toList()
+              ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
       });
     }
   }
-
 
   Future<void> _loadNotifications() async {
     if (!mounted) return;
@@ -95,28 +97,36 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
       setState(() => _notifications.removeAt(index));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
       }
     }
   }
 
   IconData _getIconForType(String type) {
     switch (type) {
-      case 'invite': return Icons.group_add_outlined;
-      case 'kick': return Icons.person_remove_outlined;
-      case 'ban': return Icons.block_outlined;
-      default: return Icons.notifications_none_outlined;
+      case 'invite':
+        return Icons.group_add_outlined;
+      case 'kick':
+        return Icons.person_remove_outlined;
+      case 'ban':
+        return Icons.block_outlined;
+      default:
+        return Icons.notifications_none_outlined;
     }
   }
 
   Color _getColorForType(String type) {
     switch (type) {
-      case 'invite': return Colors.blue;
-      case 'kick': return Colors.orange;
-      case 'ban': return Colors.red;
-      default: return AppColors.primary;
+      case 'invite':
+        return Colors.blue;
+      case 'kick':
+        return Colors.orange;
+      case 'ban':
+        return Colors.red;
+      default:
+        return AppColors.primary;
     }
   }
 
@@ -164,28 +174,31 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildInboxTab(),
-          _buildTaskAlertsTab(),
-        ],
+        children: [_buildInboxTab(), _buildTaskAlertsTab()],
       ),
     );
   }
 
   Widget _buildInboxTab() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    
+
     return RefreshIndicator(
       onRefresh: _loadNotifications,
       child: _notifications.isEmpty
-          ? _buildEmptyState('No notifications yet', Icons.notifications_off_outlined)
+          ? _buildEmptyState(
+              'No notifications yet',
+              Icons.notifications_off_outlined,
+            )
           : _buildNotificationList(),
     );
   }
 
   Widget _buildTaskAlertsTab() {
     if (_tasks.isEmpty) {
-      return _buildEmptyState('No task reminders scheduled', Icons.alarm_off_outlined);
+      return _buildEmptyState(
+        'No task reminders scheduled',
+        Icons.alarm_off_outlined,
+      );
     }
 
     final List<Widget> alerts = [];
@@ -203,19 +216,18 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
           );
         } catch (_) {}
       }
-      alerts.add(TaskAlertItem(
-        task: task,
-        scheduledTime: deadline,
-        label: 'Deadline Ends',
-      ));
+      alerts.add(
+        TaskAlertItem(
+          task: task,
+          scheduledTime: deadline,
+          label: 'Deadline Ends',
+        ),
+      );
     }
 
     return RefreshIndicator(
       onRefresh: _loadTasks,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: alerts,
-      ),
+      child: ListView(padding: const EdgeInsets.all(16), children: alerts),
     );
   }
 
@@ -224,16 +236,9 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 64,
-            color: Colors.grey.withValues(alpha: 0.5),
-          ),
+          Icon(icon, size: 64, color: Colors.grey.withValues(alpha: 0.5)),
           const SizedBox(height: 16),
-          Text(
-            message,
-            style: const TextStyle(color: AppColors.textTertiary),
-          ),
+          Text(message, style: const TextStyle(color: AppColors.textTertiary)),
         ],
       ),
     );
@@ -266,7 +271,9 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isRead ? Colors.white : AppColors.primary.withValues(alpha: 0.05),
+                color: isRead
+                    ? Colors.white
+                    : AppColors.primary.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isRead
@@ -282,8 +289,11 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
                       color: _getColorForType(type).withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(_getIconForType(type),
-                        color: _getColorForType(type), size: 20),
+                    child: Icon(
+                      _getIconForType(type),
+                      color: _getColorForType(type),
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -294,14 +304,17 @@ class _NotificationPageState extends State<NotificationPage> with SingleTickerPr
                           item.message,
                           style: TextStyle(
                             color: AppColors.textPrimary,
-                            fontWeight:
-                                isRead ? FontWeight.normal : FontWeight.bold,
+                            fontWeight: isRead
+                                ? FontWeight.normal
+                                : FontWeight.bold,
                           ),
                         ),
                         Text(
                           DateFormat('MMM d, HH:mm').format(item.createdAt),
                           style: const TextStyle(
-                              color: AppColors.textTertiary, fontSize: 12),
+                            color: AppColors.textTertiary,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),

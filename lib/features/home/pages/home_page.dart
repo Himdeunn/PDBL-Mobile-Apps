@@ -259,7 +259,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!mounted) return;
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => WudiAiScreen(initialPrompt: prompt)),
+      MaterialPageRoute(
+        builder: (_) => WudiAiScreen(
+          initialPrompt: prompt,
+          isGuest: _user?.isGuest ?? true,
+        ),
+      ),
     );
   }
 
@@ -268,6 +273,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
     _widgetDashboardSub?.cancel();
+    _teamEventSubscription?.cancel();
     super.dispose();
   }
 
@@ -337,6 +343,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final displayName = _user?.name ?? 'Guest';
     final isGuest = _user?.isGuest ?? true;
+    final keyboardBottom = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = keyboardBottom > 0;
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPadding = screenWidth > 900
         ? screenWidth * 0.15
@@ -345,16 +353,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         : 20.0;
 
     return Scaffold(
-        backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.small(
-        heroTag: 'wudi-ai-home-fab',
-        elevation: 4,
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        onPressed: () => _openWudiAi(),
-        child: const Icon(Icons.auto_awesome_rounded),
-      ),
+      backgroundColor: AppColors.background,
+      floatingActionButton: isGuest
+          ? null
+          : AnimatedPadding(
+              duration: const Duration(milliseconds: 200),
+              padding: EdgeInsets.only(bottom: isKeyboardOpen ? 0 : 90),
+              child: SizedBox(
+                width: 60,
+                height: 60,
+                child: FloatingActionButton(
+                  heroTag: 'wudi-ai-home-fab',
+                  elevation: 3,
+                  highlightElevation: 4,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  onPressed: () => _openWudiAi(),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Image.asset(
+                      'assets/images/Wudi_AI_Icon.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+            ),
       body: RefreshIndicator(
         onRefresh: () => _loadData(_selectedDate, true),
         color: AppColors.primary,
@@ -364,7 +391,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             horizontalPadding,
             MediaQuery.of(context).padding.top + 16.0,
             horizontalPadding,
-            120 + MediaQuery.of(context).viewInsets.bottom,
+            isKeyboardOpen ? 24.0 : 120.0,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,7 +424,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         duration: const Duration(milliseconds: 260),
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,
-                        child: _showWudiIntroCard
+                        child: !isGuest && _showWudiIntroCard
                             ? Padding(
                                 key: const ValueKey('wudi-ai-home-card'),
                                 padding: const EdgeInsets.only(bottom: 24),
@@ -511,10 +538,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     color: AppColors.surface,
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.06,
+                                      color: AppColors.primary.withValues(
+                                        alpha: 0.5,
                                       ),
+                                      width: 1,
                                     ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppColors.primary.withValues(
+                                          alpha: 0.25,
+                                        ),
+                                        blurRadius: 6,
+                                        spreadRadius: -1,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
                                   ),
                                   child: Center(
                                     child: Text(
@@ -663,6 +701,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 88),
                             ],
                           );
                         },
@@ -675,11 +714,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ),
       ),
-      );
-    
-    
+    );
   }
-
 
   Widget _buildTab(String label, int index, double width, double height) {
     final isActive = _taskTab == index;
@@ -713,11 +749,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.07)),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.5),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
+            color: AppColors.primary.withValues(alpha: 0.25),
+            blurRadius: 6,
+            spreadRadius: -1,
             offset: const Offset(0, 6),
           ),
         ],

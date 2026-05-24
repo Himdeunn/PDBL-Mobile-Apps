@@ -13,6 +13,7 @@ import '../../auth/services/auth_service.dart';
 import 'team_detail_page.dart';
 import 'create_team_page.dart';
 import '../../../../core/services/connection_service.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../../chat/pages/chat_list_page.dart';
 import '../../chat/services/chat_service.dart';
 
@@ -40,6 +41,8 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
   bool _isOffline = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  int _currentPage = 1;
+  static const int _itemsPerPage = 5;
 
   static const _cacheKey = 'group_page_cache';
   static const _cacheTtl = Duration(minutes: 5);
@@ -51,7 +54,10 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
     _authService = widget.authService ?? AuthService();
     _searchController.addListener(() {
       if (mounted) {
-        setState(() => _searchQuery = _searchController.text.toLowerCase());
+        setState(() {
+          _searchQuery = _searchController.text.toLowerCase();
+          _currentPage = 1;
+        });
       }
     });
     _teamEventSub = NotificationHelper.onTeamEvent.listen((_) {
@@ -378,8 +384,10 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+
     return Scaffold(
-        backgroundColor: AppColors.background,
+      backgroundColor: AppColors.background,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: SafeArea(
         child: RefreshIndicator(
@@ -391,9 +399,11 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Stack(
+                  alignment: Alignment.center,
                   children: [
-                    const Expanded(
+                    const Align(
+                      alignment: Alignment.center,
                       child: Text(
                         'Project Team',
                         style: TextStyle(
@@ -403,53 +413,57 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        IconButton(
-                          onPressed: _openChatList,
-                          icon: const Icon(
-                            Icons.chat_bubble_outline,
-                            color: AppColors.textPrimary,
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          IconButton(
+                            onPressed: _openChatList,
+                            icon: const Icon(
+                              Icons
+                                  .forum_outlined, // Changed to match [Image 2] two overlapping bubbles
+                              color: AppColors.textPrimary,
+                            ),
+                            tooltip: 'List Chat',
                           ),
-                          tooltip: 'List Chat',
-                        ),
-                        if (_unreadChatCount > 0)
-                          Positioned(
-                            right: 4,
-                            top: 4,
-                            child: Container(
-                              constraints: const BoxConstraints(
-                                minWidth: 18,
-                                minHeight: 18,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 5,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.redAccent,
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: AppColors.background,
-                                  width: 2,
+                          if (_unreadChatCount > 0)
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: Container(
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
                                 ),
-                              ),
-                              child: Text(
-                                _unreadChatCount > 99
-                                    ? '99+'
-                                    : _unreadChatCount.toString(),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: AppColors.background,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Text(
+                                  _unreadChatCount > 99
+                                      ? '99+'
+                                      : _unreadChatCount.toString(),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -460,21 +474,33 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(30),
                   ),
-                  child: TextField(
+                  child: NativeTextInput(
                     controller: _searchController,
                     onChanged: (value) =>
                         setState(() => _searchQuery = value.toLowerCase()),
-                    decoration: const InputDecoration(
-                      hintText: 'Search Project / Team',
-                      hintStyle: TextStyle(
-                        color: AppColors.textTertiary,
-                        fontSize: 16,
-                      ),
-                      prefixIcon: Icon(Icons.search, color: Colors.grey),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                    height: 48,
+                    hintText: 'Search Project / Team',
+                    hintColor: AppColors.textTertiary,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    fallbackBuilder: (context) => TextField(
+                      controller: _searchController,
+                      onChanged: (value) =>
+                          setState(() => _searchQuery = value.toLowerCase()),
+                      decoration: const InputDecoration(
+                        hintText: 'Search Project / Team',
+                        hintStyle: TextStyle(
+                          color: AppColors.textTertiary,
+                          fontSize: 16,
+                        ),
+                        prefixIcon: Icon(Icons.search, color: Colors.grey),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                       ),
                     ),
                   ),
@@ -615,67 +641,7 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  if (_teams.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Center(
-                        child: Text(
-                          'You are not in any teams yet.',
-                          style: TextStyle(color: AppColors.textTertiary),
-                        ),
-                      ),
-                    )
-                  else
-                    ..._teams
-                        .where((team) {
-                          final name = (team['name'] ?? '')
-                              .toString()
-                              .toLowerCase();
-                          final desc = (team['description'] ?? '')
-                              .toString()
-                              .toLowerCase();
-                          return name.contains(_searchQuery) ||
-                              desc.contains(_searchQuery);
-                        })
-                        .map(
-                          (team) => Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: GroupCard(
-                              title: team['name'] ?? '',
-                              description:
-                                  team['description'] ?? 'Team Project',
-                              icon: Icons.groups_rounded,
-                              progress:
-                                  (team['progress'] ?? 0).toDouble() / 100.0,
-                              memberCount:
-                                  (team['members'] as List?)?.length ?? 0,
-                              memberAvatars: ((team['members'] as List?) ?? [])
-                                  .map(
-                                    (m) => ImageUtils.getAvatarUrl(
-                                      m['avatar_url'] ?? m['avatar'],
-                                    ),
-                                  )
-                                  .toList(),
-                              teamAvatarUrl: team['avatar_url'] as String?,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => TeamDetailPage(
-                                      teamId: team['id'],
-                                      authService: _authService,
-                                    ),
-                                  ),
-                                ).then((_) => _fetchData());
-                              },
-                              onMoreTap:
-                                  team['created_by']?.toString() ==
-                                      _currentUserId?.toString()
-                                  ? () => _showTeamOptions(team)
-                                  : null, // Only show if owner
-                            ),
-                          ),
-                        ),
+                  _buildGroupList(),
 
                   // Guest Mode Message
                   FutureBuilder<bool>(
@@ -722,8 +688,9 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
           if (snapshot.data == true) {
             return const SizedBox.shrink();
           }
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 4),
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 200),
+            padding: EdgeInsets.only(bottom: isKeyboardOpen ? 0 : 90),
             child: Material(
               color: Colors.transparent,
               shape: const CircleBorder(),
@@ -761,6 +728,226 @@ class _GroupPageState extends State<GroupPage> with WidgetsBindingObserver {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildGroupList() {
+    final filteredTeams = _teams.where((team) {
+      final name = (team['name'] ?? '').toString().toLowerCase();
+      final desc = (team['description'] ?? '').toString().toLowerCase();
+      return name.contains(_searchQuery) || desc.contains(_searchQuery);
+    }).toList();
+
+    if (filteredTeams.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: Text(
+            'You are not in any teams yet.',
+            style: TextStyle(color: AppColors.textTertiary),
+          ),
+        ),
+      );
+    }
+
+    final totalPages = (filteredTeams.length / _itemsPerPage).ceil();
+    // Clamp current page just in case
+    if (_currentPage > totalPages && totalPages > 0) {
+      _currentPage = totalPages;
+    }
+    if (_currentPage < 1) {
+      _currentPage = 1;
+    }
+
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final endIndex = startIndex + _itemsPerPage;
+    final paginatedTeams = filteredTeams.sublist(
+      startIndex,
+      endIndex > filteredTeams.length ? filteredTeams.length : endIndex,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...paginatedTeams.map(
+          (team) => Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: GroupCard(
+              title: team['name'] ?? '',
+              description: team['description'] ?? 'Team Project',
+              icon: Icons.groups_rounded,
+              progress: (team['progress'] ?? 0).toDouble() / 100.0,
+              memberCount: (team['members'] as List?)?.length ?? 0,
+              memberAvatars: ((team['members'] as List?) ?? [])
+                  .map(
+                    (m) =>
+                        ImageUtils.getAvatarUrl(m['avatar_url'] ?? m['avatar']),
+                  )
+                  .toList(),
+              teamAvatarUrl: team['avatar_url'] as String?,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TeamDetailPage(
+                      teamId: team['id'],
+                      authService: _authService,
+                    ),
+                  ),
+                ).then((_) => _fetchData());
+              },
+              onMoreTap:
+                  team['created_by']?.toString() == _currentUserId?.toString()
+                  ? () => _showTeamOptions(team)
+                  : null, // Only show if owner
+            ),
+          ),
+        ),
+        if (totalPages > 1) _buildPaginationControl(totalPages),
+      ],
+    );
+  }
+
+  Widget _buildPaginationControl(int totalPages) {
+    List<Widget> children = [];
+
+    // Previous button (<)
+    children.add(
+      _buildPageButton(
+        icon: Icons.chevron_left_rounded,
+        onTap: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
+        isActive: false,
+      ),
+    );
+
+    // Generate page numbers
+    List<int> pageNumbers = [];
+    if (totalPages <= 7) {
+      pageNumbers = List.generate(totalPages, (index) => index + 1);
+    } else {
+      // Show 1, 2, ..., current-1, current, current+1, ..., totalPages-1, totalPages
+      pageNumbers.add(1);
+      if (_currentPage > 3) {
+        pageNumbers.add(-1); // represent ellipsis (...)
+      }
+
+      int start = _currentPage - 1;
+      int end = _currentPage + 1;
+
+      if (_currentPage <= 3) {
+        start = 2;
+        end = 4;
+      } else if (_currentPage >= totalPages - 2) {
+        start = totalPages - 3;
+        end = totalPages - 1;
+      }
+
+      for (int i = start; i <= end; i++) {
+        if (i > 1 && i < totalPages) {
+          pageNumbers.add(i);
+        }
+      }
+
+      if (_currentPage < totalPages - 2) {
+        pageNumbers.add(-1); // represent ellipsis (...)
+      }
+      pageNumbers.add(totalPages);
+    }
+
+    for (var page in pageNumbers) {
+      if (page == -1) {
+        children.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              '...',
+              style: TextStyle(
+                color: AppColors.textTertiary,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      } else {
+        children.add(
+          _buildPageButton(
+            text: page.toString(),
+            isActive: page == _currentPage,
+            onTap: () {
+              setState(() {
+                _currentPage = page;
+              });
+            },
+          ),
+        );
+      }
+    }
+
+    // Next button (>)
+    children.add(
+      _buildPageButton(
+        icon: Icons.chevron_right_rounded,
+        onTap: _currentPage < totalPages
+            ? () => setState(() => _currentPage++)
+            : null,
+        isActive: false,
+      ),
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(top: 24, bottom: 20),
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildPageButton({
+    String? text,
+    IconData? icon,
+    required VoidCallback? onTap,
+    required bool isActive,
+  }) {
+    final isButtonEnabled = onTap != null;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 38,
+          height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.primary : Colors.transparent,
+            border: Border.all(
+              color: isActive ? AppColors.primary : AppColors.surface,
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: icon != null
+              ? Icon(
+                  icon,
+                  color: isButtonEnabled
+                      ? (isActive ? Colors.white : AppColors.textPrimary)
+                      : AppColors.textTertiary.withValues(alpha: 0.5),
+                  size: 20,
+                )
+              : Text(
+                  text!,
+                  style: TextStyle(
+                    color: isActive ? Colors.white : AppColors.textPrimary,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 14,
+                  ),
+                ),
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 // lib/features/group/pages/edit_team_task_page.dart
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/native_text_input.dart';
 import '../../../../core/theme/primary_button.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/utils/time_utils.dart';
@@ -40,10 +41,14 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.task['judul']);
-    _descriptionController = TextEditingController(text: widget.task['deskripsi']);
-    
+    _descriptionController = TextEditingController(
+      text: widget.task['deskripsi'],
+    );
+
     // Initial assigned members
-    final currentAssigned = (widget.task['assigned_emails'] as List<dynamic>?)?.cast<String>() ?? [];
+    final currentAssigned =
+        (widget.task['assigned_emails'] as List<dynamic>?)?.cast<String>() ??
+        [];
     _selectedMemberEmails.addAll(currentAssigned);
 
     // Initial deadline
@@ -57,12 +62,18 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
     }
 
     // Initial priority
-    final rawPriority = widget.task['priority']?.toString().toLowerCase().trim();
-    final safePriority = (rawPriority == null || rawPriority.isEmpty ||
+    final rawPriority = widget.task['priority']
+        ?.toString()
+        .toLowerCase()
+        .trim();
+    final safePriority =
+        (rawPriority == null ||
+            rawPriority.isEmpty ||
             !['high', 'medium', 'low'].contains(rawPriority))
         ? 'medium'
         : rawPriority;
-    _selectedPriority = safePriority[0].toUpperCase() + safePriority.substring(1);
+    _selectedPriority =
+        safePriority[0].toUpperCase() + safePriority.substring(1);
   }
 
   void _toggleMember(String email) {
@@ -115,18 +126,31 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomScrollPadding = keyboardBottom > 0 ? keyboardBottom + 48 : 24.0;
+
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppColors.background,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: AppColors.background,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary, size: 32),
+          icon: const Icon(
+            Icons.chevron_left,
+            color: AppColors.textPrimary,
+            size: 32,
+          ),
           onPressed: _isSaving ? null : () => Navigator.pop(context),
         ),
         title: const Text(
           'Edit Team Task',
-          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
       ),
@@ -134,7 +158,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
         child: AbsorbPointer(
           absorbing: _isSaving,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.fromLTRB(24, 24, 24, bottomScrollPadding),
             child: Form(
               key: _formKey,
               child: Column(
@@ -162,7 +186,10 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                             padding: EdgeInsets.symmetric(vertical: 8),
                             child: Text(
                               'No members available to assign',
-                              style: TextStyle(color: AppColors.textTertiary, fontSize: 13),
+                              style: TextStyle(
+                                color: AppColors.textTertiary,
+                                fontSize: 13,
+                              ),
                             ),
                           )
                         : Wrap(
@@ -170,23 +197,37 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                             runSpacing: 8,
                             children: widget.members.map((m) {
                               final email = m['email']?.toString() ?? 'unknown';
-                              final isSelected = _selectedMemberEmails.contains(email);
+                              final isSelected = _selectedMemberEmails.contains(
+                                email,
+                              );
                               return FilterChip(
                                 label: Text(m['name']?.toString() ?? email),
                                 selected: isSelected,
-                                onSelected: _isSaving ? null : (_) => _toggleMember(email),
-                                selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                                onSelected: _isSaving
+                                    ? null
+                                    : (_) => _toggleMember(email),
+                                selectedColor: AppColors.primary.withValues(
+                                  alpha: 0.2,
+                                ),
                                 checkmarkColor: AppColors.primary,
-                                backgroundColor: Colors.white.withValues(alpha: 0.5),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.5,
+                                ),
                                 labelStyle: TextStyle(
-                                  color: isSelected ? AppColors.primary : Colors.black87,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  color: isSelected
+                                      ? AppColors.primary
+                                      : Colors.black87,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                   fontSize: 12,
                                 ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(20),
                                   side: BorderSide(
-                                    color: isSelected ? AppColors.primary : Colors.transparent,
+                                    color: isSelected
+                                        ? AppColors.primary
+                                        : Colors.transparent,
                                   ),
                                 ),
                               );
@@ -213,32 +254,49 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                             _buildLabel('Due Date *'),
                             _buildPickerTile(
                               icon: Icons.calendar_today_outlined,
-                              text: DateFormat('MMM dd, yyyy').format(_selectedDate),
-                              onTap: _isSaving ? () {} : () async {
-                                final now = DateTime.now();
-                                final today = DateTime(now.year, now.month, now.day);
-                                final fifteenYearsLater = DateTime(now.year + 15, now.month, now.day);
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
-                                  firstDate: today,
-                                  lastDate: fifteenYearsLater,
-                                  builder: (ctx, child) => Theme(
-                                    data: ThemeData.light().copyWith(
-                                      colorScheme: const ColorScheme.light(
-                                        primary: AppColors.primary,
-                                        onPrimary: Colors.white,
-                                        surface: AppColors.surface,
-                                        onSurface: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    child: child!,
-                                  ),
-                                );
-                                if (picked != null) {
-                                  setState(() => _selectedDate = picked);
-                                }
-                              },
+                              text: DateFormat(
+                                'MMM dd, yyyy',
+                              ).format(_selectedDate),
+                              onTap: _isSaving
+                                  ? () {}
+                                  : () async {
+                                      final now = DateTime.now();
+                                      final today = DateTime(
+                                        now.year,
+                                        now.month,
+                                        now.day,
+                                      );
+                                      final fifteenYearsLater = DateTime(
+                                        now.year + 15,
+                                        now.month,
+                                        now.day,
+                                      );
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate:
+                                            _selectedDate.isBefore(today)
+                                            ? today
+                                            : _selectedDate,
+                                        firstDate: today,
+                                        lastDate: fifteenYearsLater,
+                                        builder: (ctx, child) => Theme(
+                                          data: ThemeData.light().copyWith(
+                                            colorScheme:
+                                                const ColorScheme.light(
+                                                  primary: AppColors.primary,
+                                                  onPrimary: Colors.white,
+                                                  surface: AppColors.surface,
+                                                  onSurface:
+                                                      AppColors.textPrimary,
+                                                ),
+                                          ),
+                                          child: child!,
+                                        ),
+                                      );
+                                      if (picked != null) {
+                                        setState(() => _selectedDate = picked);
+                                      }
+                                    },
                             ),
                           ],
                         ),
@@ -251,42 +309,69 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                             _buildLabel('Time *'),
                             _buildPickerTile(
                               icon: Icons.access_time,
-                              text: AppTimeUtils.formatTo24h("${_selectedTime.hour}:${_selectedTime.minute}"),
-                              onTap: _isSaving ? () {} : () async {
-                                final picked = await showTimePicker(
-                                  context: context,
-                                  initialTime: _selectedTime,
-                                  builder: (BuildContext context, Widget? child) {
-                                    return Theme(
-                                      data: ThemeData.light().copyWith(
-                                        colorScheme: const ColorScheme.light(
-                                          primary: AppColors.primary,
-                                          onPrimary: Colors.white,
-                                          surface: AppColors.surface,
-                                          onSurface: AppColors.textPrimary,
-                                        ),
-                                      ),
-                                      child: MediaQuery(
-                                        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-                                        child: child!,
-                                      ),
-                                    );
-                                  },
-                                );
-                                if (picked != null) {
-                                  final now = DateTime.now();
-                                  final today = DateTime(now.year, now.month, now.day);
-                                  if (_selectedDate.year == today.year && _selectedDate.month == today.month && _selectedDate.day == today.day) {
-                                    if (picked.hour < now.hour || (picked.hour == now.hour && picked.minute < now.minute)) {
-                                      if (mounted) {
-                                        ErrorHandler.showErrorPopup('Time cannot be in the past');
+                              text: AppTimeUtils.formatTo24h(
+                                "${_selectedTime.hour}:${_selectedTime.minute}",
+                              ),
+                              onTap: _isSaving
+                                  ? () {}
+                                  : () async {
+                                      final picked = await showTimePicker(
+                                        context: context,
+                                        initialTime: _selectedTime,
+                                        builder:
+                                            (
+                                              BuildContext context,
+                                              Widget? child,
+                                            ) {
+                                              return Theme(
+                                                data: ThemeData.light().copyWith(
+                                                  colorScheme:
+                                                      const ColorScheme.light(
+                                                        primary:
+                                                            AppColors.primary,
+                                                        onPrimary: Colors.white,
+                                                        surface:
+                                                            AppColors.surface,
+                                                        onSurface: AppColors
+                                                            .textPrimary,
+                                                      ),
+                                                ),
+                                                child: MediaQuery(
+                                                  data: MediaQuery.of(context)
+                                                      .copyWith(
+                                                        alwaysUse24HourFormat:
+                                                            true,
+                                                      ),
+                                                  child: child!,
+                                                ),
+                                              );
+                                            },
+                                      );
+                                      if (picked != null) {
+                                        final now = DateTime.now();
+                                        final today = DateTime(
+                                          now.year,
+                                          now.month,
+                                          now.day,
+                                        );
+                                        if (_selectedDate.year == today.year &&
+                                            _selectedDate.month ==
+                                                today.month &&
+                                            _selectedDate.day == today.day) {
+                                          if (picked.hour < now.hour ||
+                                              (picked.hour == now.hour &&
+                                                  picked.minute < now.minute)) {
+                                            if (mounted) {
+                                              ErrorHandler.showErrorPopup(
+                                                'Time cannot be in the past',
+                                              );
+                                            }
+                                            return;
+                                          }
+                                        }
+                                        setState(() => _selectedTime = picked);
                                       }
-                                      return;
-                                    }
-                                  }
-                                  setState(() => _selectedTime = picked);
-                                }
-                              },
+                                    },
                             ),
                           ],
                         ),
@@ -299,7 +384,9 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                   const SizedBox(height: 40),
                   _isSaving
                       ? const Center(
-                          child: CircularProgressIndicator(color: AppColors.primary),
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
                         )
                       : PrimaryButton(
                           label: 'Update Task',
@@ -321,7 +408,7 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
         final bool isSelected = _selectedPriority == p;
         Color iconColor;
         IconData icon;
-        
+
         if (p == "High") {
           iconColor = const Color(0xFFFF5252);
           icon = Icons.error_rounded;
@@ -335,7 +422,9 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
 
         return Expanded(
           child: GestureDetector(
-            onTap: _isSaving ? null : () => setState(() => _selectedPriority = p),
+            onTap: _isSaving
+                ? null
+                : () => setState(() => _selectedPriority = p),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -343,7 +432,9 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                 color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isSelected ? const Color(0xFF8B7E74) : Colors.transparent,
+                  color: isSelected
+                      ? const Color(0xFF8B7E74)
+                      : Colors.transparent,
                   width: 2,
                 ),
               ),
@@ -354,7 +445,9 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
                   Text(
                     p,
                     style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       color: isSelected ? Colors.black : Colors.grey,
                     ),
                   ),
@@ -374,19 +467,52 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
     String? Function(String?)? validator,
     bool enabled = true,
   }) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
+    return FormField<String>(
+      initialValue: controller.text,
       validator: validator,
-      enabled: enabled,
-      decoration: InputDecoration(
-        hintText: hint,
-        fillColor: AppColors.surface,
-        filled: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide.none,
-        ),
+      builder: (state) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          NativeTextInput(
+            controller: controller,
+            maxLines: maxLines,
+            minLines: maxLines > 1 ? 3 : 1,
+            enabled: enabled,
+            height: maxLines > 1 ? 132 : 52,
+            hintText: hint,
+            backgroundColor: AppColors.surface,
+            borderRadius: 16,
+            onChanged: (v) => state.didChange(v),
+            padding: EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: maxLines > 1 ? 16 : 14,
+            ),
+            fallbackBuilder: (context) => TextFormField(
+              controller: controller,
+              maxLines: maxLines,
+              validator: validator,
+              enabled: enabled,
+              decoration: InputDecoration(
+                hintText: hint,
+                fillColor: AppColors.surface,
+                filled: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (v) => state.didChange(v),
+            ),
+          ),
+          if (state.hasError)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 16),
+              child: Text(
+                state.errorText!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -409,7 +535,11 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
             Icon(icon, size: 20, color: Colors.grey),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(text, style: const TextStyle(fontSize: 15), overflow: TextOverflow.ellipsis),
+              child: Text(
+                text,
+                style: const TextStyle(fontSize: 15),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -422,7 +552,11 @@ class _EditTeamTaskPageState extends State<EditTeamTaskPage> {
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
         text,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+          color: AppColors.textPrimary,
+        ),
       ),
     );
   }

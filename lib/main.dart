@@ -19,7 +19,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
-
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Firebase
@@ -42,7 +41,11 @@ void main() async {
   );
 
   // Initialize all remaining services in parallel
-  await Future.wait([NotificationHelper.initialize(), LocalDatabase.init(), WidgetService.init()]);
+  await Future.wait([
+    NotificationHelper.initialize(),
+    LocalDatabase.init(),
+    WidgetService.init(),
+  ]);
 
   // Sync widget data
   WidgetService.fullSync();
