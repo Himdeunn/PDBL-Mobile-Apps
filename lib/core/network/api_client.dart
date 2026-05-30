@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import '../services/monitoring_service.dart';
 import '../storage/secure_storage.dart';
 import '../utils/error_handler.dart';
 
@@ -126,6 +127,11 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
+    MonitoringService().track('sync_failed', category: 'network', feature: err.requestOptions.path, metadata: {
+      'status_code': err.response?.statusCode,
+      'error_type': err.type.name,
+    });
+
     final statusCode = err.response?.statusCode;
     final path = err.requestOptions.path;
 
@@ -257,6 +263,16 @@ class _AuthInterceptor extends Interceptor {
   }
 
   void _handleLogout(DioException err, ErrorInterceptorHandler handler) {
+    if (err.response?.statusCode == 423) {
+      final data = err.response?.data;
+      ErrorHandler.showErrorPopup(
+        data is Map ? (data['message']?.toString() ?? 'Your account access is blocked.') : 'Your account access is blocked.',
+        title: 'Access Blocked',
+      );
+      handler.reject(err);
+      return;
+    }
+
     final isRefreshError = err.requestOptions.path == 'refresh';
     final is401 = err.response?.statusCode == 401;
 

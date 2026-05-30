@@ -12,6 +12,7 @@ import 'package:wudi/features/splash/pages/splash_page.dart';
 import 'package:wudi/core/utils/navigator_service.dart';
 import 'package:wudi/core/utils/widget_service.dart';
 import 'package:wudi/core/services/connection_service.dart';
+import 'package:wudi/core/services/monitoring_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -19,7 +20,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
+  final appStartedAt = DateTime.now();
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    MonitoringService().frontendError(details.exception, details.stack ?? StackTrace.current);
+  };
 
   // Initialize Firebase
   await Firebase.initializeApp();
@@ -70,6 +76,8 @@ void main() async {
   // This ensures notifications survive device reboots and app updates.
   _rescheduleNotificationsOnStartup();
 
+  MonitoringService().start(startupDuration: DateTime.now().difference(appStartedAt));
+
   runApp(const MyApp());
 }
 
@@ -107,6 +115,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       ConnectionService().resumeRefresh();
     }
+    MonitoringService().lifecycle(state);
   }
 
   @override
