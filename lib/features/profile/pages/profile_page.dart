@@ -444,7 +444,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     onPressed: loading
                         ? null
                         : () async {
-                            if (nameController.text.trim().isEmpty) return;
+                            if (nameController.text.trim().isEmpty) {
+                              ErrorHandler.showErrorPopup('Name cannot be empty');
+                              return;
+                            }
                             if (_lastProfileUpdate != null &&
                                 DateTime.now()
                                         .difference(_lastProfileUpdate!)
@@ -578,10 +581,20 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: loading
                   ? null
                   : () async {
-                      if (curP.text.isEmpty ||
-                          newP.text.length < 6 ||
-                          newP.text != conP.text) {
-                        ErrorHandler.showErrorPopup('Invalid input');
+                      if (curP.text.isEmpty) {
+                        ErrorHandler.showErrorPopup('Current password cannot be empty');
+                        return;
+                      }
+                      if (newP.text.isEmpty) {
+                        ErrorHandler.showErrorPopup('New password cannot be empty');
+                        return;
+                      }
+                      if (newP.text.length < 6) {
+                        ErrorHandler.showErrorPopup('New password must be at least 6 characters');
+                        return;
+                      }
+                      if (newP.text != conP.text) {
+                        ErrorHandler.showErrorPopup('Passwords do not match');
                         return;
                       }
                       setDialogState(() => loading = true);
@@ -684,6 +697,14 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: loading
                   ? null
                   : () async {
+                      if (emailC.text.trim().isEmpty) {
+                        ErrorHandler.showErrorPopup('Email cannot be empty');
+                        return;
+                      }
+                      if (passC.text.isEmpty) {
+                        ErrorHandler.showErrorPopup('Password cannot be empty');
+                        return;
+                      }
                       setDialogState(() => loading = true);
                       try {
                         await _profileService.updateEmail(

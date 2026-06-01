@@ -702,7 +702,23 @@ class _RichAiPayload extends StatelessWidget {
     if (kind == 'summary') {
       return _SummaryChart(
         counts: (metadata['counts'] as Map?)?.cast<String, dynamic>() ?? {},
+        priorityCounts:
+            (metadata['priority_counts'] as Map?)?.cast<String, dynamic>() ??
+            {},
         title: 'Today summary',
+        tasks: ((metadata['tasks'] as List?) ?? [])
+            .whereType<Map>()
+            .map((item) => item.cast<String, dynamic>())
+            .toList(),
+      );
+    }
+    if (kind == 'all_summary') {
+      return _SummaryChart(
+        counts: (metadata['counts'] as Map?)?.cast<String, dynamic>() ?? {},
+        priorityCounts:
+            (metadata['priority_counts'] as Map?)?.cast<String, dynamic>() ??
+            {},
+        title: 'All tasks',
         tasks: ((metadata['tasks'] as List?) ?? [])
             .whereType<Map>()
             .map((item) => item.cast<String, dynamic>())
@@ -1614,16 +1630,19 @@ class _TaskInsightCard extends StatelessWidget {
                 child: Icon(icon, color: AppColors.primary, size: 18),
               ),
               const SizedBox(width: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.primary,
-                  letterSpacing: -0.3,
+              Flexible(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primary,
+                    letterSpacing: -0.3,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               _PriorityBadge(priority: priority),
             ],
           ),
@@ -1675,11 +1694,6 @@ class _TaskInsightCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: AppColors.primary,
                 ),
               ],
             ),
@@ -1906,6 +1920,11 @@ class _OverdueInsightCard extends StatelessWidget {
                 task: entry.$2,
                 pickLabel: 'number ${entry.$1 + 1}',
                 onTaskPicked: onTaskPicked,
+                onComplete: onTaskPicked == null
+                    ? null
+                    : () => onTaskPicked!(
+                        'complete "${entry.$2['title'] ?? 'task'}"',
+                      ),
               ),
           ],
         ],
@@ -1979,11 +1998,13 @@ class _CompactTaskRow extends StatelessWidget {
   final Map<String, dynamic> task;
   final String? pickLabel;
   final ValueChanged<String>? onTaskPicked;
+  final VoidCallback? onComplete;
 
   const _CompactTaskRow({
     required this.task,
     this.pickLabel,
     this.onTaskPicked,
+    this.onComplete,
   });
 
   @override
@@ -2051,6 +2072,28 @@ class _CompactTaskRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _PriorityBadge(priority: priority),
+              if (onComplete != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onComplete,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.calendarSelected.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.calendarSelected.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      size: 16,
+                      color: AppColors.calendarSelected,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

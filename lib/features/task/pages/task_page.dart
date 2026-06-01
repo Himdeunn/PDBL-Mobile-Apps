@@ -462,9 +462,7 @@ class _TaskPageState extends State<TaskPage>
       return _buildEmptyState();
     }
 
-    final uncompleted = tasks.where((t) => !t.isCompleted).toList();
-    final completed = tasks.where((t) => t.isCompleted).toList();
-    final sortedTasks = [...uncompleted, ...completed];
+    final sortedTasks = tasks.toList();
     final totalPages = (sortedTasks.length / _pageSize).ceil().clamp(1, 999999);
     final currentPage = isTeamTab ? _teamPage : _personalPage;
     final safePage = currentPage.clamp(1, totalPages).toInt();
@@ -631,10 +629,13 @@ class _TodayTaskCard extends StatefulWidget {
   State<_TodayTaskCard> createState() => _TodayTaskCardState();
 }
 
-class _TodayTaskCardState extends State<_TodayTaskCard> {
+class _TodayTaskCardState extends State<_TodayTaskCard>
+    with SingleTickerProviderStateMixin {
   late bool _localCompleted;
   bool _isToggling = false;
   bool _teamCompletionLocked = false;
+  late AnimationController _bounceController;
+  late Animation<double> _bounceScale;
 
   @override
   void initState() {
@@ -642,6 +643,33 @@ class _TodayTaskCardState extends State<_TodayTaskCard> {
     _localCompleted = widget.task.isCompleted;
     _teamCompletionLocked =
         widget.task.teamId != null && widget.task.isCompleted;
+    _bounceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    _bounceScale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.32)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.32, end: 0.88)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.88, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 40,
+      ),
+    ]).animate(_bounceController);
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    super.dispose();
   }
 
   @override
@@ -669,14 +697,18 @@ class _TodayTaskCardState extends State<_TodayTaskCard> {
       return;
     }
     _isToggling = true;
+    bool willComplete = false;
     setState(() {
       if (isTeamTask) {
         _localCompleted = true;
         _teamCompletionLocked = true;
+        willComplete = true;
       } else {
         _localCompleted = !_localCompleted;
+        willComplete = _localCompleted;
       }
     });
+    if (willComplete) _bounceController.forward(from: 0.0);
     widget.onToggle();
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) _isToggling = false;
@@ -710,29 +742,33 @@ class _TodayTaskCardState extends State<_TodayTaskCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // ── Checkbox ──
-                    GestureDetector(
-                      onTap: _handleToggle,
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        margin: const EdgeInsets.only(top: 2),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.calendarSelected,
-                            width: 2,
+                    ScaleTransition(
+                      scale: _bounceScale,
+                      child: GestureDetector(
+                        onTap: _handleToggle,
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          margin: const EdgeInsets.only(top: 2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.rectangle,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors.calendarSelected,
+                              width: 2,
+                            ),
+                            color: _localCompleted
+                                ? AppColors.calendarSelected
+                                : Colors.transparent,
                           ),
-                          color: _localCompleted
-                              ? AppColors.calendarSelected
-                              : Colors.transparent,
+                          child: _localCompleted
+                              ? const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 18,
+                                )
+                              : null,
                         ),
-                        child: _localCompleted
-                            ? const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 18,
-                              )
-                            : null,
                       ),
                     ),
                     const SizedBox(width: 14),
