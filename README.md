@@ -691,7 +691,7 @@ Useful runtime checks:
 2. Check that the task repository sync logic runs on connectivity state change
 3. Ensure the backend `/todos/bulk` endpoint is accessible
 
----
+--------
 
 ## License
 
