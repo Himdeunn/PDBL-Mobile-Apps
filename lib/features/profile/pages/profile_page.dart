@@ -15,6 +15,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/native_text_input.dart';
 import '../../auth/services/auth_service.dart';
 import '../../auth/pages/welcome_page.dart';
+import '../../task/pages/task_page.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/connection_service.dart';
 import '../../../core/storage/secure_storage.dart';
@@ -770,245 +771,276 @@ class _ProfilePageState extends State<ProfilePage> {
             24,
             MediaQuery.paddingOf(context).bottom + bottomNavReserve,
           ),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: _updatingAvatar ? null : _showImageSourcePicker,
-                child: Stack(
-                  children: [
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.surface,
-                        border: Border.all(
-                          color: AppColors.primary,
-                          width: 2.5,
-                        ),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          _localImageFile != null
-                              ? ClipOval(
-                                  child: _localPreviewIsGif
-                                      ? Container(
-                                          width: 100,
-                                          height: 100,
-                                          color: AppColors.surface,
-                                          child: const Icon(
-                                            Icons.gif_box_outlined,
-                                            color: AppColors.primary,
-                                            size: 46,
-                                          ),
-                                        )
-                                      : Image.file(
-                                          _localImageFile!,
-                                          width: 100,
-                                          height: 100,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              const Icon(
-                                                Icons.person,
-                                                color: AppColors.primary,
-                                                size: 50,
-                                              ),
-                                        ),
-                                )
-                              : _user?.avatarUrl != null
-                              ? ClipOval(
-                                  child: CachedNetworkImage(
-                                    key: ValueKey(
-                                      '${ImageUtils.getAvatarUrl(_user!.avatarUrl)}_${_avatarCacheBuster ?? ''}',
-                                    ),
-                                    cacheKey: _cacheBustedAvatarUrl(
-                                      ImageUtils.getAvatarUrl(_user!.avatarUrl),
-                                    ),
-                                    imageUrl: ImageUtils.getAvatarUrl(
-                                      _user!.avatarUrl,
-                                    ),
-                                    width: 100,
-                                    height: 100,
-                                    fit: BoxFit.cover,
-                                    cacheManager: WudiCacheManager(),
-                                    httpHeaders: getNetworkImageHeaders(
-                                      ImageUtils.getAvatarUrl(_user!.avatarUrl),
-                                    ),
-                                    placeholder: (context, url) => const Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                    errorWidget: (context, url, error) =>
-                                        const Icon(
-                                          Icons.person,
-                                          color: AppColors.primary,
-                                          size: 50,
-                                        ),
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.person,
-                                  color: AppColors.primary,
-                                  size: 50,
-                                ),
-                          if (_updatingAvatar)
-                            Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.black.withOpacity(0.35),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.4,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                    ),
-                                    child: Text(
-                                      _avatarStatusText ?? 'Loading image...',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        height: 1.2,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (!isGuest)
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (!isGuest)
-                const Text(
-                  'Tips: Image max 1MB, GIF max 2MB',
-                  style: TextStyle(fontSize: 10, color: Colors.grey),
-                ),
-              const SizedBox(height: 12),
-              Text(
-                displayName,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                isGuest ? 'Guest Mode' : email,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textTertiary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (!isGuest) ...[
-                const Align(
-                  alignment: Alignment.centerLeft,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                const Center(
                   child: Text(
-                    'Account Settings',
+                    'Profile',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                _buildSettingTile(
-                  icon: Icons.person_outline,
-                  title: 'Change Name',
-                  onTap: _showChangeNameDialog,
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: _updatingAvatar ? null : _showImageSourcePicker,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.surface,
+                          border: Border.all(
+                            color: AppColors.primary,
+                            width: 2.5,
+                          ),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            _localImageFile != null
+                                ? ClipOval(
+                                    child: _localPreviewIsGif
+                                        ? Container(
+                                            width: 100,
+                                            height: 100,
+                                            color: AppColors.surface,
+                                            child: const Icon(
+                                              Icons.gif_box_outlined,
+                                              color: AppColors.primary,
+                                              size: 46,
+                                            ),
+                                          )
+                                        : Image.file(
+                                            _localImageFile!,
+                                            width: 100,
+                                            height: 100,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const Icon(
+                                                  Icons.person,
+                                                  color: AppColors.primary,
+                                                  size: 50,
+                                                ),
+                                          ),
+                                  )
+                                : _user?.avatarUrl != null
+                                ? ClipOval(
+                                    child: CachedNetworkImage(
+                                      key: ValueKey(
+                                        '${ImageUtils.getAvatarUrl(_user!.avatarUrl)}_${_avatarCacheBuster ?? ''}',
+                                      ),
+                                      cacheKey: _cacheBustedAvatarUrl(
+                                        ImageUtils.getAvatarUrl(
+                                          _user!.avatarUrl,
+                                        ),
+                                      ),
+                                      imageUrl: ImageUtils.getAvatarUrl(
+                                        _user!.avatarUrl,
+                                      ),
+                                      width: 100,
+                                      height: 100,
+                                      fit: BoxFit.cover,
+                                      cacheManager: WudiCacheManager(),
+                                      httpHeaders: getNetworkImageHeaders(
+                                        ImageUtils.getAvatarUrl(
+                                          _user!.avatarUrl,
+                                        ),
+                                      ),
+                                      placeholder: (context, url) =>
+                                          const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                      errorWidget: (context, url, error) =>
+                                          const Icon(
+                                            Icons.person,
+                                            color: AppColors.primary,
+                                            size: 50,
+                                          ),
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person,
+                                    color: AppColors.primary,
+                                    size: 50,
+                                  ),
+                            if (_updatingAvatar)
+                              Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withOpacity(0.35),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.4,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                      ),
+                                      child: Text(
+                                        _avatarStatusText ?? 'Loading image...',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (!isGuest)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-                if (!isGoogleUser) ...[
-                  _buildSettingTile(
-                    icon: Icons.lock_outline,
-                    title: 'Change Password',
-                    onTap: _showChangePasswordDialog,
+                const SizedBox(height: 8),
+                if (!isGuest)
+                  const Text(
+                    'Tips: Image max 1MB, GIF max 2MB',
+                    style: TextStyle(fontSize: 10, color: Colors.grey),
                   ),
-                  _buildSettingTile(
-                    icon: Icons.email_outlined,
-                    title: 'Change Email',
-                    onTap: _showChangeEmailDialog,
+                const SizedBox(height: 12),
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
                   ),
-                ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isGuest ? 'Guest Mode' : email,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+                const SizedBox(height: 16),
                 _buildSettingTile(
-                  icon: Icons.notifications_none_outlined,
-                  title: 'Notification Settings',
+                  icon: Icons.checklist_rounded,
+                  title: 'All Task',
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const NotificationSettingsPage(),
+                        builder: (_) =>
+                            TaskPage(authService: widget.authService),
                       ),
                     );
                   },
                 ),
-                const SizedBox(height: 8),
-              ],
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton.icon(
-                  onPressed: _loggingOut ? null : _logout,
-                  icon: _loggingOut
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.logout, size: 20),
-                  label: Text(_loggingOut ? 'Logging out...' : 'Logout'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                if (!isGuest) ...[
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Account Settings',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                    elevation: 0,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSettingTile(
+                    icon: Icons.person_outline,
+                    title: 'Change Name',
+                    onTap: _showChangeNameDialog,
+                  ),
+                  if (!isGoogleUser) ...[
+                    _buildSettingTile(
+                      icon: Icons.lock_outline,
+                      title: 'Change Password',
+                      onTap: _showChangePasswordDialog,
+                    ),
+                    _buildSettingTile(
+                      icon: Icons.email_outlined,
+                      title: 'Change Email',
+                      onTap: _showChangeEmailDialog,
+                    ),
+                  ],
+                  _buildSettingTile(
+                    icon: Icons.notifications_none_outlined,
+                    title: 'Notification Settings',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationSettingsPage(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: _loggingOut ? null : _logout,
+                    icon: _loggingOut
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.logout, size: 20),
+                    label: Text(_loggingOut ? 'Logging out...' : 'Logout'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),

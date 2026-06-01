@@ -260,11 +260,9 @@ extension _ChatRoomPageLayout on _ChatRoomPageState {
                             }
 
                             final streamedMessages = snapshot.data;
-                            final messages =
-                                streamedMessages == null ||
-                                    _messages.length > streamedMessages.length
+                            final messages = streamedMessages == null
                                 ? _messages
-                                : streamedMessages;
+                                : _mergeMessages(_messages, streamedMessages);
 
                             final isInitialLoad =
                                 !_hasPositionedInitialMessages &&
@@ -316,8 +314,28 @@ extension _ChatRoomPageLayout on _ChatRoomPageState {
                                     16,
                                     12,
                                   ),
-                                  itemCount: messages.length,
+                                  itemCount:
+                                      messages.length +
+                                      (_isLoadingOlderMessages ? 1 : 0),
                                   itemBuilder: (context, index) {
+                                    if (_isLoadingOlderMessages &&
+                                        index == messages.length) {
+                                      return const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        child: Center(
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+
                                     final message =
                                         messages[messages.length - 1 - index];
                                     final isMine =

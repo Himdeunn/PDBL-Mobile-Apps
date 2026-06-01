@@ -61,6 +61,8 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
   int _unreadNewMessages = 0;
   bool _hasPositionedInitialMessages = false;
   bool _isMessageTooLongPopupShowing = false;
+  bool _isLoadingOlderMessages = false;
+  bool _hasMoreOlderMessages = true;
 
   @override
   void initState() {
@@ -84,8 +86,13 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    final currentScroll = _scrollController.offset;
+    final position = _scrollController.position;
+    final currentScroll = position.pixels;
     final atBottom = currentScroll <= 50;
+
+    if (position.maxScrollExtent - currentScroll <= 160) {
+      _loadOlderMessages();
+    }
 
     if (atBottom != _isAtBottom) {
       setState(() {
@@ -103,6 +110,64 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
     NotificationHelper.setActiveChatConversationId(widget.conversation.id);
     await NotificationHelper.cancelChatNotification(widget.conversation.id);
     await _chatService.markConversationRead(widget.conversation.id);
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_isLoadingOlderMessages ||
+        !_hasMoreOlderMessages ||
+        _messages.isEmpty) {
+      return;
+    }
+    if (widget.currentUser.isGuest) return;
+
+    setState(() => _isLoadingOlderMessages = true);
+
+    try {
+      final oldestMessageId = _messages.first.id;
+      final page = await _chatService.getMessagePage(
+        widget.conversation.id,
+        beforeId: oldestMessageId,
+      );
+      if (!mounted) return;
+
+      final existingIds = _messages.map((message) => message.id).toSet();
+      final olderMessages = page.messages
+          .where((message) => !existingIds.contains(message.id))
+          .toList();
+
+      setState(() {
+        _messages = [...olderMessages, ..._messages];
+        _hasMoreOlderMessages = page.hasMore;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hasMoreOlderMessages = false);
+    } finally {
+      if (mounted) setState(() => _isLoadingOlderMessages = false);
+    }
+  }
+
+  List<ChatMessage> _mergeMessages(
+    List<ChatMessage> currentMessages,
+    List<ChatMessage> streamedMessages,
+  ) {
+    if (currentMessages.isEmpty) return streamedMessages;
+
+    final streamedById = {
+      for (final message in streamedMessages) message.id: message,
+    };
+    final currentIds = currentMessages.map((message) => message.id).toSet();
+    final merged = [
+      for (final message in currentMessages)
+        streamedById[message.id] ?? message,
+      for (final message in streamedMessages)
+        if (!currentIds.contains(message.id)) message,
+    ];
+    merged.sort((a, b) {
+      final byDate = a.createdAt.compareTo(b.createdAt);
+      return byDate != 0 ? byDate : a.id.compareTo(b.id);
+    });
+    return merged;
   }
 
   Future<void> _sendMessage() async {

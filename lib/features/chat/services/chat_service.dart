@@ -8,6 +8,13 @@ import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../models/chat_models.dart';
 
+class ChatMessagesPage {
+  final List<ChatMessage> messages;
+  final bool hasMore;
+
+  const ChatMessagesPage({required this.messages, required this.hasMore});
+}
+
 class ChatService {
   final ApiClient _api = ApiClient();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -158,15 +165,33 @@ class ChatService {
   }
 
   Future<List<ChatMessage>> _getMessagesFromApi(int conversationId) async {
+    final page = await getMessagePage(conversationId);
+    return page.messages;
+  }
+
+  Future<ChatMessagesPage> getMessagePage(
+    int conversationId, {
+    int? beforeId,
+  }) async {
     final resolvedId = await _resolveConversationId(conversationId);
-    final response = await _api.get('chat/conversations/$resolvedId/messages');
+    final response = await _api.get(
+      'chat/conversations/$resolvedId/messages',
+      queryParameters: {if (beforeId != null) 'before_id': beforeId},
+    );
     final messages = ((response.data['messages'] as List?) ?? [])
         .whereType<Map<String, dynamic>>()
         .map(ChatMessage.fromJson)
         .toList();
-    _saveMessageCache(resolvedId, messages);
-    _saveMessageCache(conversationId, messages);
-    return messages;
+
+    if (beforeId == null) {
+      _saveMessageCache(resolvedId, messages);
+      _saveMessageCache(conversationId, messages);
+    }
+
+    return ChatMessagesPage(
+      messages: messages,
+      hasMore: response.data['has_more'] == true,
+    );
   }
 
   Future<ChatConversation?> getConversation(int conversationId) async {

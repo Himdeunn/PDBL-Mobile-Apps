@@ -2163,6 +2163,27 @@ class _TaskDetailSheet extends StatelessWidget {
               '${deadlineDate.year}'
         : 'No date set';
 
+    final List<String> assignedEmails =
+        (task['assigned_emails'] as List<dynamic>?)
+            ?.map((email) => email.toString().trim())
+            .where((email) => email.isNotEmpty)
+            .toList() ??
+        [];
+    final List<String> assignedNames = assignedEmails.map((email) {
+      final member = teamMembers.firstWhere(
+        (member) =>
+            member is Map &&
+            member['email']?.toString().toLowerCase().trim() ==
+                email.toLowerCase(),
+        orElse: () => <String, dynamic>{},
+      );
+      if (member is Map) {
+        final name = member['name']?.toString().trim();
+        if (name != null && name.isNotEmpty) return name;
+      }
+      return email.contains('@') ? email.split('@').first : email;
+    }).toList();
+
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFFF9F7F2),
@@ -2264,6 +2285,64 @@ class _TaskDetailSheet extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Text(
+              'Assign To',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children:
+                  (assignedEmails.isEmpty ? ['No assignee'] : assignedEmails)
+                      .asMap()
+                      .entries
+                      .map((entry) {
+                        final index = entry.key;
+                        final email = entry.value;
+                        final isPlaceholder = email == 'No assignee';
+                        final label = isPlaceholder
+                            ? email
+                            : index < assignedNames.length
+                            ? assignedNames[index]
+                            : email;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isPlaceholder ? Icons.person_off : Icons.person,
+                                size: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                label,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      })
+                      .toList(),
+            ),
+            const SizedBox(height: 24),
+            const Text(
               'Description',
               style: TextStyle(
                 color: Colors.grey,
@@ -2294,11 +2373,13 @@ class _TaskDetailSheet extends StatelessWidget {
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder: (ctx) => AlertDialog(
-                            backgroundColor: AppColors.surface,
-                            title: const Text('Delete Task'),
-                            content: const Text(
-                              'Are you sure you want to delete this task?',
+                            backgroundColor: AppColors.background,
+                            surfaceTintColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
                             ),
+                            title: const Text('Delete Task'),
+                            content: const Text('You want delete this tasks?'),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, false),
